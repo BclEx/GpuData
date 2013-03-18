@@ -35,6 +35,32 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Core+Pager\Name\PCache1+Allocation.cs" />
+    <Compile Include="Core+Pager\Name\PCache1+General.cs" />
+    <Compile Include="Core+Pager\Name\PCache1+Interface.cs" />
+    <Compile Include="Core+Pager\Name\PCache1.cs" />
+    <Compile Include="Core+Pager\Name\PCacheGlobal.cs" />
+    <Compile Include="Core+Pager\Name\PgFreeslot.cs" />
+    <Compile Include="Core+Pager\Name\PgHdr1.cs" />
+    <Compile Include="Core+Pager\Name\PGroup.cs" />
+    <Compile Include="Core+Pager\Pager+Aquire.cs" />
+    <Compile Include="Core+Pager\Pager+Commit.cs" />
+    <Compile Include="Core+Pager\Pager+Debug.cs" />
+    <Compile Include="Core+Pager\Pager+File.cs" />
+    <Compile Include="Core+Pager\Pager+Journal.cs" />
+    <Compile Include="Core+Pager\Pager+Lock.cs" />
+    <Compile Include="Core+Pager\Pager+Pager.cs" />
+    <Compile Include="Core+Pager\Pager+Properties.cs" />
+    <Compile Include="Core+Pager\Pager+Savepoint.cs" />
+    <Compile Include="Core+Pager\Pager+Stream.cs" />
+    <Compile Include="Core+Pager\Pager+Wal.cs" />
+    <Compile Include="Core+Pager\Pager.cs" />
+    <Compile Include="Core+Pager\PagerSavepoint.cs" />
+    <Compile Include="Core+Pager\PCache+General.cs" />
+    <Compile Include="Core+Pager\PCache+LinkedList.cs" />
+    <Compile Include="Core+Pager\PCache.cs" />
+    <Compile Include="Core+Pager\PgHdr.cs" />
+    <Compile Include="Core+Pager\Wal.cs" />
     <Compile Include="Core\MutexEx.cs" />
     <Compile Include="Core\ConvertEx.cs" />
     <Compile Include="Main.cs" />

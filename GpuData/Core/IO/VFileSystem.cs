@@ -61,7 +61,6 @@ namespace Core.IO
         public abstract RC Access(string path, ACCESS flags, out int outRC);
         public abstract RC FullPathname(string path, out string outPath);
 
-
         public static VFileSystem FindVfs(string name)
         {
             if (string.IsNullOrEmpty(name))
