@@ -1,30 +1,24 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using DbPage = Core.PgHdr;
 using Pgno = System.UInt32;
 namespace Core
 {
     public partial class Pager
     {
-        // was:sqlite3PagerCommitPhaseOne
         public RC CommitPhaseOne(string zMaster, bool noSync)
         {
             var rc = RC.OK;
             Debug.Assert(eState == PAGER.WRITER_LOCKED || eState == PAGER.WRITER_CACHEMOD || eState == PAGER.WRITER_DBMOD || eState == PAGER.ERROR);
             Debug.Assert(assert_pager_state());
             // If a prior error occurred, report that error again.
-            if (Check.NEVER(errCode != 0))
+            if (WIN.NEVER(errCode != 0))
                 return errCode;
             PAGERTRACE("DATABASE SYNC: File={0} zMaster={1} nSize={2}", zFilename, zMaster, dbSize);
             // If no database changes have been made, return early.
             if (eState < PAGER.WRITER_CACHEMOD)
                 return RC.OK;
-            if (
-#if SQLITE_OMIT_MEMORYDB
-0 != MEMDB
-#else
-0 != memDb
-#endif
-)
+            if (0 != memDb)
             {
                 // If this is an in-memory db, or no pages have been written to, or this function has already been called, it is mostly a no-op.  However, any
                 // backup in progress needs to be restarted.
@@ -45,7 +39,7 @@ namespace Core
                         pList.Dirtys = null;
                     }
                     Debug.Assert(rc == RC.OK);
-                    if (Check.ALWAYS(pList))
+                    if (WIN.ALWAYS(pList))
                         rc = pagerWalFrames(pList, dbSize, 1, (fullSync ? syncFlags : 0));
                     Unref(pPageOne);
                     if (rc == RC.OK)
@@ -64,7 +58,7 @@ namespace Core
                     // mode.
                     // Otherwise, if the optimization is both enabled and applicable, then call pager_incr_changecounter() to update the change-counter
                     // in 'direct' mode. In this case the journal file will never be created for this transaction.
-#if SQLITE_ENABLE_ATOMIC_WRITE
+#if ATOMIC_WRITES
                     PgHdr pPg;
                     Debug.Assert(this.jfd.isOpen || this.journalMode == JOURNALMODE.OFF || this.journalMode == JOURNALMODE.WAL);
                     if (!zMaster && this.jfd.isOpen
@@ -91,7 +85,7 @@ namespace Core
                     // Before reading the pages with page numbers larger than the current value of Pager.dbSize, set dbSize back to the value
                     // that it took at the start of the transaction. Otherwise, the calls to sqlite3PagerGet() return zeroed pages instead of
                     // reading data from the database file.
-#if !SQLITE_OMIT_AUTOVACUUM
+#if !OMIT_AUTOVACUUM
                     if (dbSize < dbOrigSize && journalMode != JOURNALMODE.OFF)
                     {
                         var iSkip = PAGER_MJ_PGNO(this); // Pending lock page
@@ -204,13 +198,7 @@ namespace Core
             {
                 var eState = this.eState;
                 rc = pager_end_transaction(0);
-                if (
-#if SQLITE_OMIT_MEMORYDB
-0==MEMDB
-#else
-0 == this.memDb
-#endif
- && eState > PAGER.WRITER_LOCKED)
+                if (0 == this.memDb && eState > PAGER.WRITER_LOCKED)
                 {
                     // This can happen using journal_mode=off. Move the pager to the error  state to indicate that the contents of the cache may not be trusted.
                     // Any active readers will get SQLITE_ABORT.
@@ -227,7 +215,7 @@ namespace Core
             return pager_error(rc);
         }
 
-#if !SQLITE_OMIT_AUTOVACUUM
+#if !OMIT_AUTOVACUUM
         public RC sqlite3PagerMovepage(DbPage pPg, Pgno pgno, int isCommit)
         {
             Debug.Assert(pPg.Refs > 0);
@@ -235,13 +223,7 @@ namespace Core
             Debug.Assert(assert_pager_state());
             // In order to be able to rollback, an in-memory database must journal the page we are moving from.
             var rc = RC.OK;
-            if (
-#if SQLITE_OMIT_MEMORYDB
-1==MEMDB
-#else
-this.memDb != 0
-#endif
-)
+            if (this.memDb != 0)
             {
                 rc = Write(pPg);
                 if (rc != RC.OK)
@@ -265,7 +247,7 @@ this.memDb != 0
                 return rc;
             PAGERTRACE("MOVE {0} page {1} (needSync={2}) moves to {3}",
             PAGERID(this), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0, pgno);
-            SysEx.IOTRACE("MOVE {0} {1} {2}", this.GetHashCode(), pPg.ID, pgno);
+            Console.WriteLine("MOVE {0} {1} {2}", GetHashCode(), pPg.ID, pgno);
             // If the journal needs to be sync()ed before page pPg.pgno can be written to, store pPg.pgno in local variable needSyncPgno.
             // If the isCommit flag is set, there is no need to remember that the journal needs to be sync()ed before database page pPg.pgno
             // can be written to. The caller has already promised not to write to it.
@@ -283,13 +265,7 @@ this.memDb != 0
             if (pPgOld != null)
             {
                 pPg.Flags |= (pPgOld.Flags & PgHdr.PGHDR.NEED_SYNC);
-                if (
-#if SQLITE_OMIT_MEMORYDB
-1==MEMDB
-#else
-this.memDb != 0
-#endif
-)
+                if (this.memDb != 0)
                     // Do not discard pages from an in-memory database since we might need to rollback later.  Just move the page out of the way.
                     PCache.MovePage(pPgOld, this.dbSize + 1);
                 else
@@ -300,13 +276,7 @@ this.memDb != 0
             PCache.MakePageDirty(pPg);
             // For an in-memory database, make sure the original page continues to exist, in case the transaction needs to roll back.  Use pPgOld
             // as the original page since it has already been allocated.
-            if (
-#if SQLITE_OMIT_MEMORYDB
-0!=MEMDB
-#else
-0 != this.memDb
-#endif
-)
+            if (0 != this.memDb)
             {
                 Debug.Assert(pPgOld);
                 PCache.MovePage(pPgOld, origPgno);

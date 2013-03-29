@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using Pgno = System.UInt32;
 using Core.IO;
-using Contoso.Collections;
 namespace Core
 {
     public partial class Pager
@@ -120,15 +119,9 @@ namespace Core
         public int nHit;
 #endif
         public Action<PgHdr> xReiniter;     // Call this routine when reloading pages
-#if SQLITE_HAS_CODEC
-        public codec_ctx.dxCodec xCodec;                 // Routine for en/decoding data
-        public codec_ctx.dxCodecSizeChng xCodecSizeChng; // Notify of page size changes
-        public codec_ctx.dxCodecFree xCodecFree;         // Destructor for the codec
-        public codec_ctx pCodec;               // First argument to xCodec... methods
-#endif
         public byte[] pTmpSpace;               // Pager.pageSize bytes of space for tmp use
         public PCache pPCache;                 // Pointer to page cache object
-#if !SQLITE_OMIT_WAL
+#if !OMIT_WAL
         public Wal pWal;                       // Write-ahead log used by "journal_mode=wal"
         public string zWal;                    // File name for write-ahead log
 #else
@@ -137,19 +130,7 @@ namespace Core
 
         public static Pgno PAGER_MJ_PGNO(Pager x) { return ((Pgno)((VFile.PENDING_BYTE / ((x).pageSize)) + 1)); }
 
-#if SQLITE_HAS_CODEC
-        internal static bool CODEC1(Pager P, byte[] D, uint N, int X) { return (P.xCodec != null && P.xCodec(P.pCodec, D, N, X) == null); }
-        internal static bool CODEC2(Pager P, byte[] D, uint N, int X, ref byte[] O)
-        {
-            if (P.xCodec == null) { O = D;/*do nothing*/ return false; }
-            else return ((O = P.xCodec(P.pCodec, D, N, X)) == null);
-        }
-#else
-        internal static bool CODEC1(Pager P, byte[] D, uint N, int X) { return false; }
-        internal static bool CODEC2(Pager P, byte[] D, uint N, int X, ref byte[] O) { O = D; return false; }
-#endif
-
-#if false && !SQLITE_OMIT_WAL
+#if false && !OMIT_WAL
         internal static int pagerUseWal(Pager pPager) { return (pPager.pWal != 0); }
 #else
         internal bool pagerUseWal() { return false; }
@@ -159,7 +140,7 @@ namespace Core
         internal RC pagerBeginReadTransaction() { return RC.OK; }
 #endif
 
-#if SQLITE_ENABLE_ATOMIC_WRITE
+#if ATOMIC_WRITES
         internal static int jrnlBufferSize(Pager pPager)
         {
             Debug.Assert(0 == MEMDB);
@@ -178,8 +159,8 @@ namespace Core
         }
 #endif
 
-#if !SQLITE_CHECK_PAGES
-        internal static uint pager_pagehash(PgHdr pPage) { return pager_datahash(pPage.Pager.pageSize, pPage.Data); }
+#if !CHECK_PAGES
+        internal static uint pager_pagehash(PgHdr page) { return pager_datahash(page.Pager.pageSize, page.Data); }
         internal static uint pager_datahash(int nByte, byte[] pData)
         {
             uint hash = 0;
@@ -187,12 +168,12 @@ namespace Core
                 hash = (hash * 1039) + pData[i];
             return hash;
         }
-        internal static void pager_set_pagehash(PgHdr pPage) { pPage.PageHash = pager_pagehash(pPage); }
-        internal static void checkPage(PgHdr pPg)
+        internal static void pager_set_pagehash(PgHdr page) { page.PageHash = pager_pagehash(page); }
+        internal static void checkPage(PgHdr page)
         {
-            var pPager = pPg.Pager;
+            var pPager = page.Pager;
             Debug.Assert(pPager.eState != PAGER.ERROR);
-            Debug.Assert((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0 || pPg.PageHash == pager_pagehash(pPg));
+            Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0 || page.PageHash == pager_pagehash(page));
         }
 #else
         internal static uint pager_pagehash(PgHdr X) { return 0; }

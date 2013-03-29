@@ -8,7 +8,6 @@ namespace Core.IO
     public class CoreVFile : VFile
     {
         private static int MX_CLOSE_ATTEMPT = 3;
-        public static int PENDING_BYTE = 0x40000000;
         private static int RESERVED_BYTE = (PENDING_BYTE + 1);
         private static int SHARED_FIRST = (PENDING_BYTE + 2);
         private static int SHARED_SIZE = 510;

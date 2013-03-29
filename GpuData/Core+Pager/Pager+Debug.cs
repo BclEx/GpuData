@@ -6,12 +6,7 @@ namespace Core
 {
     public partial class Pager
     {
-#if TRACE
-        private static bool PagerTrace = true;  // True to enable tracing
-        private static void PAGERTRACE(string x, params object[] args) { if (PagerTrace) Console.WriteLine("p:" + string.Format(x, args)); }
-#else
-        private static void PAGERTRACE(string x, params object[] args) { }
-#endif
+        private static void PAGERTRACE(string x, params object[] args) { Console.WriteLine("p:" + string.Format(x, args)); }
         private static int PAGERID(Pager p) { return p.GetHashCode(); }
         private static int FILEHANDLEID(VFile fd) { return fd.GetHashCode(); }
 
@@ -28,13 +23,7 @@ namespace Core
             // Check that MEMDB implies noSync. And an in-memory journal. Since  this means an in-memory pager performs no IO at all, it cannot encounter 
             // either SQLITE_IOERR or SQLITE_FULL during rollback or while finalizing a journal file. (although the in-memory journal implementation may 
             // return SQLITE_IOERR_NOMEM while the journal file is being written). It is therefore not possible for an in-memory pager to enter the ERROR state.
-            if (
-#if SQLITE_OMIT_MEMORYDB
-0!=MEMDB
-#else
-0 != memDb
-#endif
-)
+            if (0 != memDb)
             {
                 Debug.Assert(noSync);
                 Debug.Assert(journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.MEMORY);
@@ -47,13 +36,7 @@ namespace Core
             switch (eState)
             {
                 case PAGER.OPEN:
-                    Debug.Assert(
-#if SQLITE_OMIT_MEMORYDB
-0==MEMDB
-#else
-0 == memDb
-#endif
-);
+                    Debug.Assert(0 == memDb);
                     Debug.Assert(errCode == RC.OK);
                     Debug.Assert(pPCache.sqlite3PcacheRefCount() == 0 || tempFile);
                     break;
@@ -80,7 +63,7 @@ namespace Core
                         // It is possible that if journal_mode=wal here that neither the journal file nor the WAL file are open. This happens during
                         // a rollback transaction that switches from journal_mode=off to journal_mode=wal.
                         Debug.Assert(eLock >= VFSLOCK.RESERVED);
-                        Debug.Assert(jfd.IsOpen || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
+                        Debug.Assert(jfd.Open || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
                     }
                     Debug.Assert(dbOrigSize == dbFileSize);
                     Debug.Assert(dbOrigSize == dbHintSize);
@@ -90,14 +73,14 @@ namespace Core
                     Debug.Assert(errCode == RC.OK);
                     Debug.Assert(!pagerUseWal());
                     Debug.Assert(eLock >= VFSLOCK.EXCLUSIVE);
-                    Debug.Assert(jfd.IsOpen || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
+                    Debug.Assert(jfd.Open || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
                     Debug.Assert(dbOrigSize <= dbHintSize);
                     break;
                 case PAGER.WRITER_FINISHED:
                     Debug.Assert(eLock == VFSLOCK.EXCLUSIVE);
                     Debug.Assert(errCode == RC.OK);
                     Debug.Assert(!pagerUseWal());
-                    Debug.Assert(jfd.IsOpen || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
+                    Debug.Assert(jfd.Open || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
                     break;
                 case PAGER.ERROR:
                     // There must be at least one outstanding reference to the pager if in ERROR state. Otherwise the pager should have already dropped

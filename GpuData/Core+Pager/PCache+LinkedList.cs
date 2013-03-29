@@ -4,7 +4,7 @@ namespace Core
     public partial class PCache
     {
 
-#if !DEBUG && SQLITE_ENABLE_EXPENSIVE_ASSERT
+#if !DEBUG && EXPENSIVE_ASSERT
         private int pcacheCheckSynced()
         {
             PgHdr p;
@@ -43,7 +43,7 @@ namespace Core
             }
             pPage.DirtyNext = null;
             pPage.DirtyPrev = null;
-#if SQLITE_ENABLE_EXPENSIVE_ASSERT
+#if EXPENSIVE_ASSERT
             expensive_assert(pcacheCheckSynced(p));
 #endif
         }
@@ -63,7 +63,7 @@ namespace Core
                 p.pDirtyTail = pPage;
             if (null == p.pSynced && 0 == (pPage.Flags & PgHdr.PGHDR.NEED_SYNC))
                 p.pSynced = pPage;
-#if SQLITE_ENABLE_EXPENSIVE_ASSERT
+#if EXPENSIVE_ASSERT
             expensive_assert(pcacheCheckSynced(p));
 #endif
         }

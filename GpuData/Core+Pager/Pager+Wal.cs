@@ -4,7 +4,7 @@ namespace Core
 {
     public partial class Pager
     {
-#if !SQLITE_OMIT_WAL
+#if !OMIT_WAL
         // This function is invoked once for each page that has already been written into the log file when a WAL transaction is rolled back.
         // Parameter iPg is the page number of said page. The pCtx argument is actually a pointer to the Pager structure.
         //
@@ -13,7 +13,7 @@ namespace Core
         // return an SQLite error code. Otherwise, SQLITE.OK.
         static int pagerUndoCallback(Pager pCtx, Pgno iPg)
         {
-            var rc = SQLITE.OK;
+            var rc = RC.OK;
             Pager pPager = (Pager)pCtx;
             PgHdr pPg;
 
@@ -79,12 +79,12 @@ namespace Core
         static int pagerWalFrames(Pager pPager, PgHdr pList, Pgno nTruncate, int isCommit, int syncFlags)
         {
             int rc;                         /* Return code */
-#if DEBUG || (SQLITE_CHECK_PAGES)
+#if DEBUG || CHECK_PAGES
             PgHdr p;                       /* For looping over pages */
 #endif
 
             Debug.Assert(pPager.pWal);
-#if SQLITE_DEBUG
+#if DEBUG
 /* Verify that the page list is in accending order */
 for(p=pList; p && p->pDirty; p=p->pDirty){
 assert( p->pgno < p->pDirty->pgno );
@@ -120,7 +120,7 @@ assert( p->pgno < p->pDirty->pgno );
                 }
             }
 
-#if SQLITE_CHECK_PAGES
+#if CHECK_PAGES
 pList = sqlite3PcacheDirtyList(pPager.pPCache);
 for(p=pList; p; p=p->pDirty){
 pager_set_pagehash(p);
@@ -394,20 +394,6 @@ pPager.pWal = 0;
 return rc;
 }
 
-#if SQLITE_HAS_CODEC
-/*
-** This function is called by the wal module when writing page content
-** into the log file.
-**
-** This function returns a pointer to a buffer containing the encrypted
-** page content. If a malloc fails, this function may return NULL.
-*/
-void sqlite3PagerCodec(PgHdr *pPg){
-voidaData = 0;
-CODEC2(pPg->pPager, pPg->pData, pPg->pgno, 6, return 0, aData);
-return aData;
-}
-#endif
 #endif
     }
 }

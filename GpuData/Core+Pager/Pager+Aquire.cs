@@ -6,9 +6,7 @@ namespace Core
 {
     public partial class Pager
     {
-        // was:sqlite3PagerGet,sqlite3PagerAcquire
-        public RC Get(Pgno pgno, ref DbPage ppPage) { return Get(pgno, ref ppPage, 0); }
-        public RC Get(Pgno pgno, ref DbPage ppPage, byte noContent)
+        public RC Get(Pgno pgno, ref DbPage ppPage, byte noContent = 0)
         {
             Debug.Assert(eState >= PAGER.READER);
             Debug.Assert(assert_pager_state());
@@ -44,13 +42,7 @@ namespace Core
                     rc = WIN.SQLITE_CORRUPT_BKPT();
                     goto pager_get_err;
                 }
-                if (
-#if SQLITE_OMIT_MEMORYDB
-1==MEMDB
-#else
-memDb != 0
-#endif
- || dbSize < pgno || noContent != 0 || !fd.Open)
+                if (memDb != 0 || dbSize < pgno || noContent != 0 || !fd.Open)
                 {
                     if (pgno > mxPgno)
                     {
@@ -62,14 +54,12 @@ memDb != 0
                         // Failure to set the bits in the InJournal bit-vectors is benign. It merely means that we might do some extra work to journal a
                         // page that does not need to be journaled.  Nevertheless, be sure to test the case where a malloc error occurs while trying to set
                         // a bit in a bit vector.
-                        MallocEx.sqlite3BeginBenignMalloc();
                         if (pgno <= dbOrigSize)
                             pInJournal.Set(pgno);
                         addToSavepointBitvecs(pgno);
-                        MallocEx.sqlite3EndBenignMalloc();
                     }
                     Array.Clear(pPg.Data, 0, pageSize);
-                    SysEx.IOTRACE("ZERO {0:x} {1}\n", this.GetHashCode(), pgno);
+                    Console.WriteLine("ZERO {0:x} {1}\n", GetHashCode(), pgno);
                 }
                 else
                 {

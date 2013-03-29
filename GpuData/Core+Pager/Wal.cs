@@ -4,10 +4,8 @@ namespace Core
 {
     public class Wal
     {
-        // was:sqlite3WalOpen
         internal static RC Open(VFileSystem x, VFile y, string z) { return RC.OK; }
 
-        // was:sqlite3Wal*
         public static class WalExtensions
         {
             internal static void Limit(this Wal a, long y) { }

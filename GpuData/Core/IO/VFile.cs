@@ -4,6 +4,8 @@ namespace Core.IO
 {
     public abstract class VFile
     {
+        public static int PENDING_BYTE = 0x40000000;
+
         public enum LOCK : byte
         {
             NO = 0,

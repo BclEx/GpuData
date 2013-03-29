@@ -1,5 +1,4 @@
 ﻿using Pgno = System.UInt32;
-using Contoso.Collections;
 namespace Core
 {
     public class PagerSavepoint
@@ -9,7 +8,7 @@ namespace Core
         public BitArray pInSavepoint;     // Set of pages in this savepoint
         public Pgno nOrig;              // Original number of pages in file
         public Pgno iSubRec;            // Index of first record in sub-journal
-#if !SQLITE_OMIT_WAL
+#if !OMIT_WAL
         public uint aWalData[WAL_SAVEPOINT_NDATA];        // WAL savepoint context
 #else
         public object aWalData = null;      // Used for C# convenience
