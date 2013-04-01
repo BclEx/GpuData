@@ -6,24 +6,24 @@ namespace Core
     {
         private void pagerUnlockIfUnused()
         {
-            if (this.pPCache.sqlite3PcacheRefCount() == 0)
+            if (this._pcache.sqlite3PcacheRefCount() == 0)
                 pagerUnlockAndRollback();
         }
 
         private void pagerUnlockAndRollback()
         {
-            if (this.eState != PAGER.ERROR && this.eState != PAGER.OPEN)
+            if (this._state != PAGER.ERROR && this._state != PAGER.OPEN)
             {
                 Debug.Assert(assert_pager_state());
-                if (this.eState >= PAGER.WRITER_LOCKED)
+                if (this._state >= PAGER.WRITER_LOCKED)
                 {
                     MallocEx.sqlite3BeginBenignMalloc();
                     Rollback();
                     MallocEx.sqlite3EndBenignMalloc();
                 }
-                else if (!this.exclusiveMode)
+                else if (!this._exclusiveMode)
                 {
-                    Debug.Assert(this.eState == PAGER.READER);
+                    Debug.Assert(this._state == PAGER.READER);
                     pager_end_transaction(0);
                 }
             }
@@ -33,15 +33,15 @@ namespace Core
         private RC pagerUnlockDb(VFSLOCK eLock)
         {
             var rc = RC.OK;
-            Debug.Assert(!this.exclusiveMode || this.eLock == eLock);
+            Debug.Assert(!this._exclusiveMode || this._lock == eLock);
             Debug.Assert(eLock == VFSLOCK.NO || eLock == VFSLOCK.SHARED);
             Debug.Assert(eLock != VFSLOCK.NO || !this.pagerUseWal());
-            if (this.fd.IsOpen)
+            if (this._file.IsOpen)
             {
-                Debug.Assert(this.eLock >= eLock);
-                rc = this.fd.Unlock(eLock);
-                if (this.eLock != VFSLOCK.UNKNOWN)
-                    this.eLock = eLock;
+                Debug.Assert(this._lock >= eLock);
+                rc = this._file.Unlock(eLock);
+                if (this._lock != VFSLOCK.UNKNOWN)
+                    this._lock = eLock;
                 SysEx.IOTRACE("UNLOCK {0:x} {1}", this.GetHashCode(), eLock);
             }
             return rc;
@@ -51,12 +51,12 @@ namespace Core
         {
             var rc = RC.OK;
             Debug.Assert(eLock == VFSLOCK.SHARED || eLock == VFSLOCK.RESERVED || eLock == VFSLOCK.EXCLUSIVE);
-            if (this.eLock < eLock || this.eLock == VFSLOCK.UNKNOWN)
+            if (this._lock < eLock || this._lock == VFSLOCK.UNKNOWN)
             {
-                rc = this.fd.Lock(eLock);
-                if (rc == RC.OK && (this.eLock != VFSLOCK.UNKNOWN || eLock == VFSLOCK.EXCLUSIVE))
+                rc = this._file.Lock(eLock);
+                if (rc == RC.OK && (this._lock != VFSLOCK.UNKNOWN || eLock == VFSLOCK.EXCLUSIVE))
                 {
-                    this.eLock = eLock;
+                    this._lock = eLock;
                     SysEx.IOTRACE("LOCK {0:x} {1}", this.GetHashCode(), eLock);
                 }
             }
@@ -66,7 +66,7 @@ namespace Core
         private RC sqlite3PagerExclusiveLock()
         {
             var rc = RC.OK;
-            Debug.Assert(this.eState == PAGER.WRITER_CACHEMOD || this.eState == PAGER.WRITER_DBMOD || this.eState == PAGER.WRITER_LOCKED);
+            Debug.Assert(this._state == PAGER.WRITER_CACHEMOD || this._state == PAGER.WRITER_DBMOD || this._state == PAGER.WRITER_LOCKED);
             Debug.Assert(assert_pager_state());
             if (!pagerUseWal())
                 rc = pager_wait_on_lock(VFSLOCK.EXCLUSIVE);

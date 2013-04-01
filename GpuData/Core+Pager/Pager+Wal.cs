@@ -29,7 +29,7 @@ namespace Core
                     rc = readDbPage(pPg);
                     if (rc == SQLITE.OK)
                     {
-                        pPager.xReiniter(pPg);
+                        pPager._reiniter(pPg);
                     }
                     sqlite3PagerUnref(pPg);
                 }
@@ -53,9 +53,9 @@ namespace Core
             **   + Discard the cached page (if refcount==0), or
             **   + Reload page content from the database (if refcount>0).
             */
-            pPager.dbSize = pPager.dbOrigSize;
-            rc = sqlite3WalUndo(pPager.pWal, pagerUndoCallback, pPager);
-            pList = sqlite3PcacheDirtyList(pPager.pPCache);
+            pPager._dbSize = pPager._dbOrigSize;
+            rc = sqlite3WalUndo(pPager._wal, pagerUndoCallback, pPager);
+            pList = sqlite3PcacheDirtyList(pPager._pcache);
             while (pList && rc == SQLITE.OK)
             {
                 PgHdr pNext = pList.pDirty;
@@ -83,7 +83,7 @@ namespace Core
             PgHdr p;                       /* For looping over pages */
 #endif
 
-            Debug.Assert(pPager.pWal);
+            Debug.Assert(pPager._wal);
 #if DEBUG
 /* Verify that the page list is in accending order */
 for(p=pList; p && p->pDirty; p=p->pDirty){
@@ -108,8 +108,8 @@ assert( p->pgno < p->pDirty->pgno );
 
 
             if (pList->pgno == 1) pager_write_changecounter(pList);
-            rc = sqlite3WalFrames(pPager.pWal,
-            pPager.pageSize, pList, nTruncate, isCommit, syncFlags
+            rc = sqlite3WalFrames(pPager._wal,
+            pPager._pageSize, pList, nTruncate, isCommit, syncFlags
             );
             if (rc == SQLITE.OK && pPager.pBackup)
             {
@@ -143,7 +143,7 @@ pager_set_pagehash(p);
             int rc;                         /* Return code */
             int changed = 0;                /* True if cache must be reset */
 
-            assert(pagerUseWal(pPager));
+            assert(_pagerUseWal(pPager));
             assert(pPager.eState == PAGER_OPEN || pPager.eState == PAGER_READER);
 
             /* sqlite3WalEndReadTransaction() was not called for the previous

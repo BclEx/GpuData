@@ -10,26 +10,26 @@ namespace Core
         // was:sqlite3PagerBegin
         public RC Begin(bool exFlag, bool subjInMemory)
         {
-            if (errCode != 0)
-                return errCode;
-            Debug.Assert(eState >= PAGER.READER && eState < PAGER.ERROR);
+            if (_errorCode != 0)
+                return _errorCode;
+            Debug.Assert(_state >= PAGER.READER && _state < PAGER.ERROR);
             var rc = RC.OK;
-            if (Check.ALWAYS(eState == PAGER.READER))
+            if (Check.ALWAYS(_state == PAGER.READER))
             {
-                Debug.Assert(pInJournal == null);
+                Debug.Assert(_inJournal == null);
                 if (pagerUseWal())
                 {
                     // If the pager is configured to use locking_mode=exclusive, and an exclusive lock on the database is not already held, obtain it now.
-                    if (exclusiveMode && pWal.ExclusiveMode(-1))
+                    if (_exclusiveMode && _wal.ExclusiveMode(-1))
                     {
                         rc = pagerLockDb(VFSLOCK.EXCLUSIVE);
                         if (rc != RC.OK)
                             return rc;
-                        pWal.ExclusiveMode(1);
+                        _wal.ExclusiveMode(1);
                     }
                     // Grab the write lock on the log file. If successful, upgrade to PAGER_RESERVED state. Otherwise, return an error code to the caller.
                     // The busy-handler is not invoked if another connection already holds the write-lock. If possible, the upper layer will call it.
-                    rc = pWal.BeginWriteTransaction();
+                    rc = _wal.BeginWriteTransaction();
                 }
                 else
                 {
@@ -45,14 +45,14 @@ namespace Core
                     // WAL mode sets Pager.eState to PAGER_WRITER_LOCKED or CACHEMOD when it has an open transaction, but never to DBMOD or FINISHED.
                     // This is because in those states the code to roll back savepoint transactions may copy data from the sub-journal into the database 
                     // file as well as into the page cache. Which would be incorrect in WAL mode.
-                    eState = PAGER.WRITER_LOCKED;
-                    dbHintSize = dbSize;
-                    dbFileSize = dbSize;
-                    dbOrigSize = dbSize;
-                    journalOff = 0;
+                    _state = PAGER.WRITER_LOCKED;
+                    _dbHintSize = _dbSize;
+                    _dbFileSize = _dbSize;
+                    _dbOrigSize = _dbSize;
+                    _journalOff = 0;
                 }
-                Debug.Assert(rc == RC.OK || eState == PAGER.READER);
-                Debug.Assert(rc != RC.OK || eState == PAGER.WRITER_LOCKED);
+                Debug.Assert(rc == RC.OK || _state == PAGER.READER);
+                Debug.Assert(rc != RC.OK || _state == PAGER.WRITER_LOCKED);
                 Debug.Assert(assert_pager_state());
             }
             PAGERTRACE("TRANSACTION {0}", PAGERID(this));
@@ -65,9 +65,9 @@ namespace Core
             var rc = RC.OK;
             var pPg = pDbPage;
             var pPager = pPg.Pager;
-            var nPagePerSector = (uint)(pPager.sectorSize / pPager.pageSize);
-            Debug.Assert(pPager.eState >= PAGER.WRITER_LOCKED);
-            Debug.Assert(pPager.eState != PAGER.ERROR);
+            var nPagePerSector = (uint)(pPager._sectorSize / pPager._pageSize);
+            Debug.Assert(pPager._state >= PAGER.WRITER_LOCKED);
+            Debug.Assert(pPager._state != PAGER.ERROR);
             Debug.Assert(pPager.assert_pager_state());
             if (nPagePerSector > 1)
             {
@@ -82,15 +82,15 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0==MEMDB
 #else
-0 == pPager.memDb
+0 == pPager._inMemory
 #endif
 );
-                Debug.Assert(pPager.doNotSyncSpill == 0);
-                pPager.doNotSyncSpill++;
+                Debug.Assert(pPager._doNotSyncSpill == 0);
+                pPager._doNotSyncSpill++;
                 // This trick assumes that both the page-size and sector-size are an integer power of 2. It sets variable pg1 to the identifier
                 // of the first page of the sector pPg is located on.
                 pg1 = (Pgno)((pPg.ID - 1) & ~(nPagePerSector - 1)) + 1;
-                nPageCount = pPager.dbSize;
+                nPageCount = pPager._dbSize;
                 if (pPg.ID > nPageCount)
                     nPage = (pPg.ID - pg1) + 1;
                 else if ((pg1 + nPagePerSector - 1) > nPageCount)
@@ -104,9 +104,9 @@ namespace Core
                 {
                     var pg = (Pgno)(pg1 + ii);
                     var pPage = new PgHdr();
-                    if (pg == pPg.ID || !pPager.pInJournal.Get(pg))
+                    if (pg == pPg.ID || !pPager._inJournal.Get(pg))
                     {
-                        if (pg != ((VirtualFile.PENDING_BYTE / (pPager.pageSize)) + 1))
+                        if (pg != ((VirtualFile.PENDING_BYTE / (pPager._pageSize)) + 1))
                         {
                             rc = pPager.Get(pg, ref pPage);
                             if (rc == RC.OK)
@@ -134,7 +134,7 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0==MEMDB
 #else
-0 == pPager.memDb
+0 == pPager._inMemory
 #endif
 );
                     for (var ii = 0; ii < nPage; ii++)
@@ -147,8 +147,8 @@ namespace Core
                         }
                     }
                 }
-                Debug.Assert(pPager.doNotSyncSpill == 1);
-                pPager.doNotSyncSpill--;
+                Debug.Assert(pPager._doNotSyncSpill == 1);
+                pPager._doNotSyncSpill--;
             }
             else
                 rc = pager_write(pDbPage);
@@ -171,9 +171,9 @@ namespace Core
         // was:sqlite3PagerTruncateImage
         public void TruncateImage(uint nPage)
         {
-            Debug.Assert(dbSize >= nPage);
-            Debug.Assert(eState >= PAGER.WRITER_CACHEMOD);
-            dbSize = nPage;
+            Debug.Assert(_dbSize >= nPage);
+            Debug.Assert(_state >= PAGER.WRITER_CACHEMOD);
+            _dbSize = nPage;
             assertTruncateConstraint();
         }
 
@@ -189,11 +189,11 @@ namespace Core
             // Spilling is also prohibited when in an error state since that could lead to database corruption.   In the current implementaton it 
             // is impossible for sqlite3PCacheFetch() to be called with createFlag==1 while in the error state, hence it is impossible for this routine to
             // be called in the error state.  Nevertheless, we include a NEVER() test for the error state as a safeguard against future changes.
-            if (Check.NEVER(pPager.errCode != 0))
+            if (Check.NEVER(pPager._errorCode != 0))
                 return RC.OK;
-            if (pPager.doNotSpill != 0)
+            if (pPager._doNotSpill != 0)
                 return RC.OK;
-            if (pPager.doNotSyncSpill != 0 && (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
+            if (pPager._doNotSyncSpill != 0 && (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
                 return RC.OK;
             pPg.Dirtys = null;
             if (pPager.pagerUseWal())
@@ -207,7 +207,7 @@ namespace Core
             else
             {
                 // Sync the journal file if required. 
-                if ((pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 || pPager.eState == PAGER.WRITER_CACHEMOD)
+                if ((pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 || pPager._state == PAGER.WRITER_CACHEMOD)
                     rc = pPager.syncJournal(1);
                 // If the page number of this page is larger than the current size of the database image, it may need to be written to the sub-journal.
                 // This is because the call to pager_write_pagelist() below will not actually write data to the file in this case.
@@ -224,7 +224,7 @@ namespace Core
                 // was when the transaction started, not as it was when "SAVEPOINT sp" was executed.
                 // The solution is to write the current data for page X into the sub-journal file now (if it is not already there), so that it will
                 // be restored to its current value when the "ROLLBACK TO sp" is executed.
-                if (Check.NEVER(rc == RC.OK && pPg.ID > pPager.dbSize && subjRequiresPage(pPg)))
+                if (Check.NEVER(rc == RC.OK && pPg.ID > pPager._dbSize && subjRequiresPage(pPg)))
                     rc = subjournalPage(pPg);
                 // Write the contents of the page out to the database file.
                 if (rc == RC.OK)

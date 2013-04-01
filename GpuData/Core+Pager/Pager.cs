@@ -1,16 +1,16 @@
 ﻿using System;
 using System.Diagnostics;
-using Pgno = System.UInt32;
+using Pid = System.UInt32;
 using Core.IO;
 namespace Core
 {
     public partial class Pager
     {
-        const int SQLITE_DEFAULT_JOURNAL_SIZE_LIMIT = -1;
-        const int SQLITE_DEFAULT_PAGE_SIZE = 1024;
-        const int SQLITE_MAX_DEFAULT_PAGE_SIZE = 8192;
-        public const int SQLITE_MAX_PAGE_SIZE = 65535;
-        const int SQLITE_MAX_PAGE_COUNT = 1073741823;
+        const int DEFAULT_JOURNAL_SIZE_LIMIT = -1;
+        const int DEFAULT_PAGE_SIZE = 1024;
+        const int MAX_DEFAULT_PAGE_SIZE = 8192;
+        public const int MAX_PAGE_SIZE = 65535;
+        const int MAX_PAGE_COUNT = 1073741823;
         const int MAX_SECTOR_SIZE = 0x10000;
         const int PAGER_MAX_PGNO = 2147483647;
 
@@ -58,109 +58,107 @@ namespace Core
         }
 
         private Func<object> _memPageBuilder; // connects mempage to pager
-        public VFileSystem pVfs;      // OS functions to use for IO
-        public bool exclusiveMode;          // Boolean. True if locking_mode==EXCLUSIVE
-        public JOURNALMODE journalMode;     // One of the PAGER_JOURNALMODE_* values
-        public byte useJournal;             // Use a rollback journal on this file
-        public byte noReadlock;             // Do not bother to obtain readlocks
-        public bool noSync;                 // Do not sync the journal if true
-        public bool fullSync;               // Do extra syncs of the journal for robustness
-        public VFile.SYNC ckptSyncFlags;          // SYNC_NORMAL or SYNC_FULL for checkpoint
-        public VFile.SYNC syncFlags;              // SYNC_NORMAL or SYNC_FULL otherwise
-        public bool tempFile;               // zFilename is a temporary file
-        public bool readOnly;               // True for a read-only database
-        public bool alwaysRollback;         // Disable DontRollback() for all pages
-        public byte memDb;                  // True to inhibit all file I/O
+        public VFileSystem _vfs;      // OS functions to use for IO
+        public bool _exclusiveMode;          // Boolean. True if locking_mode==EXCLUSIVE
+        public JOURNALMODE _journalMode;     // One of the PAGER_JOURNALMODE_* values
+        public byte _useJournal;             // Use a rollback journal on this file
+        public byte _noReadlock;             // Do not bother to obtain readlocks
+        public bool _noSync;                 // Do not sync the journal if true
+        public bool _fullSync;               // Do extra syncs of the journal for robustness
+        public VFile.SYNC _ckptSyncFlags;          // SYNC_NORMAL or SYNC_FULL for checkpoint
+        public VFile.SYNC _syncFlags;              // SYNC_NORMAL or SYNC_FULL otherwise
+        public bool _tempFile;               // zFilename is a temporary file
+        public bool _readOnly;               // True for a read-only database
+        public bool _alwaysRollback;         // Disable DontRollback() for all pages
+        public bool _inMemory;                  // True to inhibit all file I/O
         // The following block contains those class members that change during routine opertion.  Class members not in this block are either fixed
         // when the pager is first created or else only change when there is a significant mode change (such as changing the page_size, locking_mode,
         // or the journal_mode).  From another view, these class members describe the "state" of the pager, while other class members describe the
         // "configuration" of the pager.
-        public PAGER eState;                // Pager state (OPEN, READER, WRITER_LOCKED..) 
-        public VFile.LOCK eLock;      // Current lock held on database file 
-        public bool changeCountDone;        // Set after incrementing the change-counter 
-        public int setMaster;               // True if a m-j name has been written to jrnl 
-        public byte doNotSpill;             // Do not spill the cache when non-zero 
-        public byte doNotSyncSpill;         // Do not do a spill that requires jrnl sync 
-        public byte subjInMemory;           // True to use in-memory sub-journals 
-        public Pgno dbSize;                 // Number of pages in the database 
-        public Pgno dbOrigSize;             // dbSize before the current transaction 
-        public Pgno dbFileSize;             // Number of pages in the database file 
-        public Pgno dbHintSize;             // Value passed to FCNTL_SIZE_HINT call 
-        public RC errCode;              // One of several kinds of errors 
-        public int nRec;                    // Pages journalled since last j-header written 
-        public uint cksumInit;              // Quasi-random value added to every checksum 
-        public uint nSubRec;                // Number of records written to sub-journal 
-        public BitArray pInJournal;           // One bit for each page in the database file 
-        public VFile fd;             // File descriptor for database 
-        public VFile jfd;            // File descriptor for main journal 
-        public VFile sjfd;           // File descriptor for sub-journal 
-        public long journalOff;             // Current write offset in the journal file 
-        public long journalHdr;             // Byte offset to previous journal header 
-        public IBackup pBackup;             // Pointer to list of ongoing backup processes 
-        public PagerSavepoint[] aSavepoint; // Array of active savepoints 
-        public int nSavepoint;              // Number of elements in aSavepoint[] 
-        public byte[] dbFileVers = new byte[16];    // Changes whenever database file changes
+        public PAGER _state;                // Pager state (OPEN, READER, WRITER_LOCKED..) 
+        public VFile.LOCK _lock;      // Current lock held on database file 
+        public bool _changeCountDone;        // Set after incrementing the change-counter 
+        public int _setMaster;               // True if a m-j name has been written to jrnl 
+        public byte _doNotSpill;             // Do not spill the cache when non-zero 
+        public byte _doNotSyncSpill;         // Do not do a spill that requires jrnl sync 
+        public byte _subjInMemory;           // True to use in-memory sub-journals 
+        public Pid _dbSize;                 // Number of pages in the database 
+        public Pid _dbOrigSize;             // dbSize before the current transaction 
+        public Pid _dbFileSize;             // Number of pages in the database file 
+        public Pid _dbHintSize;             // Value passed to FCNTL_SIZE_HINT call 
+        public RC _errorCode;              // One of several kinds of errors 
+        public int _nRec;                    // Pages journalled since last j-header written 
+        public uint _cksumInit;              // Quasi-random value added to every checksum 
+        public uint _nSubRec;                // Number of records written to sub-journal 
+        public BitArray _inJournal;           // One bit for each page in the database file 
+        public VFile _file;             // File descriptor for database 
+        public VFile _journalFile;            // File descriptor for main journal 
+        public VFile _journal2File;           // File descriptor for sub-journal 
+        public long _journalOff;             // Current write offset in the journal file 
+        public long _journalHdr;             // Byte offset to previous journal header 
+        public IBackup _backup;             // Pointer to list of ongoing backup processes 
+        public PagerSavepoint[] _savepoint; // Array of active savepoints 
+        public byte[] _dbFileVers = new byte[16];    // Changes whenever database file changes
         // End of the routinely-changing class members
-        public ushort nExtra;               // Add this many bytes to each in-memory page
-        public short nReserve;              // Number of unused bytes at end of each page
-        public VFileSystem.OPEN vfsFlags;               // Flags for VirtualFileSystem.xOpen() 
-        public uint sectorSize;             // Assumed sector size during rollback 
-        public int pageSize;                // Number of bytes in a page 
-        public Pgno mxPgno;                 // Maximum allowed size of the database 
-        public long journalSizeLimit;       // Size limit for persistent journal files 
-        public string zFilename;            // Name of the database file 
-        public string zJournal;             // Name of the journal file 
-        public Func<object, int> xBusyHandler;  // Function to call when busy 
-        public object pBusyHandlerArg;      // Context argument for xBusyHandler 
+        public ushort _extra;               // Add this many bytes to each in-memory page
+        public short _reserve;              // Number of unused bytes at end of each page
+        public VFileSystem.OPEN _vfsFlags;               // Flags for VirtualFileSystem.xOpen() 
+        public uint _sectorSize;             // Assumed sector size during rollback 
+        public int _pageSize;                // Number of bytes in a page 
+        public Pid _mxPgno;                 // Maximum allowed size of the database 
+        public long _journalSizeLimit;       // Size limit for persistent journal files 
+        public string _filename;            // Name of the database file 
+        public string _journal;             // Name of the journal file 
+        public Func<object, int> _busyHandler;  // Function to call when busy 
+        public object _busyHandlerArg;      // Context argument for xBusyHandler 
 #if DEBUG
-        public int nHit, nMiss;             // Cache hits and missing 
-        public int nRead, nWrite;           // Database pages read/written 
+        public int _statHits, _statMisses;             // Cache hits and missing 
+        public int _statReads, _statWrites;           // Database pages read/written 
 #else
-        public int nHit;
+        public int _statHits;
 #endif
-        public Action<PgHdr> xReiniter;     // Call this routine when reloading pages
-        public byte[] pTmpSpace;               // Pager.pageSize bytes of space for tmp use
-        public PCache pPCache;                 // Pointer to page cache object
+        public Action<PgHdr> _reiniter;     // Call this routine when reloading pages
+        public byte[] _tempSpace;               // Pager.pageSize bytes of space for tmp use
+        public PCache _pcache;                 // Pointer to page cache object
 #if !OMIT_WAL
-        public Wal pWal;                       // Write-ahead log used by "journal_mode=wal"
-        public string zWal;                    // File name for write-ahead log
+        public Wal _wal;                       // Write-ahead log used by "journal_mode=wal"
+        public string _walName;                    // File name for write-ahead log
 #else
-        public Wal pWal = null;             // Having this dummy here makes C# easier
+        public Wal _wal = null;             // Having this dummy here makes C# easier
 #endif
 
-        public static Pgno PAGER_MJ_PGNO(Pager x) { return ((Pgno)((VFile.PENDING_BYTE / ((x).pageSize)) + 1)); }
+        public static Pid PAGER_MJ_PGNO(Pager x) { return ((Pid)((VFile.PENDING_BYTE / ((x)._pageSize)) + 1)); }
 
 #if false && !OMIT_WAL
         internal static int pagerUseWal(Pager pPager) { return (pPager.pWal != 0); }
 #else
         internal bool pagerUseWal() { return false; }
         internal RC pagerRollbackWal() { return RC.OK; }
-        internal RC pagerWalFrames(PgHdr w, Pgno x, int y, VFile.SYNC z) { return RC.OK; }
+        internal RC pagerWalFrames(PgHdr w, Pid x, int y, VFile.SYNC z) { return RC.OK; }
         internal RC pagerOpenWalIfPresent() { return RC.OK; }
         internal RC pagerBeginReadTransaction() { return RC.OK; }
 #endif
 
 #if ATOMIC_WRITES
-        internal static int jrnlBufferSize(Pager pPager)
+        internal static int jrnlBufferSize(Pager pager)
         {
-            Debug.Assert(0 == MEMDB);
-            if (!pPager.tempFile)
+            if (!pager._tempFile)
             {
-                Debug.Assert(pPager.fd.isOpen);
-                var dc = sqlite3OsDeviceCharacteristics(pPager.fd);
-                var nSector = pPager.sectorSize;
-                var szPage = pPager.pageSize;
-                Debug.Assert(SQLITE_IOCAP_ATOMIC512 == (512 >> 8));
-                Debug.Assert(SQLITE_IOCAP_ATOMIC64K == (65536 >> 8));
-                if (0 == (dc & (SQLITE_IOCAP_ATOMIC | (szPage >> 8)) || nSector > szPage))
+                Debug.Assert(pager._file.Open);
+                var dc = sqlite3OsDeviceCharacteristics(pager._file);
+                var nSector = pager._sectorSize;
+                var szPage = pager._pageSize;
+                Debug.Assert(IOCAP_ATOMIC512 == (512 >> 8));
+                Debug.Assert(IOCAP_ATOMIC64K == (65536 >> 8));
+                if (0 == (dc & (IOCAP_ATOMIC | (szPage >> 8)) || nSector > szPage))
                     return 0;
             }
-            return JOURNAL_HDR_SZ(pPager) + JOURNAL_PG_SZ(pPager);
+            return JOURNAL_HDR_SZ(pager) + JOURNAL_PG_SZ(pager);
         }
 #endif
 
-#if !CHECK_PAGES
-        internal static uint pager_pagehash(PgHdr page) { return pager_datahash(page.Pager.pageSize, page.Data); }
+#if CHECK_PAGES
+        internal static uint pager_pagehash(PgHdr page) { return pager_datahash(page.Pager._pageSize, page.Data); }
         internal static uint pager_datahash(int nByte, byte[] pData)
         {
             uint hash = 0;
@@ -172,13 +170,13 @@ namespace Core
         internal static void checkPage(PgHdr page)
         {
             var pPager = page.Pager;
-            Debug.Assert(pPager.eState != PAGER.ERROR);
+            Debug.Assert(pPager._state != PAGER.ERROR);
             Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0 || page.PageHash == pager_pagehash(page));
         }
 #else
-        internal static uint pager_pagehash(PgHdr X) { return 0; }
-        internal static uint pager_datahash(int X, byte[] Y) { return 0; }
-        internal static void pager_set_pagehash(PgHdr X) { }
+        internal static uint pager_pagehash(PgHdr x) { return 0; }
+        internal static uint pager_datahash(int x, byte[] y) { return 0; }
+        internal static void pager_set_pagehash(PgHdr x) { }
 #endif
     }
 }

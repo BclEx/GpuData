@@ -187,7 +187,7 @@ namespace Contoso.Core
 #endif
 
 
-        public static byte[] sqlite3PagerGetData(DbPage pPg) { Debug.Assert(pPg.Refs > 0 || pPg.Pager.memDb != 0); return pPg.Data; }
+        public static byte[] sqlite3PagerGetData(DbPage pPg) { Debug.Assert(pPg.Refs > 0 || pPg.Pager._inMemory != 0); return pPg.Data; }
         public static T sqlite3PagerGetExtra<T>(DbPage pPg) { return (T)pPg.Extra; }
         public bool sqlite3PagerLockingMode(LOCKINGMODE eMode)
         {

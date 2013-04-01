@@ -9,8 +9,8 @@ namespace Core
     public partial class Pager
     {
         private static readonly byte[] aJournalMagic = new byte[] { 0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7 };
-        private static uint JOURNAL_PG_SZ(Pager pPager) { return (uint)pPager.pageSize + 8; }
-        private static uint JOURNAL_HDR_SZ(Pager pPager) { return pPager.sectorSize; }
+        private static uint JOURNAL_PG_SZ(Pager pPager) { return (uint)pPager._pageSize + 8; }
+        private static uint JOURNAL_HDR_SZ(Pager pPager) { return pPager._sectorSize; }
 
 #if SQLITE_ENABLE_ATOMIC_WRITE
 //  private int sqlite3JournalOpen(sqlite3_vfs *, string , sqlite3_file *, int, int);
@@ -26,7 +26,7 @@ namespace Core
             var pPager = pPg.Pager;
             for (var i = 0; i < pPager.nSavepoint; i++)
             {
-                var p = pPager.aSavepoint[i];
+                var p = pPager._savepoint[i];
                 if (p.nOrig >= pgno && !p.pInSavepoint.Get(pgno))
                     return true;
             }
@@ -35,7 +35,7 @@ namespace Core
 
         private static bool pageInJournal(PgHdr pPg)
         {
-            return pPg.Pager.pInJournal.Get(pPg.ID);
+            return pPg.Pager._inJournal.Get(pPg.ID);
         }
 
         private static RC readMasterJournal(VirtualFile pJrnl, byte[] zMaster, uint nMaster)
@@ -70,46 +70,46 @@ namespace Core
         private long journalHdrOffset()
         {
             long offset = 0;
-            var c = this.journalOff;
+            var c = this._journalOff;
             if (c != 0)
-                offset = (int)(((c - 1) / this.sectorSize + 1) * this.sectorSize);
-            Debug.Assert(offset % this.sectorSize == 0);
+                offset = (int)(((c - 1) / this._sectorSize + 1) * this._sectorSize);
+            Debug.Assert(offset % this._sectorSize == 0);
             Debug.Assert(offset >= c);
-            Debug.Assert((offset - c) < this.sectorSize);
+            Debug.Assert((offset - c) < this._sectorSize);
             return offset;
         }
 
         private void seekJournalHdr()
         {
-            this.journalOff = journalHdrOffset();
+            this._journalOff = journalHdrOffset();
         }
 
         private RC zeroJournalHdr(int doTruncate)
         {
             var rc = RC.OK;
-            Debug.Assert(this.jfd.IsOpen);
-            if (this.journalOff != 0)
+            Debug.Assert(this._journalFile.IsOpen);
+            if (this._journalOff != 0)
             {
-                var iLimit = this.journalSizeLimit; // Local cache of jsl
+                var iLimit = this._journalSizeLimit; // Local cache of jsl
                 SysEx.IOTRACE("JZEROHDR {0:x}", this.GetHashCode());
                 if (doTruncate != 0 || iLimit == 0)
-                    rc = this.jfd.Truncate(0);
+                    rc = this._journalFile.Truncate(0);
                 else
                 {
                     var zeroHdr = new byte[28];
-                    rc = this.jfd.Write(zeroHdr, zeroHdr.Length, 0);
+                    rc = this._journalFile.Write(zeroHdr, zeroHdr.Length, 0);
                 }
-                if (rc == RC.OK && !this.noSync)
-                    rc = this.jfd.Sync(VirtualFile.SYNC.DATAONLY | this.syncFlags);
+                if (rc == RC.OK && !this._noSync)
+                    rc = this._journalFile.Sync(VirtualFile.SYNC.DATAONLY | this._syncFlags);
                 // At this point the transaction is committed but the write lock is still held on the file. If there is a size limit configured for
                 // the persistent journal and the journal file currently consumes more space than that limit allows for, truncate it now. There is no need
                 // to sync the file following this operation.
                 if (rc == RC.OK && iLimit > 0)
                 {
                     long sz = 0;
-                    rc = this.jfd.FileSize(ref sz);
+                    rc = this._journalFile.FileSize(ref sz);
                     if (rc == RC.OK && sz > iLimit)
-                        rc = this.jfd.Truncate(iLimit);
+                        rc = this._journalFile.Truncate(iLimit);
                 }
             }
             return rc;
@@ -117,16 +117,16 @@ namespace Core
 
         private RC writeJournalHdr()
         {
-            Debug.Assert(this.jfd.IsOpen);    // Journal file must be open.
-            var nHeader = (uint)this.pageSize; // Size of buffer pointed to by zHeader
+            Debug.Assert(this._journalFile.IsOpen);    // Journal file must be open.
+            var nHeader = (uint)this._pageSize; // Size of buffer pointed to by zHeader
             if (nHeader > JOURNAL_HDR_SZ(this))
                 nHeader = JOURNAL_HDR_SZ(this);
             // If there are active savepoints and any of them were created since the most recent journal header was written, update the
             // PagerSavepoint.iHdrOffset fields now.
             for (var ii = 0; ii < this.nSavepoint; ii++)
-                if (this.aSavepoint[ii].iHdrOffset == 0)
-                    this.aSavepoint[ii].iHdrOffset = this.journalOff;
-            this.journalHdr = this.journalOff = journalHdrOffset();
+                if (this._savepoint[ii].iHdrOffset == 0)
+                    this._savepoint[ii].iHdrOffset = this._journalOff;
+            this._journalHdr = this._journalOff = journalHdrOffset();
             // Write the nRec Field - the number of page records that follow this journal header. Normally, zero is written to this value at this time.
             // After the records are added to the journal (and the journal synced, if in full-sync mode), the zero is overwritten with the true number
             // of records (see syncJournal()).
@@ -135,9 +135,9 @@ namespace Core
             // file it may contain some garbage data. There are two scenarios where this risk can be ignored:
             //   * When the pager is in no-sync mode. Corruption can follow a power failure in this case anyway.
             //   * When the SQLITE_IOCAP_SAFE_APPEND flag is set. This guarantees that garbage data is never appended to the journal file.
-            Debug.Assert(this.fd.IsOpen || this.noSync);
-            var zHeader = this.pTmpSpace;  // Temporary space used to build header
-            if (this.noSync || (this.journalMode == JOURNALMODE.MEMORY) || (this.fd.DeviceCharacteristics & VirtualFile.IOCAP.SAFE_APPEND) != 0)
+            Debug.Assert(this._file.IsOpen || this._noSync);
+            var zHeader = this._tempSpace;  // Temporary space used to build header
+            if (this._noSync || (this._journalMode == JOURNALMODE.MEMORY) || (this._file.DeviceCharacteristics & VirtualFile.IOCAP.SAFE_APPEND) != 0)
             {
                 aJournalMagic.CopyTo(zHeader, 0);
                 ConvertEx.Put4(zHeader, aJournalMagic.Length, 0xffffffff);
@@ -147,14 +147,14 @@ namespace Core
             // The random check-hash initialiser
             long i64Temp = 0;
             UtilEx.MakeRandomness(sizeof(long), ref i64Temp);
-            this.cksumInit = (Pgno)i64Temp;
-            ConvertEx.Put4(zHeader, aJournalMagic.Length + 4, this.cksumInit);
+            this._cksumInit = (Pgno)i64Temp;
+            ConvertEx.Put4(zHeader, aJournalMagic.Length + 4, this._cksumInit);
             // The initial database size
-            ConvertEx.Put4(zHeader, aJournalMagic.Length + 8, this.dbOrigSize);
+            ConvertEx.Put4(zHeader, aJournalMagic.Length + 8, this._dbOrigSize);
             // The assumed sector size for this process
-            ConvertEx.Put4(zHeader, aJournalMagic.Length + 12, this.sectorSize);
+            ConvertEx.Put4(zHeader, aJournalMagic.Length + 12, this._sectorSize);
             // The page size
-            ConvertEx.Put4(zHeader, aJournalMagic.Length + 16, (uint)this.pageSize);
+            ConvertEx.Put4(zHeader, aJournalMagic.Length + 16, (uint)this._pageSize);
             // Initializing the tail of the buffer is not necessary.  Everything works find if the following memset() is omitted.  But initializing
             // the memory prevents valgrind from complaining, so we are willing to take the performance hit.
             Array.Clear(zHeader, aJournalMagic.Length + 20, (int)nHeader - aJournalMagic.Length + 20);
@@ -169,10 +169,10 @@ namespace Core
             RC rc = RC.OK;                 // Return code
             for (uint nWrite = 0; rc == RC.OK && nWrite < JOURNAL_HDR_SZ(this); nWrite += nHeader)
             {
-                SysEx.IOTRACE("JHDR {0:x} {1,11} {2}", this.GetHashCode(), this.journalHdr, nHeader);
-                rc = this.jfd.Write(zHeader, (int)nHeader, this.journalOff);
-                Debug.Assert(this.journalHdr <= this.journalOff);
-                this.journalOff += (int)nHeader;
+                SysEx.IOTRACE("JHDR {0:x} {1,11} {2}", this.GetHashCode(), this._journalHdr, nHeader);
+                rc = this._journalFile.Write(zHeader, (int)nHeader, this._journalOff);
+                Debug.Assert(this._journalHdr <= this._journalOff);
+                this._journalOff += (int)nHeader;
             }
             return rc;
         }
@@ -180,21 +180,21 @@ namespace Core
         private RC readJournalHdr(int isHot, long journalSize, out uint pNRec, out Pgno pDbSize)
         {
             var aMagic = new byte[8]; // A buffer to hold the magic header
-            Debug.Assert(this.jfd.IsOpen);    // Journal file must be open.
+            Debug.Assert(this._journalFile.IsOpen);    // Journal file must be open.
             pNRec = 0;
             pDbSize = 0;
             // Advance Pager.journalOff to the start of the next sector. If the journal file is too small for there to be a header stored at this
             // point, return SQLITE_DONE.
-            this.journalOff = journalHdrOffset();
-            if (this.journalOff + JOURNAL_HDR_SZ(this) > journalSize)
+            this._journalOff = journalHdrOffset();
+            if (this._journalOff + JOURNAL_HDR_SZ(this) > journalSize)
                 return RC.DONE;
-            var iHdrOff = this.journalOff; // Offset of journal header being read
+            var iHdrOff = this._journalOff; // Offset of journal header being read
             // Read in the first 8 bytes of the journal header. If they do not match the magic string found at the start of each journal header, return
             // SQLITE_DONE. If an IO error occurs, return an error code. Otherwise, proceed.
             RC rc;
-            if (isHot != 0 || iHdrOff != this.journalHdr)
+            if (isHot != 0 || iHdrOff != this._journalHdr)
             {
-                rc = this.jfd.Read(aMagic, aMagic.Length, iHdrOff);
+                rc = this._journalFile.Read(aMagic, aMagic.Length, iHdrOff);
                 if (rc != RC.OK)
                     return rc;
                 if (ArrayEx.Compare(aMagic, aJournalMagic, aMagic.Length) != 0)
@@ -202,22 +202,22 @@ namespace Core
             }
             // Read the first three 32-bit fields of the journal header: The nRec field, the checksum-initializer and the database size at the start
             // of the transaction. Return an error code if anything goes wrong.
-            if (RC.OK != (rc = this.jfd.ReadByte(iHdrOff + 8, ref pNRec))
-                || RC.OK != (rc = this.jfd.ReadByte(iHdrOff + 12, ref this.cksumInit))
-                || RC.OK != (rc = this.jfd.ReadByte(iHdrOff + 16, ref pDbSize)))
+            if (RC.OK != (rc = this._journalFile.ReadByte(iHdrOff + 8, ref pNRec))
+                || RC.OK != (rc = this._journalFile.ReadByte(iHdrOff + 12, ref this._cksumInit))
+                || RC.OK != (rc = this._journalFile.ReadByte(iHdrOff + 16, ref pDbSize)))
                 return rc;
-            if (this.journalOff == 0)
+            if (this._journalOff == 0)
             {
                 // Read the page-size and sector-size journal header fields.
                 uint iPageSize = 0;     // Page-size field of journal header
                 uint iSectorSize = 0;   // Sector-size field of journal header
-                if (RC.OK != (rc = this.jfd.ReadByte(iHdrOff + 20, ref iSectorSize))
-                    || RC.OK != (rc = this.jfd.ReadByte(iHdrOff + 24, ref iPageSize)))
+                if (RC.OK != (rc = this._journalFile.ReadByte(iHdrOff + 20, ref iSectorSize))
+                    || RC.OK != (rc = this._journalFile.ReadByte(iHdrOff + 24, ref iPageSize)))
                     return rc;
                 // Versions of SQLite prior to 3.5.8 set the page-size field of the journal header to zero. In this case, assume that the Pager.pageSize
                 // variable is already set to the correct page size.
                 if (iPageSize == 0)
-                    iPageSize = (uint)this.pageSize;
+                    iPageSize = (uint)this._pageSize;
                 // Check that the values read from the page-size and sector-size fields are within range. To be 'in range', both values need to be a power
                 // of two greater than or equal to 512 or 32, and not greater than their respective compile time maximum limits.
                 if (iPageSize < 512 || iSectorSize < 32
@@ -232,23 +232,23 @@ namespace Core
                 // Update the assumed sector-size to match the value used by the process that created this journal. If this journal was
                 // created by a process other than this one, then this routine is being called from within pager_playback(). The local value
                 // of Pager.sectorSize is restored at the end of that routine.
-                this.sectorSize = iSectorSize;
+                this._sectorSize = iSectorSize;
             }
-            this.journalOff += (int)JOURNAL_HDR_SZ(this);
+            this._journalOff += (int)JOURNAL_HDR_SZ(this);
             return rc;
         }
 
         private RC writeMasterJournal(string zMaster)
         {
-            Debug.Assert(this.setMaster == 0);
+            Debug.Assert(this._setMaster == 0);
             Debug.Assert(!pagerUseWal());
             if (null == zMaster
-                || this.journalMode == JOURNALMODE.MEMORY
-                || this.journalMode == JOURNALMODE.OFF)
+                || this._journalMode == JOURNALMODE.MEMORY
+                || this._journalMode == JOURNALMODE.OFF)
                 return RC.OK;
-            this.setMaster = 1;
-            Debug.Assert(this.jfd.IsOpen);
-            Debug.Assert(this.journalHdr <= this.journalOff);
+            this._setMaster = 1;
+            Debug.Assert(this._journalFile.IsOpen);
+            Debug.Assert(this._journalHdr <= this._journalOff);
             // Calculate the length in bytes and the checksum of zMaster
             uint cksum = 0; // Checksum of string zMaster
             int nMaster;    // Length of string zMaster
@@ -256,54 +256,54 @@ namespace Core
                 cksum += zMaster[nMaster];
             // If in full-sync mode, advance to the next disk sector before writing the master journal name. This is in case the previous page written to
             // the journal has already been synced.
-            if (this.fullSync)
-                this.journalOff = journalHdrOffset();
-            var iHdrOff = this.journalOff; // Offset of header in journal file
+            if (this._fullSync)
+                this._journalOff = journalHdrOffset();
+            var iHdrOff = this._journalOff; // Offset of header in journal file
             // Write the master journal data to the end of the journal file. If an error occurs, return the error code to the caller.
             RC rc;
-            if (RC.OK != (rc = this.jfd.WriteByte(iHdrOff, (uint)PAGER_MJ_PGNO(this)))
-                || RC.OK != (rc = this.jfd.Write(Encoding.UTF8.GetBytes(zMaster), nMaster, iHdrOff + 4))
-                || RC.OK != (rc = this.jfd.WriteByte(iHdrOff + 4 + nMaster, (uint)nMaster))
-                || RC.OK != (rc = this.jfd.WriteByte(iHdrOff + 4 + nMaster + 4, cksum))
-                || RC.OK != (rc = this.jfd.Write(aJournalMagic, 8, iHdrOff + 4 + nMaster + 8)))
+            if (RC.OK != (rc = this._journalFile.WriteByte(iHdrOff, (uint)PAGER_MJ_PGNO(this)))
+                || RC.OK != (rc = this._journalFile.Write(Encoding.UTF8.GetBytes(zMaster), nMaster, iHdrOff + 4))
+                || RC.OK != (rc = this._journalFile.WriteByte(iHdrOff + 4 + nMaster, (uint)nMaster))
+                || RC.OK != (rc = this._journalFile.WriteByte(iHdrOff + 4 + nMaster + 4, cksum))
+                || RC.OK != (rc = this._journalFile.Write(aJournalMagic, 8, iHdrOff + 4 + nMaster + 8)))
                 return rc;
-            this.journalOff += nMaster + 20;
+            this._journalOff += nMaster + 20;
             // If the pager is in peristent-journal mode, then the physical journal-file may extend past the end of the master-journal name
             // and 8 bytes of magic data just written to the file. This is dangerous because the code to rollback a hot-journal file
             // will not be able to find the master-journal name to determine whether or not the journal is hot.
             // Easiest thing to do in this scenario is to truncate the journal file to the required size.
             long jrnlSize = 0;  // Size of journal file on disk
-            if (RC.OK == (rc = this.jfd.FileSize(ref jrnlSize)) && jrnlSize > this.journalOff)
-                rc = this.jfd.Truncate(this.journalOff);
+            if (RC.OK == (rc = this._journalFile.FileSize(ref jrnlSize)) && jrnlSize > this._journalOff)
+                rc = this._journalFile.Truncate(this._journalOff);
             return rc;
         }
 
         private RC pagerSyncHotJournal()
         {
             var rc = RC.OK;
-            if (!this.noSync)
-                rc = this.jfd.Sync(VirtualFile.SYNC.NORMAL);
+            if (!this._noSync)
+                rc = this._journalFile.Sync(VirtualFile.SYNC.NORMAL);
             if (rc == RC.OK)
-                rc = this.jfd.FileSize(ref this.journalHdr);
+                rc = this._journalFile.FileSize(ref this._journalHdr);
             return rc;
         }
 
         private RC syncJournal(int newHdr)
         {
             var rc = RC.OK;
-            Debug.Assert(this.eState == PAGER.WRITER_CACHEMOD || this.eState == PAGER.WRITER_DBMOD);
+            Debug.Assert(this._state == PAGER.WRITER_CACHEMOD || this._state == PAGER.WRITER_DBMOD);
             Debug.Assert(assert_pager_state());
             Debug.Assert(!pagerUseWal());
             rc = sqlite3PagerExclusiveLock();
             if (rc != RC.OK)
                 return rc;
-            if (!this.noSync)
+            if (!this._noSync)
             {
-                Debug.Assert(!this.tempFile);
-                if (this.jfd.IsOpen && this.journalMode != JOURNALMODE.MEMORY)
+                Debug.Assert(!this._tempFile);
+                if (this._journalFile.IsOpen && this._journalMode != JOURNALMODE.MEMORY)
                 {
-                    var iDc = this.fd.DeviceCharacteristics;
-                    Debug.Assert(this.jfd.IsOpen);
+                    var iDc = this._file.DeviceCharacteristics;
+                    Debug.Assert(this._journalFile.IsOpen);
                     if (0 == (iDc & VirtualFile.IOCAP.SAFE_APPEND))
                     {
                         // This block deals with an obscure problem. If the last connection that wrote to this database was operating in persistent-journal
@@ -318,14 +318,14 @@ namespace Core
                         // as a temporary buffer to inspect the first couple of bytes of the potential journal header.
                         var zHeader = new byte[aJournalMagic.Length + 4];
                         aJournalMagic.CopyTo(zHeader, 0);
-                        ConvertEx.Put4(zHeader, aJournalMagic.Length, this.nRec);
+                        ConvertEx.Put4(zHeader, aJournalMagic.Length, this._nRec);
                         var iNextHdrOffset = journalHdrOffset();
                         var aMagic = new byte[8];
-                        rc = this.jfd.Read(aMagic, 8, iNextHdrOffset);
+                        rc = this._journalFile.Read(aMagic, 8, iNextHdrOffset);
                         if (rc == RC.OK && 0 == ArrayEx.Compare(aMagic, aJournalMagic, 8))
                         {
                             var zerobyte = new byte[1];
-                            rc = this.jfd.Write(zerobyte, 1, iNextHdrOffset);
+                            rc = this._journalFile.Write(zerobyte, 1, iNextHdrOffset);
                         }
                         if (rc != RC.OK && rc != RC.IOERR_SHORT_READ)
                             return rc;
@@ -334,16 +334,16 @@ namespace Core
                         // This is not required if the persistent media supports the SAFE_APPEND property. Because in this case it is not possible
                         // for garbage data to be appended to the file, the nRec field is populated with 0xFFFFFFFF when the journal header is written
                         // and never needs to be updated.
-                        if (this.fullSync && 0 == (iDc & VirtualFile.IOCAP.SEQUENTIAL))
+                        if (this._fullSync && 0 == (iDc & VirtualFile.IOCAP.SEQUENTIAL))
                         {
                             PAGERTRACE("SYNC journal of {0}", PAGERID(this));
                             SysEx.IOTRACE("JSYNC {0:x}", this.GetHashCode());
-                            rc = this.jfd.Sync(this.syncFlags);
+                            rc = this._journalFile.Sync(this._syncFlags);
                             if (rc != RC.OK)
                                 return rc;
                         }
-                        SysEx.IOTRACE("JHDR {0:x} {1,11}", this.GetHashCode(), this.journalHdr);
-                        rc = this.jfd.Write(zHeader, zHeader.Length, this.journalHdr);
+                        SysEx.IOTRACE("JHDR {0:x} {1,11}", this.GetHashCode(), this._journalHdr);
+                        rc = this._journalFile.Write(zHeader, zHeader.Length, this._journalHdr);
                         if (rc != RC.OK)
                             return rc;
                     }
@@ -351,25 +351,25 @@ namespace Core
                     {
                         PAGERTRACE("SYNC journal of {0}", PAGERID(this));
                         SysEx.IOTRACE("JSYNC {0:x}", this.GetHashCode());
-                        rc = this.jfd.Sync(this.syncFlags | (this.syncFlags == VirtualFile.SYNC.FULL ? VirtualFile.SYNC.DATAONLY : 0));
+                        rc = this._journalFile.Sync(this._syncFlags | (this._syncFlags == VirtualFile.SYNC.FULL ? VirtualFile.SYNC.DATAONLY : 0));
                         if (rc != RC.OK)
                             return rc;
                     }
-                    this.journalHdr = this.journalOff;
+                    this._journalHdr = this._journalOff;
                     if (newHdr != 0 && 0 == (iDc & VirtualFile.IOCAP.SAFE_APPEND))
                     {
-                        this.nRec = 0;
+                        this._nRec = 0;
                         rc = writeJournalHdr();
                         if (rc != RC.OK)
                             return rc;
                     }
                 }
                 else
-                    this.journalHdr = this.journalOff;
+                    this._journalHdr = this._journalOff;
             }
             // Unless the pager is in noSync mode, the journal file was just successfully synced. Either way, clear the PGHDR_NEED_SYNC flag on all pages.
-            this.pPCache.ClearSyncFlags();
-            this.eState = PAGER.WRITER_DBMOD;
+            this._pcache.ClearSyncFlags();
+            this._state = PAGER.WRITER_DBMOD;
             Debug.Assert(assert_pager_state());
             return RC.OK;
         }
@@ -377,12 +377,12 @@ namespace Core
         private RC openSubJournal()
         {
             var rc = RC.OK;
-            if (!this.sjfd.IsOpen)
+            if (!this._journal2File.IsOpen)
             {
-                if (this.journalMode == JOURNALMODE.MEMORY || this.subjInMemory != 0)
-                    this.sjfd = new MemJournalFile();
+                if (this._journalMode == JOURNALMODE.MEMORY || this._subjInMemory != 0)
+                    this._journal2File = new MemJournalFile();
                 else
-                    rc = pagerOpentemp(ref this.sjfd, VirtualFileSystem.OPEN.SUBJOURNAL);
+                    rc = pagerOpentemp(ref this._journal2File, VirtualFileSystem.OPEN.SUBJOURNAL);
             }
             return rc;
         }
@@ -391,31 +391,31 @@ namespace Core
         {
             var rc = RC.OK;
             var pPager = pPg.Pager;
-            if (pPager.journalMode != JOURNALMODE.OFF)
+            if (pPager._journalMode != JOURNALMODE.OFF)
             {
                 // Open the sub-journal, if it has not already been opened
-                Debug.Assert(pPager.useJournal != 0);
-                Debug.Assert(pPager.jfd.IsOpen || pPager.pagerUseWal());
-                Debug.Assert(pPager.sjfd.IsOpen || pPager.nSubRec == 0);
-                Debug.Assert(pPager.pagerUseWal() || pageInJournal(pPg) || pPg.ID > pPager.dbOrigSize);
+                Debug.Assert(pPager._useJournal != 0);
+                Debug.Assert(pPager._journalFile.IsOpen || pPager.pagerUseWal());
+                Debug.Assert(pPager._journal2File.IsOpen || pPager._nSubRec == 0);
+                Debug.Assert(pPager.pagerUseWal() || pageInJournal(pPg) || pPg.ID > pPager._dbOrigSize);
                 rc = pPager.openSubJournal();
                 // If the sub-journal was opened successfully (or was already open), write the journal record into the file. 
                 if (rc == RC.OK)
                 {
                     var pData = pPg.Data;
-                    long offset = pPager.nSubRec * (4 + pPager.pageSize);
+                    long offset = pPager._nSubRec * (4 + pPager._pageSize);
                     byte[] pData2 = null;
                     if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
                         return RC.NOMEM;
                     PAGERTRACE("STMT-JOURNAL {0} page {1}", PAGERID(pPager), pPg.ID);
-                    rc = pPager.sjfd.WriteByte(offset, pPg.ID);
+                    rc = pPager._journal2File.WriteByte(offset, pPg.ID);
                     if (rc == RC.OK)
-                        rc = pPager.sjfd.Write(pData2, pPager.pageSize, offset + 4);
+                        rc = pPager._journal2File.Write(pData2, pPager._pageSize, offset + 4);
                 }
             }
             if (rc == RC.OK)
             {
-                pPager.nSubRec++;
+                pPager._nSubRec++;
                 Debug.Assert(pPager.nSavepoint > 0);
                 rc = pPager.addToSavepointBitvecs(pPg.ID);
             }
@@ -424,18 +424,18 @@ namespace Core
 
         private RC hasHotJournal(ref int pExists)
         {
-            var pVfs = this.pVfs;
+            var pVfs = this._vfs;
 
-            var jrnlOpen = (this.jfd.IsOpen ? 1 : 0);
-            Debug.Assert(this.useJournal != 0);
-            Debug.Assert(this.fd.IsOpen);
-            Debug.Assert(this.eState == PAGER.OPEN);
-            Debug.Assert(jrnlOpen == 0 || (this.jfd.DeviceCharacteristics & VirtualFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
+            var jrnlOpen = (this._journalFile.IsOpen ? 1 : 0);
+            Debug.Assert(this._useJournal != 0);
+            Debug.Assert(this._file.IsOpen);
+            Debug.Assert(this._state == PAGER.OPEN);
+            Debug.Assert(jrnlOpen == 0 || (this._journalFile.DeviceCharacteristics & VirtualFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
             pExists = 0;
             var rc = RC.OK;
             var exists = 1;               // True if a journal file is present
             if (0 == jrnlOpen)
-                rc = pVfs.xAccess(this.zJournal, VirtualFileSystem.ACCESS.EXISTS, out exists);
+                rc = pVfs.xAccess(this._journal, VirtualFileSystem.ACCESS.EXISTS, out exists);
             if (rc == RC.OK && exists != 0)
             {
                 int locked = 0;                 // True if some process holds a RESERVED lock
@@ -443,7 +443,7 @@ namespace Core
                 // call above, but then delete the journal and drop the lock before we get to the following sqlite3OsCheckReservedLock() call.  If that
                 // is the case, this routine might think there is a hot journal when in fact there is none.  This results in a false-positive which will
                 // be dealt with by the playback routine.
-                rc = this.fd.CheckReservedLock(ref locked);
+                rc = this._file.CheckReservedLock(ref locked);
                 if (rc == RC.OK && locked == 0)
                 {
                     Pgno nPage = 0; // Number of pages in database file
@@ -456,8 +456,8 @@ namespace Core
                             MallocEx.sqlite3BeginBenignMalloc();
                             if (pagerLockDb(VFSLOCK.RESERVED) == RC.OK)
                             {
-                                pVfs.xDelete(this.zJournal, 0);
-                                if (!this.exclusiveMode)
+                                pVfs.xDelete(this._journal, 0);
+                                if (!this._exclusiveMode)
                                     pagerUnlockDb(VFSLOCK.SHARED);
                             }
                             MallocEx.sqlite3EndBenignMalloc();
@@ -470,16 +470,16 @@ namespace Core
                             if (0 == jrnlOpen)
                             {
                                 var f = VirtualFileSystem.OPEN.READONLY | VirtualFileSystem.OPEN.MAIN_JOURNAL;
-                                rc = FileEx.OsOpen(pVfs, this.zJournal, this.jfd, f, ref f);
+                                rc = FileEx.OsOpen(pVfs, this._journal, this._journalFile, f, ref f);
                             }
                             if (rc == RC.OK)
                             {
                                 var first = new byte[1];
-                                rc = this.jfd.Read(first, 1, 0);
+                                rc = this._journalFile.Read(first, 1, 0);
                                 if (rc == RC.IOERR_SHORT_READ)
                                     rc = RC.OK;
                                 if (0 == jrnlOpen)
-                                    FileEx.OSClose(this.jfd);
+                                    FileEx.OSClose(this._journalFile);
                                 pExists = (first[0] != 0) ? 1 : 0;
                             }
                             else if (rc == RC.CANTOPEN)

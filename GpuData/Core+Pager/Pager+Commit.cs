@@ -6,30 +6,30 @@ namespace Core
 {
     public partial class Pager
     {
-        public RC CommitPhaseOne(string zMaster, bool noSync)
+        public RC CommitPhaseOne(string master, bool noSync)
         {
             var rc = RC.OK;
-            Debug.Assert(eState == PAGER.WRITER_LOCKED || eState == PAGER.WRITER_CACHEMOD || eState == PAGER.WRITER_DBMOD || eState == PAGER.ERROR);
+            Debug.Assert(_state == PAGER.WRITER_LOCKED || _state == PAGER.WRITER_CACHEMOD || _state == PAGER.WRITER_DBMOD || _state == PAGER.ERROR);
             Debug.Assert(assert_pager_state());
             // If a prior error occurred, report that error again.
-            if (WIN.NEVER(errCode != 0))
-                return errCode;
-            PAGERTRACE("DATABASE SYNC: File={0} zMaster={1} nSize={2}", zFilename, zMaster, dbSize);
+            if (WIN.NEVER(_errorCode != 0))
+                return _errorCode;
+            PAGERTRACE("DATABASE SYNC: File={0} zMaster={1} nSize={2}", _filename, master, _dbSize);
             // If no database changes have been made, return early.
-            if (eState < PAGER.WRITER_CACHEMOD)
+            if (_state < PAGER.WRITER_CACHEMOD)
                 return RC.OK;
-            if (0 != memDb)
+            if (_inMemory)
             {
                 // If this is an in-memory db, or no pages have been written to, or this function has already been called, it is mostly a no-op.  However, any
                 // backup in progress needs to be restarted.
-                if (pBackup != null)
-                    pBackup.sqlite3BackupRestart();
+                if (_backup != null)
+                    _backup.sqlite3BackupRestart();
             }
             else
             {
                 if (pagerUseWal())
                 {
-                    var pList = pPCache.sqlite3PcacheDirtyList();
+                    var pList = _pcache.sqlite3PcacheDirtyList();
                     PgHdr pPageOne = null;
                     if (pList == null)
                     {
@@ -40,10 +40,10 @@ namespace Core
                     }
                     Debug.Assert(rc == RC.OK);
                     if (WIN.ALWAYS(pList))
-                        rc = pagerWalFrames(pList, dbSize, 1, (fullSync ? syncFlags : 0));
+                        rc = pagerWalFrames(pList, _dbSize, 1, (_fullSync ? _syncFlags : 0));
                     Unref(pPageOne);
                     if (rc == RC.OK)
-                        pPCache.CleanAllPages();
+                        _pcache.CleanAllPages();
                 }
                 else
                 {
@@ -60,18 +60,18 @@ namespace Core
                     // in 'direct' mode. In this case the journal file will never be created for this transaction.
 #if ATOMIC_WRITES
                     PgHdr pPg;
-                    Debug.Assert(this.jfd.isOpen || this.journalMode == JOURNALMODE.OFF || this.journalMode == JOURNALMODE.WAL);
-                    if (!zMaster && this.jfd.isOpen
-                        && this.journalOff == jrnlBufferSize(this)
-                        && this.dbSize >= this.dbOrigSize
-                        && (0 == (pPg = sqlite3PcacheDirtyList(this.pPCache)) || 0 == pPg.pDirty))
+                    Debug.Assert(this._journalFile.isOpen || this._journalMode == JOURNALMODE.OFF || this._journalMode == JOURNALMODE.WAL);
+                    if (!master && this._journalFile.isOpen
+                        && this._journalOff == jrnlBufferSize(this)
+                        && this._dbSize >= this.dbOrigSize
+                        && (0 == (pPg = sqlite3PcacheDirtyList(this._pcache)) || 0 == pPg.pDirty))
                         // Update the db file change counter via the direct-write method. The following call will modify the in-memory representation of page 1
                         // to include the updated change counter and then write page 1 directly to the database file. Because of the atomic-write
                         // property of the host file-system, this is safe.
                         rc = pager_incr_changecounter(this, 1);
                     else
                     {
-                        rc = sqlite3JournalCreate(this.jfd);
+                        rc = sqlite3JournalCreate(this._journalFile);
                         if (rc == SQLITE.OK)
                             rc = pager_incr_changecounter(this, 0);
                     }
@@ -86,13 +86,13 @@ namespace Core
                     // that it took at the start of the transaction. Otherwise, the calls to sqlite3PagerGet() return zeroed pages instead of
                     // reading data from the database file.
 #if !OMIT_AUTOVACUUM
-                    if (dbSize < dbOrigSize && journalMode != JOURNALMODE.OFF)
+                    if (_dbSize < _dbOrigSize && _journalMode != JOURNALMODE.OFF)
                     {
                         var iSkip = PAGER_MJ_PGNO(this); // Pending lock page
-                        var lastDbSize = this.dbSize;       // Database image size
-                        this.dbSize = dbOrigSize;
-                        for (Pgno i = lastDbSize + 1; i <= dbOrigSize; i++)
-                            if (!pInJournal.Get(i) && i != iSkip)
+                        var lastDbSize = this._dbSize;       // Database image size
+                        this._dbSize = _dbOrigSize;
+                        for (Pgno i = lastDbSize + 1; i <= _dbOrigSize; i++)
+                            if (!_inJournal.Get(i) && i != iSkip)
                             {
                                 PgHdr pPage = null;             // Page to journal
                                 rc = Get(i, ref pPage);
@@ -103,13 +103,13 @@ namespace Core
                                 if (rc != RC.OK)
                                     goto commit_phase_one_exit;
                             }
-                        this.dbSize = lastDbSize;
+                        this._dbSize = lastDbSize;
                     }
 #endif
 
                     // Write the master journal name into the journal file. If a master journal file name has already been written to the journal file,
                     // or if zMaster is NULL (no master journal), then this call is a no-op.
-                    rc = writeMasterJournal(zMaster);
+                    rc = writeMasterJournal(master);
                     if (rc != RC.OK)
                         goto commit_phase_one_exit;
                     // Sync the journal file and write all dirty pages to the database. If the atomic-update optimization is being used, this sync will not 
@@ -120,18 +120,18 @@ namespace Core
                     rc = syncJournal(0);
                     if (rc != RC.OK)
                         goto commit_phase_one_exit;
-                    rc = pager_write_pagelist(pPCache.sqlite3PcacheDirtyList());
+                    rc = pager_write_pagelist(_pcache.sqlite3PcacheDirtyList());
                     if (rc != RC.OK)
                     {
                         Debug.Assert(rc != RC.IOERR_BLOCKED);
                         goto commit_phase_one_exit;
                     }
-                    pPCache.CleanAllPages();
+                    _pcache.CleanAllPages();
                     // If the file on disk is not the same size as the database image, then use pager_truncate to grow or shrink the file here.
-                    if (this.dbSize != dbFileSize)
+                    if (this._dbSize != _dbFileSize)
                     {
-                        var nNew = (Pgno)(this.dbSize - (this.dbSize == PAGER_MJ_PGNO(this) ? 1 : 0));
-                        Debug.Assert(this.eState >= PAGER.WRITER_DBMOD);
+                        var nNew = (Pgno)(this._dbSize - (this._dbSize == PAGER_MJ_PGNO(this) ? 1 : 0));
+                        Debug.Assert(this._state >= PAGER.WRITER_DBMOD);
                         rc = pager_truncate(nNew);
                         if (rc != RC.OK)
                             goto commit_phase_one_exit;
@@ -144,7 +144,7 @@ namespace Core
             }
         commit_phase_one_exit:
             if (rc == RC.OK && !pagerUseWal())
-                this.eState = PAGER.WRITER_FINISHED;
+                this._state = PAGER.WRITER_FINISHED;
             return rc;
         }
 
@@ -154,27 +154,26 @@ namespace Core
             var rc = RC.OK;
             // This routine should not be called if a prior error has occurred. But if (due to a coding error elsewhere in the system) it does get
             // called, just return the same error code without doing anything. */
-            if (Check.NEVER(this.errCode) != RC.OK)
-                return this.errCode;
-            Debug.Assert(this.eState == PAGER.WRITER_LOCKED || this.eState == PAGER.WRITER_FINISHED || (pagerUseWal() && this.eState == PAGER.WRITER_CACHEMOD));
+            if (Check.NEVER(this._errorCode) != RC.OK)
+                return this._errorCode;
+            Debug.Assert(this._state == PAGER.WRITER_LOCKED || this._state == PAGER.WRITER_FINISHED || (pagerUseWal() && this._state == PAGER.WRITER_CACHEMOD));
             Debug.Assert(assert_pager_state());
             // An optimization. If the database was not actually modified during this transaction, the pager is running in exclusive-mode and is
             // using persistent journals, then this function is a no-op.
             // The start of the journal file currently contains a single journal header with the nRec field set to 0. If such a journal is used as
             // a hot-journal during hot-journal rollback, 0 changes will be made to the database file. So there is no need to zero the journal
             // header. Since the pager is in exclusive mode, there is no need to drop any locks either.
-            if (this.eState == PAGER.WRITER_LOCKED && this.exclusiveMode && this.journalMode == JOURNALMODE.PERSIST)
+            if (this._state == PAGER.WRITER_LOCKED && this._exclusiveMode && this._journalMode == JOURNALMODE.PERSIST)
             {
-                Debug.Assert(this.journalOff == JOURNAL_HDR_SZ(this) || 0 == this.journalOff);
-                this.eState = PAGER.READER;
+                Debug.Assert(this._journalOff == JOURNAL_HDR_SZ(this) || 0 == this._journalOff);
+                this._state = PAGER.READER;
                 return RC.OK;
             }
             PAGERTRACE("COMMIT {0}", PAGERID(this));
-            rc = pager_end_transaction(this.setMaster);
+            rc = pager_end_transaction(this._setMaster);
             return pager_error(rc);
         }
 
-        // was:sqlite3PagerRollback
         public RC Rollback()
         {
             var rc = RC.OK;
@@ -182,34 +181,34 @@ namespace Core
             // PagerRollback() is a no-op if called in READER or OPEN state. If the pager is already in the ERROR state, the rollback is not 
             // attempted here. Instead, the error code is returned to the caller.
             Debug.Assert(assert_pager_state());
-            if (this.eState == PAGER.ERROR)
-                return this.errCode;
-            if (this.eState <= PAGER.READER)
+            if (_state == PAGER.ERROR)
+                return _errorCode;
+            if (_state <= PAGER.READER)
                 return RC.OK;
             if (pagerUseWal())
             {
                 rc = Savepoint(SAVEPOINT.ROLLBACK, -1);
-                var rc2 = pager_end_transaction(this.setMaster);
+                var rc2 = pager_end_transaction(this._setMaster);
                 if (rc == RC.OK)
                     rc = rc2;
                 rc = pager_error(rc);
             }
-            else if (!this.jfd.IsOpen || this.eState == PAGER.WRITER_LOCKED)
+            else if (!this._journalFile.Open || _state == PAGER.WRITER_LOCKED)
             {
-                var eState = this.eState;
+                var eState = _state;
                 rc = pager_end_transaction(0);
-                if (0 == this.memDb && eState > PAGER.WRITER_LOCKED)
+                if (_inMemory && eState > PAGER.WRITER_LOCKED)
                 {
                     // This can happen using journal_mode=off. Move the pager to the error  state to indicate that the contents of the cache may not be trusted.
                     // Any active readers will get SQLITE_ABORT.
-                    this.errCode = RC.ABORT;
-                    this.eState = PAGER.ERROR;
+                    _errorCode = RC.ABORT;
+                    _state = PAGER.ERROR;
                     return rc;
                 }
             }
             else
                 rc = pager_playback(0);
-            Debug.Assert(this.eState == PAGER.READER || rc != RC.OK);
+            Debug.Assert(_state == PAGER.READER || rc != RC.OK);
             Debug.Assert(rc == RC.OK || rc == RC.FULL || ((int)rc & 0xFF) == (int)RC.IOERR);
             // If an error occurs during a ROLLBACK, we can no longer trust the pager cache. So call pager_error() on the way out to make any error persistent.
             return pager_error(rc);
@@ -219,11 +218,11 @@ namespace Core
         public RC sqlite3PagerMovepage(DbPage pPg, Pgno pgno, int isCommit)
         {
             Debug.Assert(pPg.Refs > 0);
-            Debug.Assert(this.eState == PAGER.WRITER_CACHEMOD || this.eState == PAGER.WRITER_DBMOD);
+            Debug.Assert(_state == PAGER.WRITER_CACHEMOD || _state == PAGER.WRITER_DBMOD);
             Debug.Assert(assert_pager_state());
             // In order to be able to rollback, an in-memory database must journal the page we are moving from.
             var rc = RC.OK;
-            if (this.memDb != 0)
+            if (!_inMemory)
             {
                 rc = Write(pPg);
                 if (rc != RC.OK)
@@ -254,7 +253,7 @@ namespace Core
             if (((pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) && 0 == isCommit)
             {
                 needSyncPgno = pPg.ID;
-                Debug.Assert(pageInJournal(pPg) || pPg.ID > this.dbOrigSize);
+                Debug.Assert(pageInJournal(pPg) || pPg.ID > _dbOrigSize);
                 Debug.Assert((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0);
             }
             // If the cache contains a page with page-number pgno, remove it from its hash chain. Also, if the PGHDR_NEED_SYNC was set for
@@ -265,9 +264,9 @@ namespace Core
             if (pPgOld != null)
             {
                 pPg.Flags |= (pPgOld.Flags & PgHdr.PGHDR.NEED_SYNC);
-                if (this.memDb != 0)
+                if (!_inMemory)
                     // Do not discard pages from an in-memory database since we might need to rollback later.  Just move the page out of the way.
-                    PCache.MovePage(pPgOld, this.dbSize + 1);
+                    PCache.MovePage(pPgOld, this._dbSize + 1);
                 else
                     PCache.DropPage(pPgOld);
             }
@@ -276,7 +275,7 @@ namespace Core
             PCache.MakePageDirty(pPg);
             // For an in-memory database, make sure the original page continues to exist, in case the transaction needs to roll back.  Use pPgOld
             // as the original page since it has already been allocated.
-            if (0 != this.memDb)
+            if (!_inMemory)
             {
                 Debug.Assert(pPgOld);
                 PCache.MovePage(pPgOld, origPgno);
@@ -294,11 +293,11 @@ namespace Core
                 rc = Get(needSyncPgno, ref pPgHdr);
                 if (rc != RC.OK)
                 {
-                    if (needSyncPgno <= this.dbOrigSize)
+                    if (needSyncPgno <= _dbOrigSize)
                     {
-                        Debug.Assert(this.pTmpSpace != null);
-                        var pTemp = new uint[this.pTmpSpace.Length];
-                        this.pInJournal.Clear(needSyncPgno, pTemp);
+                        Debug.Assert(this._tempSpace != null);
+                        var pTemp = new uint[this._tempSpace.Length];
+                        this._inJournal.Clear(needSyncPgno, pTemp);
                     }
                     return rc;
                 }

@@ -45,12 +45,14 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <DefineConstants>OMIT_WAL CHECK_PAGES</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Core+Pager\IBackup.cs" />
     <Compile Include="Core+Pager\Name\PCache1+Allocation.cs" />
     <Compile Include="Core+Pager\Name\PCache1+General.cs" />
     <Compile Include="Core+Pager\Name\PCache1+Interface.cs" />
@@ -77,6 +79,7 @@
     <Compile Include="Core+Pager\PCache.cs" />
     <Compile Include="Core+Pager\PgHdr.cs" />
     <Compile Include="Core+Pager\Wal.cs" />
+    <Compile Include="Core\BitArray.cs" />
     <Compile Include="Core\MutexEx.cs" />
     <Compile Include="Core\ConvertEx.cs" />
     <Compile Include="Main.cs" />
