@@ -21,7 +21,7 @@ namespace Core
             p.ClearState();
             p.szPage = szPage;
             p.szExtra = szExtra;
-            p.bPurgeable = bPurgeable;
+            p.Purgeable = bPurgeable;
             p.xStress = xStress;
             p.pStress = pStress;
             p.nMax = 100;
@@ -29,7 +29,7 @@ namespace Core
 
         internal void SetPageSize(int szPage)
         {
-            Debug.Assert(nRef == 0 && pDirty == null);
+            Debug.Assert(nRef == 0 && Dirty == null);
             if (pCache != null)
             {
                 IPCache.xDestroy(ref pCache);
@@ -38,7 +38,7 @@ namespace Core
             this.szPage = szPage;
         }
 
-        internal RC FetchPage(Pgno pgno, int createFlag, ref PgHdr ppPage)
+        internal RC FetchPage(Pgno pgno, int createFlag, out PgHdr ppPage)
         {
             Debug.Assert(createFlag == 1 || createFlag == 0);
             Debug.Assert(pgno > 0);
@@ -46,11 +46,11 @@ namespace Core
             if (pCache == null && createFlag != 0)
             {
                 var nByte = szPage + szExtra + 0;
-                var p = IPCache.xCreate(nByte, bPurgeable);
+                var p = IPCache.xCreate(nByte, Purgeable);
                 p.xCachesize(nMax);
                 pCache = p;
             }
-            var eCreate = createFlag * (1 + ((!bPurgeable || null == pDirty) ? 1 : 0));
+            var eCreate = createFlag * (1 + ((!Purgeable || null == Dirty) ? 1 : 0));
             PgHdr pPage = null;
             if (pCache != null)
                 pPage = pCache.xFetch(pgno, eCreate);
@@ -62,10 +62,10 @@ namespace Core
 #if EXPENSIVE_ASSERT
                 expensive_assert(pcacheCheckSynced(pCache));
 #endif
-                for (pPg = pSynced; pPg != null && (pPg.Refs != 0 || (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0); pPg = pPg.DirtyPrev) ;
-                pSynced = pPg;
+                for (pPg = Synced; pPg != null && (pPg.Refs != 0 || (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0); pPg = pPg.DirtyPrev) ;
+                Synced = pPg;
                 if (pPg == null)
-                    for (pPg = pDirtyTail; pPg != null && pPg.Refs != 0; pPg = pPg.DirtyPrev) ;
+                    for (pPg = DirtyTail; pPg != null && pPg.Refs != 0; pPg = pPg.DirtyPrev) ;
                 if (pPg != null)
                 {
 #if LOG_CACHE_SPILL
@@ -79,9 +79,9 @@ namespace Core
             }
             if (pPage != null)
             {
-                if (pPage.Data == null)
+                if (pPage._Data == null)
                 {
-                    pPage.Data = MallocEx.sqlite3Malloc(pCache.szPage);
+                    pPage._Data = MallocEx.Malloc(pCache.SizePage);
                     pPage.Cache = this;
                     pPage.ID = pgno;
                 }
@@ -91,7 +91,7 @@ namespace Core
                     nRef++;
                 pPage.Refs++;
                 if (pgno == 1)
-                    pPage1 = pPage;
+                    Page1 = pPage;
             }
             ppPage = pPage;
             return (pPage == null && eCreate != 0 ? RC.NOMEM : RC.OK);
@@ -127,7 +127,7 @@ namespace Core
             pCache = p.Cache;
             pCache.nRef--;
             if (p.ID == 1)
-                pCache.pPage1 = null;
+                pCache.Page1 = null;
             pCache.pCache.xUnpin(p, true);
         }
 
@@ -156,15 +156,15 @@ namespace Core
         internal void CleanAllPages()
         {
             PgHdr p;
-            while ((p = pDirty) != null)
+            while ((p = Dirty) != null)
                 MakePageClean(p);
         }
 
         internal void ClearSyncFlags()
         {
-            for (var p = pDirty; p != null; p = p.DirtyNext)
+            for (var p = Dirty; p != null; p = p.DirtyNext)
                 p.Flags &= ~PgHdr.PGHDR.NEED_SYNC;
-            pSynced = pDirtyTail;
+            Synced = DirtyTail;
         }
 
         internal static void MovePage(PgHdr p, Pgno newPgno)
@@ -187,21 +187,21 @@ namespace Core
             {
                 PgHdr p;
                 PgHdr pNext;
-                for (p = pDirty; p != null; p = pNext)
+                for (p = Dirty; p != null; p = pNext)
                 {
                     pNext = p.DirtyNext;
                     // This routine never gets call with a positive pgno except right after sqlite3PcacheCleanAll().  So if there are dirty pages,
                     // it must be that pgno==0.
                     Debug.Assert(p.ID > 0);
-                    if (WIN.ALWAYS(p.ID > pgno))
+                    if (SysEx.ALWAYS(p.ID > pgno))
                     {
                         Debug.Assert((p.Flags & PgHdr.PGHDR.DIRTY) != 0);
                         MakePageClean(p);
                     }
                 }
-                if (pgno == 0 && pPage1 != null)
+                if (pgno == 0 && Page1 != null)
                 {
-                    pPage1.Data = MallocEx.sqlite3Malloc(szPage);
+                    Page1._Data = MallocEx.Malloc(szPage);
                     pgno = 1;
                 }
                 pCache.xTruncate(pgno + 1);
@@ -254,7 +254,7 @@ namespace Core
                 pIn = p.Dirtys;
                 p.Dirtys = null;
                 int i;
-                for (i = 0; WIN.ALWAYS(i < N_SORT_BUCKET - 1); i++)
+                for (i = 0; SysEx.ALWAYS(i < N_SORT_BUCKET - 1); i++)
                 {
                     if (a[i] == null)
                     {
@@ -267,7 +267,7 @@ namespace Core
                         a[i] = null;
                     }
                 }
-                if (WIN.NEVER(i == N_SORT_BUCKET - 1))
+                if (SysEx.NEVER(i == N_SORT_BUCKET - 1))
                     // To get here, there need to be 2^(N_SORT_BUCKET) elements in the input list.  But that is impossible.
                     a[i] = pcacheMergeDirtyList(a[i], p);
             }
@@ -279,12 +279,12 @@ namespace Core
 
         internal PgHdr sqlite3PcacheDirtyList()
         {
-            for (var p = pDirty; p != null; p = p.DirtyNext)
+            for (var p = Dirty; p != null; p = p.DirtyNext)
                 p.Dirtys = p.DirtyNext;
-            return pcacheSortDirtyList(pDirty);
+            return pcacheSortDirtyList(Dirty);
         }
 
-        internal int sqlite3PcacheRefCount() { return nRef; }
+        internal int RefCount() { return nRef; }
         internal static int sqlite3PcachePageRefcount(PgHdr p) { return p.Refs; }
         internal int sqlite3PcachePagecount() { return (pCache != null ? pCache.xPagecount() : 0); }
         internal void sqlite3PcacheSetCachesize(int mxPage)
@@ -296,9 +296,9 @@ namespace Core
 
 #if DEBUG || CHECK_PAGES
         // For all dirty pages currently in the cache, invoke the specified callback. This is only used if the SQLITE_CHECK_PAGES macro is defined.
-        internal void sqlite3PcacheIterateDirty(Action<PgHdr> xIter)
+        internal void IterateDirty(Action<PgHdr> xIter)
         {
-            for (var pDirty = this.pDirty; pDirty != null; pDirty = pDirty.DirtyNext)
+            for (var pDirty = this.Dirty; pDirty != null; pDirty = pDirty.DirtyNext)
                 xIter(pDirty);
         }
 #endif

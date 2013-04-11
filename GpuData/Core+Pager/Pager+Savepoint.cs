@@ -19,9 +19,9 @@ namespace Core
             Debug.Assert(this._state != PAGER.ERROR);
             Debug.Assert(this._state >= PAGER.WRITER_LOCKED);
             // Allocate a bitvec to use to store the set of pages rolled back
-            BitArray pDone = null;     // Bitvec to ensure pages played back only once
+            Bitvec pDone = null;     // Bitvec to ensure pages played back only once
             if (pSavepoint != null)
-                pDone = new BitArray(pSavepoint.nOrig);
+                pDone = new Bitvec(pSavepoint.nOrig);
             // Set the database size back to the value it was before the savepoint being reverted was opened.
             this._dbSize = pSavepoint != null ? pSavepoint.nOrig : this._dbOrigSize;
             this._changeCountDone = this._tempFile;
@@ -77,7 +77,7 @@ namespace Core
                 }
                 Debug.Assert(rc != RC.DONE);
             }
-            BitArray.Destroy(ref pDone);
+            Bitvec.Destroy(ref pDone);
             if (rc == RC.OK)
                 this._journalOff = (int)szJ;
             return rc;
@@ -86,7 +86,7 @@ namespace Core
         private void releaseAllSavepoints()
         {
             for (var ii = 0; ii < nSavepoint; ii++)
-                BitArray.Destroy(ref _savepoint[ii].pInSavepoint);
+                Bitvec.Destroy(ref _savepoint[ii].pInSavepoint);
             if (!_exclusiveMode || _journal2File is MemJournalFile)
                 FileEx.OSClose(_journal2File);
             _savepoint = null;
@@ -129,7 +129,7 @@ namespace Core
                     aNew[ii].nOrig = this._dbSize;
                     aNew[ii].iOffset = (this._journalFile.IsOpen && this._journalOff > 0 ? this._journalOff : (int)JOURNAL_HDR_SZ(this));
                     aNew[ii].iSubRec = this._nSubRec;
-                    aNew[ii].pInSavepoint = new BitArray(this._dbSize);
+                    aNew[ii].pInSavepoint = new Bitvec(this._dbSize);
                     if (pagerUseWal())
                         this._wal.Savepoint(aNew[ii].aWalData);
                     this.nSavepoint = ii + 1;
@@ -152,7 +152,7 @@ namespace Core
                 // with any savepoints that are destroyed by this operation.
                 var nNew = iSavepoint + ((op == SAVEPOINT.RELEASE) ? 0 : 1); // Number of remaining savepoints after this op.
                 for (var ii = nNew; ii < this.nSavepoint; ii++)
-                    BitArray.Destroy(ref this._savepoint[ii].pInSavepoint);
+                    Bitvec.Destroy(ref this._savepoint[ii].pInSavepoint);
                 this.nSavepoint = nNew;
                 // If this is a release of the outermost savepoint, truncate the sub-journal to zero bytes in size.
                 if (op == SAVEPOINT.RELEASE)

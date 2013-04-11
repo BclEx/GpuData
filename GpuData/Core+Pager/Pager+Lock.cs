@@ -4,9 +4,9 @@ namespace Core
 {
     public partial class Pager
     {
-        private void pagerUnlockIfUnused()
+        private void UnlockIfUnused()
         {
-            if (this._pcache.sqlite3PcacheRefCount() == 0)
+            if (this._pcache.RefCount() == 0)
                 pagerUnlockAndRollback();
         }
 
@@ -17,9 +17,9 @@ namespace Core
                 Debug.Assert(assert_pager_state());
                 if (this._state >= PAGER.WRITER_LOCKED)
                 {
-                    MallocEx.sqlite3BeginBenignMalloc();
+                    MallocEx.BeginBenignMalloc();
                     Rollback();
-                    MallocEx.sqlite3EndBenignMalloc();
+                    MallocEx.EndBenignMalloc();
                 }
                 else if (!this._exclusiveMode)
                 {

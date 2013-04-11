@@ -82,7 +82,7 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0==MEMDB
 #else
-0 == pPager._inMemory
+0 == pPager._memoryDB
 #endif
 );
                 Debug.Assert(pPager._doNotSyncSpill == 0);
@@ -134,7 +134,7 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0==MEMDB
 #else
-0 == pPager._inMemory
+0 == pPager._memoryDB
 #endif
 );
                     for (var ii = 0; ii < nPage; ii++)

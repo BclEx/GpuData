@@ -15,78 +15,78 @@ namespace Core
         {
             // Regardless of the current state, a temp-file connection always behaves as if it has an exclusive lock on the database file. It never updates
             // the change-counter field, so the changeCountDone flag is always set.
-            Debug.Assert(!tempFile || eLock == VFSLOCK.EXCLUSIVE);
-            Debug.Assert(!tempFile || changeCountDone);
+            Debug.Assert(!_tempFile || _lock == VFSLOCK.EXCLUSIVE);
+            Debug.Assert(!_tempFile || _changeCountDone);
             // If the useJournal flag is clear, the journal-mode must be "OFF". And if the journal-mode is "OFF", the journal file must not be open.
-            Debug.Assert(journalMode == JOURNALMODE.OFF || useJournal != 0);
-            Debug.Assert(journalMode != JOURNALMODE.OFF || !jfd.Open);
+            Debug.Assert(_journalMode == JOURNALMODE.OFF || _useJournal != 0);
+            Debug.Assert(_journalMode != JOURNALMODE.OFF || !_journalFile.Open);
             // Check that MEMDB implies noSync. And an in-memory journal. Since  this means an in-memory pager performs no IO at all, it cannot encounter 
             // either SQLITE_IOERR or SQLITE_FULL during rollback or while finalizing a journal file. (although the in-memory journal implementation may 
             // return SQLITE_IOERR_NOMEM while the journal file is being written). It is therefore not possible for an in-memory pager to enter the ERROR state.
-            if (0 != memDb)
+            if (_memoryDB)
             {
-                Debug.Assert(noSync);
-                Debug.Assert(journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.MEMORY);
-                Debug.Assert(eState != PAGER.ERROR && eState != PAGER.OPEN);
+                Debug.Assert(_noSync);
+                Debug.Assert(_journalMode == JOURNALMODE.OFF || _journalMode == JOURNALMODE.MEMORY);
+                Debug.Assert(_state != PAGER.ERROR && _state != PAGER.OPEN);
                 Debug.Assert(!pagerUseWal());
             }
             // If changeCountDone is set, a RESERVED lock or greater must be held on the file.
-            Debug.Assert(!changeCountDone || eLock >= VFSLOCK.RESERVED);
-            Debug.Assert(eLock != VFSLOCK.PENDING);
-            switch (eState)
+            Debug.Assert(!_changeCountDone || _lock >= VFSLOCK.RESERVED);
+            Debug.Assert(_lock != VFSLOCK.PENDING);
+            switch (_state)
             {
                 case PAGER.OPEN:
-                    Debug.Assert(0 == memDb);
-                    Debug.Assert(errCode == RC.OK);
-                    Debug.Assert(pPCache.sqlite3PcacheRefCount() == 0 || tempFile);
+                    Debug.Assert(!_memoryDB);
+                    Debug.Assert(_errorCode == RC.OK);
+                    Debug.Assert(_pcache.RefCount() == 0 || _tempFile);
                     break;
                 case PAGER.READER:
-                    Debug.Assert(errCode == RC.OK);
-                    Debug.Assert(eLock != VFSLOCK.UNKNOWN);
-                    Debug.Assert(eLock >= VFSLOCK.SHARED || noReadlock != 0);
+                    Debug.Assert(_errorCode == RC.OK);
+                    Debug.Assert(_lock != VFSLOCK.UNKNOWN);
+                    Debug.Assert(_lock >= VFSLOCK.SHARED || _noReadlock != 0);
                     break;
                 case PAGER.WRITER_LOCKED:
-                    Debug.Assert(eLock != VFSLOCK.UNKNOWN);
-                    Debug.Assert(errCode == RC.OK);
+                    Debug.Assert(_lock != VFSLOCK.UNKNOWN);
+                    Debug.Assert(_errorCode == RC.OK);
                     if (!pagerUseWal())
-                        Debug.Assert(eLock >= VFSLOCK.RESERVED);
-                    Debug.Assert(dbSize == dbOrigSize);
-                    Debug.Assert(dbOrigSize == dbFileSize);
-                    Debug.Assert(dbOrigSize == dbHintSize);
-                    Debug.Assert(setMaster == 0);
+                        Debug.Assert(_lock >= VFSLOCK.RESERVED);
+                    Debug.Assert(_dbSize == _dbOrigSize);
+                    Debug.Assert(_dbOrigSize == _dbFileSize);
+                    Debug.Assert(_dbOrigSize == _dbHintSize);
+                    Debug.Assert(_setMaster == 0);
                     break;
                 case PAGER.WRITER_CACHEMOD:
-                    Debug.Assert(eLock != VFSLOCK.UNKNOWN);
-                    Debug.Assert(errCode == RC.OK);
+                    Debug.Assert(_lock != VFSLOCK.UNKNOWN);
+                    Debug.Assert(_errorCode == RC.OK);
                     if (!pagerUseWal())
                     {
                         // It is possible that if journal_mode=wal here that neither the journal file nor the WAL file are open. This happens during
                         // a rollback transaction that switches from journal_mode=off to journal_mode=wal.
-                        Debug.Assert(eLock >= VFSLOCK.RESERVED);
-                        Debug.Assert(jfd.Open || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
+                        Debug.Assert(_lock >= VFSLOCK.RESERVED);
+                        Debug.Assert(_journalFile.Open || _journalMode == JOURNALMODE.OFF || _journalMode == JOURNALMODE.WAL);
                     }
-                    Debug.Assert(dbOrigSize == dbFileSize);
-                    Debug.Assert(dbOrigSize == dbHintSize);
+                    Debug.Assert(_dbOrigSize == _dbFileSize);
+                    Debug.Assert(_dbOrigSize == _dbHintSize);
                     break;
                 case PAGER.WRITER_DBMOD:
-                    Debug.Assert(eLock == VFSLOCK.EXCLUSIVE);
-                    Debug.Assert(errCode == RC.OK);
+                    Debug.Assert(_lock == VFSLOCK.EXCLUSIVE);
+                    Debug.Assert(_errorCode == RC.OK);
                     Debug.Assert(!pagerUseWal());
-                    Debug.Assert(eLock >= VFSLOCK.EXCLUSIVE);
-                    Debug.Assert(jfd.Open || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
-                    Debug.Assert(dbOrigSize <= dbHintSize);
+                    Debug.Assert(_lock >= VFSLOCK.EXCLUSIVE);
+                    Debug.Assert(_journalFile.Open || _journalMode == JOURNALMODE.OFF || _journalMode == JOURNALMODE.WAL);
+                    Debug.Assert(_dbOrigSize <= _dbHintSize);
                     break;
                 case PAGER.WRITER_FINISHED:
-                    Debug.Assert(eLock == VFSLOCK.EXCLUSIVE);
-                    Debug.Assert(errCode == RC.OK);
+                    Debug.Assert(_lock == VFSLOCK.EXCLUSIVE);
+                    Debug.Assert(_errorCode == RC.OK);
                     Debug.Assert(!pagerUseWal());
-                    Debug.Assert(jfd.Open || journalMode == JOURNALMODE.OFF || journalMode == JOURNALMODE.WAL);
+                    Debug.Assert(_journalFile.Open || _journalMode == JOURNALMODE.OFF || _journalMode == JOURNALMODE.WAL);
                     break;
                 case PAGER.ERROR:
                     // There must be at least one outstanding reference to the pager if in ERROR state. Otherwise the pager should have already dropped
                     // back to OPEN state.
-                    Debug.Assert(errCode != RC.OK);
-                    Debug.Assert(pPCache.sqlite3PcacheRefCount() > 0);
+                    Debug.Assert(_errorCode != RC.OK);
+                    Debug.Assert(_pcache.RefCount() > 0);
                     break;
             }
 
@@ -111,38 +111,38 @@ Journal mode:  journal_mode={5}
 Backing store: tempFile={6} memDb={7} useJournal={8}
 Journal:       journalOff={9.11} journalHdr={10.11}
 Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
-          , zFilename
-          , eState == PAGER.OPEN ? "OPEN" :
-              eState == PAGER.READER ? "READER" :
-              eState == PAGER.WRITER_LOCKED ? "WRITER_LOCKED" :
-              eState == PAGER.WRITER_CACHEMOD ? "WRITER_CACHEMOD" :
-              eState == PAGER.WRITER_DBMOD ? "WRITER_DBMOD" :
-              eState == PAGER.WRITER_FINISHED ? "WRITER_FINISHED" :
-              eState == PAGER.ERROR ? "ERROR" : "?error?"
-          , (int)errCode
-          , eLock == VFSLOCK.NO ? "NO_LOCK" :
-              eLock == VFSLOCK.RESERVED ? "RESERVED" :
-              eLock == VFSLOCK.EXCLUSIVE ? "EXCLUSIVE" :
-              eLock == VFSLOCK.SHARED ? "SHARED" :
-              eLock == VFSLOCK.UNKNOWN ? "UNKNOWN" : "?error?"
-          , exclusiveMode ? "exclusive" : "normal"
-          , journalMode == JOURNALMODE.MEMORY ? "memory" :
-              journalMode == JOURNALMODE.OFF ? "off" :
-              journalMode == JOURNALMODE.DELETE ? "delete" :
-              journalMode == JOURNALMODE.PERSIST ? "persist" :
-              journalMode == JOURNALMODE.TRUNCATE ? "truncate" :
-              journalMode == JOURNALMODE.WAL ? "wal" : "?error?"
-          , tempFile ? 1 : 0, (int)memDb, (int)useJournal
-          , journalOff, journalHdr
-          , (int)dbSize, (int)dbOrigSize, (int)dbFileSize);
+          , _filename
+          , _state == PAGER.OPEN ? "OPEN" :
+              _state == PAGER.READER ? "READER" :
+              _state == PAGER.WRITER_LOCKED ? "WRITER_LOCKED" :
+              _state == PAGER.WRITER_CACHEMOD ? "WRITER_CACHEMOD" :
+              _state == PAGER.WRITER_DBMOD ? "WRITER_DBMOD" :
+              _state == PAGER.WRITER_FINISHED ? "WRITER_FINISHED" :
+              _state == PAGER.ERROR ? "ERROR" : "?error?"
+          , (int)_errorCode
+          , _lock == VFSLOCK.NO ? "NO_LOCK" :
+              _lock == VFSLOCK.RESERVED ? "RESERVED" :
+              _lock == VFSLOCK.EXCLUSIVE ? "EXCLUSIVE" :
+              _lock == VFSLOCK.SHARED ? "SHARED" :
+              _lock == VFSLOCK.UNKNOWN ? "UNKNOWN" : "?error?"
+          , _exclusiveMode ? "exclusive" : "normal"
+          , _journalMode == JOURNALMODE.MEMORY ? "memory" :
+              _journalMode == JOURNALMODE.OFF ? "off" :
+              _journalMode == JOURNALMODE.DELETE ? "delete" :
+              _journalMode == JOURNALMODE.PERSIST ? "persist" :
+              _journalMode == JOURNALMODE.TRUNCATE ? "truncate" :
+              _journalMode == JOURNALMODE.WAL ? "wal" : "?error?"
+          , (_tempFile ? 1 : 0), (_memoryDB ? 1 : 0), (int)_useJournal
+          , _journalOff, _journalHdr
+          , (int)_dbSize, (int)_dbOrigSize, (int)_dbFileSize);
         }
 #endif
 
 #if DEBUG
-        internal static void assertTruncateConstraintCb(PgHdr pPg) { Debug.Assert((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0); Debug.Assert(!subjRequiresPage(pPg) || pPg.ID <= pPg.Pager.dbSize); }
-        internal void assertTruncateConstraint() { pPCache.sqlite3PcacheIterateDirty(assertTruncateConstraintCb); }
+        internal static void assertTruncateConstraintCb(PgHdr page) { Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0); Debug.Assert(!subjRequiresPage(page) || page.ID <= page.Pager._dbSize); }
+        internal void assertTruncateConstraint() { _pcache.IterateDirty(assertTruncateConstraintCb); }
 #else
-        internal static void assertTruncateConstraintCb(PgHdr pPg) { }
+        internal static void assertTruncateConstraintCb(Page page) { }
         internal void assertTruncateConstraint() { }
 #endif
     }

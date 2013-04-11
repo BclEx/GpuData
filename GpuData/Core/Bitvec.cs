@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 namespace Core
 {
-    public class BitArray
+    public class Bitvec
     {
         private static int BITVEC_SZ = 512;
         private static int BITVEC_USIZE = (((BITVEC_SZ - (3 * sizeof(uint))) / 4) * 4);
@@ -24,16 +24,16 @@ namespace Core
         {
             public byte[] Bitmap = new byte[BITVEC_NELEM]; // Bitmap representation
             public uint[] Hash = new uint[BITVEC_NINT];              // Hash table representation
-            public BitArray[] Sub = new BitArray[BITVEC_NPTR];        // Recursive representation
+            public Bitvec[] Sub = new Bitvec[BITVEC_NPTR];        // Recursive representation
         }
         private _u u = new _u();
 
-        public BitArray(uint size)
+        public Bitvec(uint size)
         {
             _size = size;
         }
 
-        public static void Destroy(ref BitArray p)
+        public static void Destroy(ref Bitvec p)
         {
             if (p == null)
                 return;
@@ -44,7 +44,7 @@ namespace Core
 
         public uint Length { get { return _size; } }
 
-        public static implicit operator bool(BitArray b) { return (b != null); }
+        public static implicit operator bool(Bitvec b) { return (b != null); }
 
         /// <summary>
         /// Check to see if the i-th bit is set.  Return true or false.
@@ -100,7 +100,7 @@ namespace Core
                 uint bin = index / p._divisor;
                 index %= p._divisor;
                 if (p.u.Sub[bin] == null)
-                    p.u.Sub[bin] = new BitArray(p._divisor);
+                    p.u.Sub[bin] = new Bitvec(p._divisor);
                 p = p.u.Sub[bin];
             }
             if (p._size <= BITVEC_NBIT)
@@ -159,7 +159,8 @@ namespace Core
                 uint bin = index / p._divisor;
                 index %= p._divisor;
                 p = p.u.Sub[bin];
-                if (p == null) return;
+                if (p == null)
+                    return;
             }
             if (p._size <= BITVEC_NBIT)
                 p.u.Bitmap[index / BITVEC_SZELEM] &= (byte)~((1 << (int)(index & (BITVEC_SZELEM - 1))));

@@ -4,78 +4,78 @@ namespace Core
     public partial class PCache
     {
 
-#if !DEBUG && EXPENSIVE_ASSERT
+#if EXPENSIVE_ASSERT
         private int pcacheCheckSynced()
         {
             PgHdr p;
-            for (p = pDirtyTail; p != pSynced; p = p.pDirtyPrev)
-                Debug.Assert(p.nRef != 0 || (p.flags & PgHdr.PGHDR.NEED_SYNC) != 0);
-            return (p == null || p.nRef != 0 || (p.flags & PgHdr.PGHDR.NEED_SYNC) == 0) ? 1 : 0;
+            for (p = DirtyTail; p != Synced; p = p.DirtyPrev)
+                Debug.Assert(p.Refs != 0 || (p.Flags & PgHdr.PGHDR.NEED_SYNC) != 0);
+            return (p == null || p.Refs != 0 || (p.Flags & PgHdr.PGHDR.NEED_SYNC) == 0) ? 1 : 0;
         }
 #endif
 
-        private static void pcacheRemoveFromDirtyList(PgHdr pPage)
+        private static void pcacheRemoveFromDirtyList(PgHdr page)
         {
-            var p = pPage.Cache;
-            Debug.Assert(pPage.DirtyNext != null || pPage == p.pDirtyTail);
-            Debug.Assert(pPage.DirtyPrev != null || pPage == p.pDirty);
+            var p = page.Cache;
+            Debug.Assert(page.DirtyNext != null || page == p.DirtyTail);
+            Debug.Assert(page.DirtyPrev != null || page == p.Dirty);
             // Update the PCache1.pSynced variable if necessary.
-            if (p.pSynced == pPage)
+            if (p.Synced == page)
             {
-                var pSynced = pPage.DirtyPrev;
-                while (pSynced != null && (pSynced.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
-                    pSynced = pSynced.DirtyPrev;
-                p.pSynced = pSynced;
+                var synced = page.DirtyPrev;
+                while (synced != null && (synced.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
+                    synced = synced.DirtyPrev;
+                p.Synced = synced;
             }
-            if (pPage.DirtyNext != null)
-                pPage.DirtyNext.DirtyPrev = pPage.DirtyPrev;
+            if (page.DirtyNext != null)
+                page.DirtyNext.DirtyPrev = page.DirtyPrev;
             else
             {
-                Debug.Assert(pPage == p.pDirtyTail);
-                p.pDirtyTail = pPage.DirtyPrev;
+                Debug.Assert(page == p.DirtyTail);
+                p.DirtyTail = page.DirtyPrev;
             }
-            if (pPage.DirtyPrev != null)
-                pPage.DirtyPrev.DirtyNext = pPage.DirtyNext;
+            if (page.DirtyPrev != null)
+                page.DirtyPrev.DirtyNext = page.DirtyNext;
             else
             {
-                Debug.Assert(pPage == p.pDirty);
-                p.pDirty = pPage.DirtyNext;
+                Debug.Assert(page == p.Dirty);
+                p.Dirty = page.DirtyNext;
             }
-            pPage.DirtyNext = null;
-            pPage.DirtyPrev = null;
+            page.DirtyNext = null;
+            page.DirtyPrev = null;
 #if EXPENSIVE_ASSERT
-            expensive_assert(pcacheCheckSynced(p));
+            Debug.Assert(pcacheCheckSynced(p));
 #endif
         }
 
-        private static void pcacheAddToDirtyList(PgHdr pPage)
+        private static void pcacheAddToDirtyList(PgHdr page)
         {
-            var p = pPage.Cache;
-            Debug.Assert(pPage.DirtyNext == null && pPage.DirtyPrev == null && p.pDirty != pPage);
-            pPage.DirtyNext = p.pDirty;
-            if (pPage.DirtyNext != null)
+            var p = page.Cache;
+            Debug.Assert(page.DirtyNext == null && page.DirtyPrev == null && p.Dirty != page);
+            page.DirtyNext = p.Dirty;
+            if (page.DirtyNext != null)
             {
-                Debug.Assert(pPage.DirtyNext.DirtyPrev == null);
-                pPage.DirtyNext.DirtyPrev = pPage;
+                Debug.Assert(page.DirtyNext.DirtyPrev == null);
+                page.DirtyNext.DirtyPrev = page;
             }
-            p.pDirty = pPage;
-            if (null == p.pDirtyTail)
-                p.pDirtyTail = pPage;
-            if (null == p.pSynced && 0 == (pPage.Flags & PgHdr.PGHDR.NEED_SYNC))
-                p.pSynced = pPage;
+            p.Dirty = page;
+            if (null == p.DirtyTail)
+                p.DirtyTail = page;
+            if (null == p.Synced && 0 == (page.Flags & PgHdr.PGHDR.NEED_SYNC))
+                p.Synced = page;
 #if EXPENSIVE_ASSERT
-            expensive_assert(pcacheCheckSynced(p));
+            Debug.Assert(pcacheCheckSynced(p));
 #endif
         }
 
-        private static void pcacheUnpin(PgHdr p)
+        private static void pcacheUnpin(PgHdr page)
         {
-            var pCache = p.Cache;
-            if (pCache.bPurgeable)
+            var p = page.Cache;
+            if (p.Purgeable)
             {
-                if (p.ID == 1)
-                    pCache.pPage1 = null;
-                pCache.pCache.xUnpin(p, false);
+                if (page.ID == 1)
+                    p.Page1 = null;
+                p.pCache.xUnpin(page, false);
             }
         }
     }

@@ -12,13 +12,13 @@ namespace Core
             Debug.Assert(_state == PAGER.WRITER_LOCKED || _state == PAGER.WRITER_CACHEMOD || _state == PAGER.WRITER_DBMOD || _state == PAGER.ERROR);
             Debug.Assert(assert_pager_state());
             // If a prior error occurred, report that error again.
-            if (WIN.NEVER(_errorCode != 0))
+            if (SysEx.NEVER(_errorCode != 0))
                 return _errorCode;
             PAGERTRACE("DATABASE SYNC: File={0} zMaster={1} nSize={2}", _filename, master, _dbSize);
             // If no database changes have been made, return early.
             if (_state < PAGER.WRITER_CACHEMOD)
                 return RC.OK;
-            if (_inMemory)
+            if (_memoryDB)
             {
                 // If this is an in-memory db, or no pages have been written to, or this function has already been called, it is mostly a no-op.  However, any
                 // backup in progress needs to be restarted.
@@ -39,7 +39,7 @@ namespace Core
                         pList.Dirtys = null;
                     }
                     Debug.Assert(rc == RC.OK);
-                    if (WIN.ALWAYS(pList))
+                    if (SysEx.ALWAYS(pList))
                         rc = pagerWalFrames(pList, _dbSize, 1, (_fullSync ? _syncFlags : 0));
                     Unref(pPageOne);
                     if (rc == RC.OK)
@@ -88,7 +88,7 @@ namespace Core
 #if !OMIT_AUTOVACUUM
                     if (_dbSize < _dbOrigSize && _journalMode != JOURNALMODE.OFF)
                     {
-                        var iSkip = PAGER_MJ_PGNO(this); // Pending lock page
+                        var iSkip = MJ_PID(this); // Pending lock page
                         var lastDbSize = this._dbSize;       // Database image size
                         this._dbSize = _dbOrigSize;
                         for (Pgno i = lastDbSize + 1; i <= _dbOrigSize; i++)
@@ -130,7 +130,7 @@ namespace Core
                     // If the file on disk is not the same size as the database image, then use pager_truncate to grow or shrink the file here.
                     if (this._dbSize != _dbFileSize)
                     {
-                        var nNew = (Pgno)(this._dbSize - (this._dbSize == PAGER_MJ_PGNO(this) ? 1 : 0));
+                        var nNew = (Pgno)(this._dbSize - (this._dbSize == MJ_PID(this) ? 1 : 0));
                         Debug.Assert(this._state >= PAGER.WRITER_DBMOD);
                         rc = pager_truncate(nNew);
                         if (rc != RC.OK)
@@ -197,7 +197,7 @@ namespace Core
             {
                 var eState = _state;
                 rc = pager_end_transaction(0);
-                if (_inMemory && eState > PAGER.WRITER_LOCKED)
+                if (_memoryDB && eState > PAGER.WRITER_LOCKED)
                 {
                     // This can happen using journal_mode=off. Move the pager to the error  state to indicate that the contents of the cache may not be trusted.
                     // Any active readers will get SQLITE_ABORT.
@@ -222,7 +222,7 @@ namespace Core
             Debug.Assert(assert_pager_state());
             // In order to be able to rollback, an in-memory database must journal the page we are moving from.
             var rc = RC.OK;
-            if (!_inMemory)
+            if (!_memoryDB)
             {
                 rc = Write(pPg);
                 if (rc != RC.OK)
@@ -264,7 +264,7 @@ namespace Core
             if (pPgOld != null)
             {
                 pPg.Flags |= (pPgOld.Flags & PgHdr.PGHDR.NEED_SYNC);
-                if (!_inMemory)
+                if (!_memoryDB)
                     // Do not discard pages from an in-memory database since we might need to rollback later.  Just move the page out of the way.
                     PCache.MovePage(pPgOld, this._dbSize + 1);
                 else
@@ -275,7 +275,7 @@ namespace Core
             PCache.MakePageDirty(pPg);
             // For an in-memory database, make sure the original page continues to exist, in case the transaction needs to roll back.  Use pPgOld
             // as the original page since it has already been allocated.
-            if (!_inMemory)
+            if (!_memoryDB)
             {
                 Debug.Assert(pPgOld);
                 PCache.MovePage(pPgOld, origPgno);

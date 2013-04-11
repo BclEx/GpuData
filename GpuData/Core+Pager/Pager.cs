@@ -12,7 +12,7 @@ namespace Core
         public const int MAX_PAGE_SIZE = 65535;
         const int MAX_PAGE_COUNT = 1073741823;
         const int MAX_SECTOR_SIZE = 0x10000;
-        const int PAGER_MAX_PGNO = 2147483647;
+        const int MAX_PID = 2147483647;
 
         public enum PAGER : byte
         {
@@ -70,7 +70,7 @@ namespace Core
         public bool _tempFile;               // zFilename is a temporary file
         public bool _readOnly;               // True for a read-only database
         public bool _alwaysRollback;         // Disable DontRollback() for all pages
-        public bool _inMemory;                  // True to inhibit all file I/O
+        public bool _memoryDB;                  // True to inhibit all file I/O
         // The following block contains those class members that change during routine opertion.  Class members not in this block are either fixed
         // when the pager is first created or else only change when there is a significant mode change (such as changing the page_size, locking_mode,
         // or the journal_mode).  From another view, these class members describe the "state" of the pager, while other class members describe the
@@ -90,7 +90,7 @@ namespace Core
         public int _nRec;                    // Pages journalled since last j-header written 
         public uint _cksumInit;              // Quasi-random value added to every checksum 
         public uint _nSubRec;                // Number of records written to sub-journal 
-        public BitArray _inJournal;           // One bit for each page in the database file 
+        public Bitvec _inJournal;           // One bit for each page in the database file 
         public VFile _file;             // File descriptor for database 
         public VFile _journalFile;            // File descriptor for main journal 
         public VFile _journal2File;           // File descriptor for sub-journal 
@@ -105,7 +105,7 @@ namespace Core
         public VFileSystem.OPEN _vfsFlags;               // Flags for VirtualFileSystem.xOpen() 
         public uint _sectorSize;             // Assumed sector size during rollback 
         public int _pageSize;                // Number of bytes in a page 
-        public Pid _mxPgno;                 // Maximum allowed size of the database 
+        public Pid _pids;                 // Maximum allowed size of the database 
         public long _journalSizeLimit;       // Size limit for persistent journal files 
         public string _filename;            // Name of the database file 
         public string _journal;             // Name of the journal file 
@@ -127,10 +127,10 @@ namespace Core
         public Wal _wal = null;             // Having this dummy here makes C# easier
 #endif
 
-        public static Pid PAGER_MJ_PGNO(Pager x) { return ((Pid)((VFile.PENDING_BYTE / ((x)._pageSize)) + 1)); }
+        public static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager)._pageSize)) + 1)); }
 
 #if false && !OMIT_WAL
-        internal static int pagerUseWal(Pager pPager) { return (pPager.pWal != 0); }
+        internal static int pagerUseWal(Pager pager) { return (pPager.pWal != 0); }
 #else
         internal bool pagerUseWal() { return false; }
         internal RC pagerRollbackWal() { return RC.OK; }
@@ -158,7 +158,7 @@ namespace Core
 #endif
 
 #if CHECK_PAGES
-        internal static uint pager_pagehash(PgHdr page) { return pager_datahash(page.Pager._pageSize, page.Data); }
+        internal static uint pager_pagehash(PgHdr page) { return pager_datahash(page.Pager._pageSize, page._Data); }
         internal static uint pager_datahash(int nByte, byte[] pData)
         {
             uint hash = 0;

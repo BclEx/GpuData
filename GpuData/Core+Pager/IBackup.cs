@@ -3,7 +3,7 @@ namespace Core
 {
     public interface IBackup
     {
-        void sqlite3BackupUpdate(Pid id, byte[] data);
-        void sqlite3BackupRestart();
+        void Update(Pid id, byte[] data);
+        void Restart();
     }
 }

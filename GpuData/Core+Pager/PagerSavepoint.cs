@@ -5,7 +5,7 @@ namespace Core
     {
         public long iOffset;            // Starting offset in main journal
         public long iHdrOffset;         // See above
-        public BitArray pInSavepoint;     // Set of pages in this savepoint
+        public Bitvec pInSavepoint;     // Set of pages in this savepoint
         public Pgno nOrig;              // Original number of pages in file
         public Pgno iSubRec;            // Index of first record in sub-journal
 #if !OMIT_WAL

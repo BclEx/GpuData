@@ -39,7 +39,7 @@ namespace GpuData
             rc = pager.Begin(false, false);
             if (rc != RC.OK)
                 throw new Exception();
-            Array.Copy(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, p.Data, 10);
+            Array.Copy(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, p._Data, 10);
             Pager.Write(p);
             pager.CommitPhaseOne(null, false);
             pager.CommitPhaseTwo();

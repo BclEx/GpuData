@@ -23,7 +23,7 @@ namespace Core.IO
                 S.Close();
                 rc = true;
             } while (!rc && ++cnt < MX_CLOSE_ATTEMPT);
-            return (rc ? RC.OK : WIN._Error(RC.IOERR_CLOSE, "winClose", Path));
+            return (rc ? RC.OK : SysEx._Error(RC.IOERR_CLOSE, "winClose", Path));
         }
 
         public override RC Read(byte[] buffer, int amount, long offset)
@@ -37,7 +37,7 @@ namespace Core.IO
                 return RC.FULL;
             int read; // number of bytes actually read from file
             try { read = S.Read(buffer, 0, amount); }
-            catch (Exception) { LastErrorID = (uint)Marshal.GetLastWin32Error(); return WIN._Error(RC.IOERR_READ, "winRead", Path); }
+            catch (Exception) { LastErrorID = (uint)Marshal.GetLastWin32Error(); return SysEx._Error(RC.IOERR_READ, "winRead", Path); }
             if (read < amount)
             {
                 // unread parts of the buffer must be zero-filled
@@ -64,7 +64,7 @@ namespace Core.IO
             if (rc == 0 || amount > (int)wrote)
             {
                 LastErrorID = (uint)Marshal.GetLastWin32Error();
-                return (LastErrorID == WIN.ERROR_HANDLE_DISK_FULL || LastErrorID == WIN.ERROR_DISK_FULL ? RC.FULL : WIN._Error(RC.IOERR_WRITE, "winWrite", Path));
+                return (LastErrorID == SysEx.ERROR_HANDLE_DISK_FULL || LastErrorID == SysEx.ERROR_DISK_FULL ? RC.FULL : SysEx._Error(RC.IOERR_WRITE, "winWrite", Path));
             }
             return RC.OK;
         }
@@ -78,7 +78,7 @@ namespace Core.IO
             if (Chunk != 0)
                 size = ((size + Chunk - 1) / Chunk) * Chunk;
             try { S.SetLength(size); rc = RC.OK; }
-            catch (IOException) { LastErrorID = (uint)Marshal.GetLastWin32Error(); rc = WIN._Error(RC.IOERR_TRUNCATE, "winTruncate2", Path); }
+            catch (IOException) { LastErrorID = (uint)Marshal.GetLastWin32Error(); rc = SysEx._Error(RC.IOERR_TRUNCATE, "winTruncate2", Path); }
             Console.WriteLine("TRUNCATE {0} {1,%11} {2}", S.GetHashCode(), size, rc == RC.OK ? "ok" : "failed");
             return rc;
         }
@@ -206,7 +206,7 @@ namespace Core.IO
                 _lockingStrategy.UnlockFile(this, SHARED_FIRST, SHARED_SIZE);
                 if (lockType == LOCK.SHARED && getReadLock() == 0)
                     // this should never happen.  We should always be able to reacquire the read lock 
-                    rc = WIN._Error(RC.IOERR_UNLOCK, "winUnlock", Path);
+                    rc = SysEx._Error(RC.IOERR_UNLOCK, "winUnlock", Path);
             }
             if (type >= LOCK.RESERVED)
                 try { _lockingStrategy.UnlockFile(this, RESERVED_BYTE, 1); }
@@ -272,7 +272,7 @@ namespace Core.IO
         private int seekWinFile(long iOffset)
         {
             try { S.Seek(iOffset, SeekOrigin.Begin); }
-            catch (Exception) { LastErrorID = (uint)Marshal.GetLastWin32Error(); WIN._Error(RC.IOERR_SEEK, "seekWinFile", Path); return 1; }
+            catch (Exception) { LastErrorID = (uint)Marshal.GetLastWin32Error(); SysEx._Error(RC.IOERR_SEEK, "seekWinFile", Path); return 1; }
             return 0;
         }
 
@@ -294,13 +294,13 @@ namespace Core.IO
             if (Environment.OSVersion.Platform >= PlatformID.Win32NT)
                 try { _lockingStrategy.UnlockFile(this, SHARED_FIRST, SHARED_SIZE); }
                 catch (Exception) { res = 0; }
-            if (res == 0) { LastErrorID = (uint)Marshal.GetLastWin32Error(); WIN._Error(RC.IOERR_UNLOCK, "unlockReadLock", Path); }
+            if (res == 0) { LastErrorID = (uint)Marshal.GetLastWin32Error(); SysEx._Error(RC.IOERR_UNLOCK, "unlockReadLock", Path); }
             return res;
         }
 
         #region Locking
 
-        private static LockingStrategy _lockingStrategy = (WIN.IsRunningMediumTrust() ? new MediumTrustLockingStrategy() : new LockingStrategy());
+        private static LockingStrategy _lockingStrategy = (SysEx.IsRunningMediumTrust() ? new MediumTrustLockingStrategy() : new LockingStrategy());
 
         /// <summary>
         /// Basic locking strategy for Console/Winform applications

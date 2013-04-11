@@ -33,7 +33,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <DebugSymbols>true</DebugSymbols>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;OMIT_WAL</DefineConstants>
+    <DefineConstants>DEBUG;OMIT_WAL, CHECK_PAGES EXPENSIVE_ASSERT</DefineConstants>
     <DebugType>full</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
@@ -45,51 +45,114 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
-    <DefineConstants>OMIT_WAL CHECK_PAGES</DefineConstants>
+    <DefineConstants>OMIT_WAL, CHECK_PAGES</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Core+Pager\IBackup.cs" />
-    <Compile Include="Core+Pager\Name\PCache1+Allocation.cs" />
-    <Compile Include="Core+Pager\Name\PCache1+General.cs" />
-    <Compile Include="Core+Pager\Name\PCache1+Interface.cs" />
-    <Compile Include="Core+Pager\Name\PCache1.cs" />
-    <Compile Include="Core+Pager\Name\PCacheGlobal.cs" />
-    <Compile Include="Core+Pager\Name\PgFreeslot.cs" />
-    <Compile Include="Core+Pager\Name\PgHdr1.cs" />
-    <Compile Include="Core+Pager\Name\PGroup.cs" />
-    <Compile Include="Core+Pager\Pager+Aquire.cs" />
-    <Compile Include="Core+Pager\Pager+Commit.cs" />
-    <Compile Include="Core+Pager\Pager+Debug.cs" />
-    <Compile Include="Core+Pager\Pager+File.cs" />
-    <Compile Include="Core+Pager\Pager+Journal.cs" />
-    <Compile Include="Core+Pager\Pager+Lock.cs" />
-    <Compile Include="Core+Pager\Pager+Pager.cs" />
-    <Compile Include="Core+Pager\Pager+Properties.cs" />
-    <Compile Include="Core+Pager\Pager+Savepoint.cs" />
-    <Compile Include="Core+Pager\Pager+Stream.cs" />
-    <Compile Include="Core+Pager\Pager+Wal.cs" />
-    <Compile Include="Core+Pager\Pager.cs" />
-    <Compile Include="Core+Pager\PagerSavepoint.cs" />
-    <Compile Include="Core+Pager\PCache+General.cs" />
-    <Compile Include="Core+Pager\PCache+LinkedList.cs" />
-    <Compile Include="Core+Pager\PCache.cs" />
-    <Compile Include="Core+Pager\PgHdr.cs" />
-    <Compile Include="Core+Pager\Wal.cs" />
-    <Compile Include="Core\BitArray.cs" />
+    <Compile Include="Core+Pager\IBackup.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\PgHdr.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Aquire.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Commit.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Debug.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+File.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Journal.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Lock.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Pager.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Properties.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Savepoint.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Stream.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager+Wal.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Pager.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\PagerSavepoint.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\PCache+General.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\PCache+LinkedList.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\PCache.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+Pager\Wal.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Content Include="Core+PCache1\00.PGroup.cpp" />
+    <Content Include="Core+PCache1\20.PgHdr1.cpp" />
+    <Content Include="Core+PCache1\10.PCache1.cpp" />
+    <Compile Include="Core+PCache1\11.PCache1+PageAllocation.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\12.PCache1+General.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\13.PCache1+Interface.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\10.PCache1.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\40.PCacheGlobal.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\30.PgFreeslot.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\20.PgHdr1.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core+PCache1\00.PGroup.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Core\Bitvec.cs" />
     <Compile Include="Core\MutexEx.cs" />
     <Compile Include="Core\ConvertEx.cs" />
+    <Compile Include="Core\StatusEx.cs" />
     <Compile Include="Main.cs" />
-    <Compile Include="Core\WIN.cs" />
+    <Compile Include="Core\SysEx.cs" />
     <Compile Include="Core\RC.cs" />
     <Compile Include="Core\IO\VFile.cs" />
     <Compile Include="Core\IO\VFileSystem.cs" />
     <Compile Include="Core\IO\MemoryVFile.cs" />
     <Compile Include="Core\IO\CoreVFile.cs" />
     <Compile Include="Core\IO\CoreVFileSystem.cs" />
+    <Content Include="Core+PCache1\30.PgFreeslot.cpp" />
+    <Content Include="Core+PCache1\40.PCacheGlobal.cpp" />
+    <Content Include="Core+PCache1\11.PCache1+PageAllocation.cpp" />
+    <Content Include="Core+PCache1\12.PCache1+General.cpp" />
+    <Content Include="Core+PCache1\13.PCache1+Interface.cpp" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup />

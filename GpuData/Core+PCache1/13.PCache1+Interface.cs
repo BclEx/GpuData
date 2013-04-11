@@ -3,7 +3,7 @@ using Pgno = System.UInt32;
 using System.Diagnostics;
 using System.Text;
 using IPCache = Core.Name.PCache1;
-namespace Core.Name
+namespace Core
 {
     public partial class PCache1
     {
@@ -17,21 +17,19 @@ namespace Core.Name
 
         public static RC xInit(object NotUsed)
         {
-            SysEx.UNUSED_PARAMETER(NotUsed);
             Debug.Assert(pcache1 == null);
             pcache1 = new PCacheGlobal();
             if (sqlite3GlobalConfig_bCoreMutex)
             {
-                pcache1.grp.mutex = MutexEx.sqlite3_mutex_alloc(MutexEx.MUTEX.STATIC_LRU);
-                pcache1.mutex = MutexEx.sqlite3_mutex_alloc(MutexEx.MUTEX.STATIC_PMEM);
+                pcache1.Group.Mutex = MutexEx.sqlite3_mutex_alloc(MutexEx.MUTEX.STATIC_LRU);
+                pcache1.Mutex = MutexEx.sqlite3_mutex_alloc(MutexEx.MUTEX.STATIC_PMEM);
             }
-            pcache1.grp.mxPinned = 10;
+            pcache1.Group.MaxPinned = 10;
             return RC.OK;
         }
 
         public static void xShutdown(object NotUsed)
         {
-            SysEx.UNUSED_PARAMETER(NotUsed);
             Debug.Assert(pcache1 != null);
             pcache1 = null;
         }
@@ -57,17 +55,17 @@ namespace Core.Name
                     //pGroup.mxPinned = 10;
                 }
                 else
-                    pGroup = pcache1.grp;
-                pCache.pGroup = pGroup;
-                pCache.szPage = szPage;
-                pCache.bPurgeable = bPurgeable;
+                    pGroup = pcache1.Group;
+                pCache.Group = pGroup;
+                pCache.SizePage = szPage;
+                pCache.Purgeable = bPurgeable;
                 if (bPurgeable)
                 {
-                    pCache.nMin = 10;
-                    pcache1EnterMutex(pGroup);
-                    pGroup.nMinPage += (int)pCache.nMin;
-                    pGroup.mxPinned = pGroup.nMaxPage + 10 - pGroup.nMinPage;
-                    pcache1LeaveMutex(pGroup);
+                    pCache.Min = 10;
+                    EnterMutex(pGroup);
+                    pGroup.MinPages += (int)pCache.Min;
+                    pGroup.MaxPinned = pGroup.MaxPages + 10 - pGroup.MinPages;
+                    LeaveMutex(pGroup);
                 }
             }
             return (IPCache)pCache;
@@ -75,41 +73,41 @@ namespace Core.Name
 
         public void xCachesize(int nCachesize)
         {
-            if (bPurgeable)
+            if (Purgeable)
             {
-                var pGroup = this.pGroup;
-                pcache1EnterMutex(pGroup);
-                pGroup.nMaxPage += nCachesize - nMax;
-                pGroup.mxPinned = pGroup.nMaxPage + 10 - pGroup.nMinPage;
-                nMax = nCachesize;
-                n90pct = nMax * 9 / 10;
+                var pGroup = this.Group;
+                EnterMutex(pGroup);
+                pGroup.MaxPages += nCachesize - Max;
+                pGroup.MaxPinned = pGroup.MaxPages + 10 - pGroup.MinPages;
+                Max = nCachesize;
+                N90pct = Max * 9 / 10;
                 pcache1EnforceMaxPage(pGroup);
-                pcache1LeaveMutex(pGroup);
+                LeaveMutex(pGroup);
             }
         }
 
         public int xPagecount()
         {
-            pcache1EnterMutex(pGroup);
-            var n = (int)nPage;
-            pcache1LeaveMutex(pGroup);
+            EnterMutex(Group);
+            var n = (int)Pages;
+            LeaveMutex(Group);
             return n;
         }
 
         public PgHdr xFetch(Pgno key, int createFlag)
         {
-            Debug.Assert(bPurgeable || createFlag != 1);
-            Debug.Assert(bPurgeable || nMin == 0);
-            Debug.Assert(!bPurgeable || nMin == 10);
-            Debug.Assert(nMin == 0 || bPurgeable);
+            Debug.Assert(Purgeable || createFlag != 1);
+            Debug.Assert(Purgeable || Min == 0);
+            Debug.Assert(!Purgeable || Min == 10);
+            Debug.Assert(Min == 0 || Purgeable);
             PGroup pGroup;
-            pcache1EnterMutex(pGroup = this.pGroup);
+            EnterMutex(pGroup = this.Group);
             // Step 1: Search the hash table for an existing entry.
             PgHdr1 pPage = null;
             if (nHash > 0)
             {
                 var h = (int)(key % nHash);
-                for (pPage = apHash[h]; pPage != null && pPage.iKey != key; pPage = pPage.pNext) ;
+                for (pPage = Hash[h]; pPage != null && pPage.Key != key; pPage = pPage.Next) ;
             }
             // Step 2: Abort if no existing page is found and createFlag is 0
             if (pPage != null || createFlag == 0)
@@ -125,70 +123,70 @@ namespace Core.Name
       pGroup = pCache.pGroup;
 #endif
             // Step 3: Abort if createFlag is 1 but the cache is nearly full
-            var nPinned = nPage - nRecyclable;
+            var nPinned = Pages - Recyclables;
             Debug.Assert(nPinned >= 0);
-            Debug.Assert(pGroup.mxPinned == pGroup.nMaxPage + 10 - pGroup.nMinPage);
-            Debug.Assert(n90pct == nMax * 9 / 10);
-            if (createFlag == 1 && (nPinned >= pGroup.mxPinned || nPinned >= (int)n90pct || pcache1UnderMemoryPressure()))
+            Debug.Assert(pGroup.MaxPinned == pGroup.MaxPages + 10 - pGroup.MinPages);
+            Debug.Assert(N90pct == Max * 9 / 10);
+            if (createFlag == 1 && (nPinned >= pGroup.MaxPinned || nPinned >= (int)N90pct || pcache1UnderMemoryPressure()))
                 goto fetch_out;
-            if (nPage >= nHash && pcache1ResizeHash() != 0)
+            if (Pages >= nHash && pcache1ResizeHash() != 0)
                 goto fetch_out;
             // Step 4. Try to recycle a page.
-            if (bPurgeable && pGroup.pLruTail != null && ((nPage + 1 >= nMax) || pGroup.nCurrentPage >= pGroup.nMaxPage || pcache1UnderMemoryPressure()))
+            if (Purgeable && pGroup.LruTail != null && ((Pages + 1 >= Max) || pGroup.CurrentPages >= pGroup.MaxPages || pcache1UnderMemoryPressure()))
             {
-                pPage = pGroup.pLruTail;
+                pPage = pGroup.LruTail;
                 pcache1RemoveFromHash(pPage);
                 pcache1PinPage(pPage);
                 PCache1 pOtherCache;
-                if ((pOtherCache = pPage.pCache).szPage != szPage)
+                if ((pOtherCache = pPage.Cache).SizePage != SizePage)
                 {
                     pcache1FreePage(ref pPage);
                     pPage = null;
                 }
                 else
-                    pGroup.nCurrentPage -= (pOtherCache.bPurgeable ? 1 : 0) - (bPurgeable ? 1 : 0);
+                    pGroup.CurrentPages -= (pOtherCache.Purgeable ? 1 : 0) - (Purgeable ? 1 : 0);
             }
             // Step 5. If a usable page buffer has still not been found, attempt to allocate a new one. 
             if (null == pPage)
             {
                 if (createFlag == 1)
-                    MallocEx.sqlite3BeginBenignMalloc();
-                pcache1LeaveMutex(pGroup);
+                    MallocEx.BeginBenignMalloc();
+                LeaveMutex(pGroup);
                 pPage = pcache1AllocPage();
-                pcache1EnterMutex(pGroup);
+                EnterMutex(pGroup);
                 if (createFlag == 1)
-                    MallocEx.sqlite3EndBenignMalloc();
+                    MallocEx.EndBenignMalloc();
             }
             if (pPage != null)
             {
                 var h = (int)(key % nHash);
-                nPage++;
-                pPage.iKey = key;
-                pPage.pNext = apHash[h];
-                pPage.pCache = this;
-                pPage.pLruPrev = null;
-                pPage.pLruNext = null;
+                Pages++;
+                pPage.Key = key;
+                pPage.Next = Hash[h];
+                pPage.Cache = this;
+                pPage.LruPrev = null;
+                pPage.LruNext = null;
                 PGHDR1_TO_PAGE(pPage).ClearState();
-                pPage.pPgHdr.PgHdr1 = pPage;
-                apHash[h] = pPage;
+                pPage.Page.PgHdr1 = pPage;
+                Hash[h] = pPage;
             }
         fetch_out:
-            if (pPage != null && key > iMaxKey)
-                iMaxKey = key;
-            pcache1LeaveMutex(pGroup);
+            if (pPage != null && key > MaxKey)
+                MaxKey = key;
+            LeaveMutex(pGroup);
             return (pPage != null ? PGHDR1_TO_PAGE(pPage) : null);
         }
 
         public void xUnpin(PgHdr p2, bool discard)
         {
             var pPage = PAGE_TO_PGHDR1(this, p2);
-            Debug.Assert(pPage.pCache == this);
-            var pGroup = this.pGroup;
-            pcache1EnterMutex(pGroup);
+            Debug.Assert(pPage.Cache == this);
+            var pGroup = this.Group;
+            EnterMutex(pGroup);
             // It is an error to call this function if the page is already  part of the PGroup LRU list.
-            Debug.Assert(pPage.pLruPrev == null && pPage.pLruNext == null);
-            Debug.Assert(pGroup.pLruHead != pPage && pGroup.pLruTail != pPage);
-            if (discard || pGroup.nCurrentPage > pGroup.nMaxPage)
+            Debug.Assert(pPage.LruPrev == null && pPage.LruNext == null);
+            Debug.Assert(pGroup.LruHead != pPage && pGroup.LruTail != pPage);
+            if (discard || pGroup.CurrentPages > pGroup.MaxPages)
             {
                 pcache1RemoveFromHash(pPage);
                 pcache1FreePage(ref pPage);
@@ -196,67 +194,67 @@ namespace Core.Name
             else
             {
                 // Add the page to the PGroup LRU list. 
-                if (pGroup.pLruHead != null)
+                if (pGroup.LruHead != null)
                 {
-                    pGroup.pLruHead.pLruPrev = pPage;
-                    pPage.pLruNext = pGroup.pLruHead;
-                    pGroup.pLruHead = pPage;
+                    pGroup.LruHead.LruPrev = pPage;
+                    pPage.LruNext = pGroup.LruHead;
+                    pGroup.LruHead = pPage;
                 }
                 else
                 {
-                    pGroup.pLruTail = pPage;
-                    pGroup.pLruHead = pPage;
+                    pGroup.LruTail = pPage;
+                    pGroup.LruHead = pPage;
                 }
-                nRecyclable++;
+                Recyclables++;
             }
-            pcache1LeaveMutex(pGroup);
+            LeaveMutex(pGroup);
         }
 
         public void xRekey(PgHdr p2, Pgno oldKey, Pgno newKey)
         {
             var pPage = PAGE_TO_PGHDR1(this, p2);
-            Debug.Assert(pPage.iKey == oldKey);
-            Debug.Assert(pPage.pCache == this);
-            pcache1EnterMutex(pGroup);
+            Debug.Assert(pPage.Key == oldKey);
+            Debug.Assert(pPage.Cache == this);
+            EnterMutex(Group);
             var h = (int)(oldKey % nHash);
-            var pp = apHash[h];
+            var pp = Hash[h];
             while (pp != pPage)
-                pp = pp.pNext;
-            if (pp == apHash[h])
-                apHash[h] = pp.pNext;
+                pp = pp.Next;
+            if (pp == Hash[h])
+                Hash[h] = pp.Next;
             else
-                pp.pNext = pPage.pNext;
+                pp.Next = pPage.Next;
             h = (int)(newKey % nHash);
-            pPage.iKey = newKey;
-            pPage.pNext = apHash[h];
-            apHash[h] = pPage;
-            if (newKey > iMaxKey)
-                iMaxKey = newKey;
-            pcache1LeaveMutex(pGroup);
+            pPage.Key = newKey;
+            pPage.Next = Hash[h];
+            Hash[h] = pPage;
+            if (newKey > MaxKey)
+                MaxKey = newKey;
+            LeaveMutex(Group);
         }
 
         public void xTruncate(Pgno iLimit)
         {
-            pcache1EnterMutex(pGroup);
-            if (iLimit <= iMaxKey)
+            EnterMutex(Group);
+            if (iLimit <= MaxKey)
             {
                 pcache1TruncateUnsafe(iLimit);
-                iMaxKey = iLimit - 1;
+                MaxKey = iLimit - 1;
             }
-            pcache1LeaveMutex(pGroup);
+            LeaveMutex(Group);
         }
 
         public static void xDestroy(ref IPCache pCache)
         {
-            PGroup pGroup = pCache.pGroup;
-            Debug.Assert(pCache.bPurgeable || (pCache.nMax == 0 && pCache.nMin == 0));
-            pcache1EnterMutex(pGroup);
+            PGroup pGroup = pCache.Group;
+            Debug.Assert(pCache.Purgeable || (pCache.Max == 0 && pCache.Min == 0));
+            EnterMutex(pGroup);
             pCache.pcache1TruncateUnsafe(0);
-            pGroup.nMaxPage -= pCache.nMax;
-            pGroup.nMinPage -= pCache.nMin;
-            pGroup.mxPinned = pGroup.nMaxPage + 10 - pGroup.nMinPage;
+            pGroup.MaxPages -= pCache.Max;
+            pGroup.MinPages -= pCache.Min;
+            pGroup.MaxPinned = pGroup.MaxPages + 10 - pGroup.MinPages;
             pcache1EnforceMaxPage(pGroup);
-            pcache1LeaveMutex(pGroup);
+            LeaveMutex(pGroup);
             pCache = null;
         }
 

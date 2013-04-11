@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Text;
-using Pgno = System.UInt32;
+using Pid = System.UInt32;
 using VFSACCESS = Core.IO.VFileSystem.ACCESS;
 using VFSLOCK = Core.IO.VFile.LOCK;
 using VFSOPEN = Core.IO.VFileSystem.OPEN;
@@ -13,15 +13,14 @@ namespace Core
     {
         public RC Close()
         {
-            var pTmp = this._tempSpace;
-            MallocEx.sqlite3BeginBenignMalloc();
-            this._exclusiveMode = false;
+            //MallocEx.sqlite3BeginBenignMalloc();
+            _exclusiveMode = false;
 #if !OMIT_WAL
-            pPager.pWal.sqlite3WalClose(pPager.ckptSyncFlags, pPager.pageSize, pTmp);
-            pPager.pWal = 0;
+            _eal.sqlite3WalClose(pPager.ckptSyncFlags, pPager.pageSize, _tempSpace);
+            _wal = 0;
 #endif
             pager_reset();
-            if (_inMemory)
+            if (_memoryDB)
                 pager_unlock();
             else
             {
@@ -35,9 +34,9 @@ namespace Core
                     pager_error(pagerSyncHotJournal());
                 pagerUnlockAndRollback();
             }
-            MallocEx.sqlite3EndBenignMalloc();
+            //MallocEx.sqlite3EndBenignMalloc();
             PAGERTRACE("CLOSE {0}", PAGERID(this));
-            SysEx.IOTRACE("CLOSE {0:x}", this.GetHashCode());
+            SysEx.IOTRACE("CLOSE {0:x}", GetHashCode());
             FileEx.OSClose(_journalFile);
             FileEx.OSClose(_file);
             _pcache.Close();
@@ -46,28 +45,28 @@ namespace Core
             return RC.OK;
         }
 
-        private static RC readDbPage(PgHdr pPg)
+        private static RC readDbPage(PgHdr page)
         {
-            var pPager = pPg.Pager;    // Pager object associated with page pPg
-            var pgno = pPg.ID;        // Page number to read
+            var pPager = page.Pager;    // Pager object associated with page pPg
+            var pgno = page.ID;        // Page number to read
             var rc = RC.OK;         // Return code
             var isInWal = 0;            // True if page is in log file
             var pgsz = pPager._pageSize; // Number of bytes to read
-            Debug.Assert(pPager._state >= PAGER.READER && !pPager._inMemory);
+            Debug.Assert(pPager._state >= PAGER.READER && !pPager._memoryDB);
             Debug.Assert(pPager._file.Open);
-            if (WIN.NEVER(!pPager._file.Open))
+            if (SysEx.NEVER(!pPager._file.Open))
             {
                 Debug.Assert(pPager._tempFile);
-                Array.Clear(pPg.Data, 0, pPager._pageSize);
+                Array.Clear(page._Data, 0, pPager._pageSize);
                 return RC.OK;
             }
             if (pPager.pagerUseWal())
                 // Try to pull the page from the write-ahead log.
-                rc = pPager._wal.Read(pgno, ref isInWal, pgsz, pPg.Data);
+                rc = pPager._wal.Read(pgno, ref isInWal, pgsz, page._Data);
             if (rc == RC.OK && 0 == isInWal)
             {
                 var iOffset = (pgno - 1) * (long)pPager._pageSize;
-                rc = pPager._file.Read(pPg.Data, pgsz, iOffset);
+                rc = pPager._file.Read(page._Data, pgsz, iOffset);
                 if (rc == RC.IOERR_SHORT_READ)
                     rc = RC.OK;
             }
@@ -82,16 +81,16 @@ namespace Core
                     // white noising equaling 16 bytes of 0xff is vanishingly small so we should still be ok.
                     for (int i = 0; i < pPager._dbFileVers.Length; pPager._dbFileVers[i++] = 0xff) ; // memset(pPager.dbFileVers, 0xff, sizeof(pPager.dbFileVers));
                 else
-                    Buffer.BlockCopy(pPg.Data, 24, pPager._dbFileVers, 0, pPager._dbFileVers.Length);
+                    Buffer.BlockCopy(page._Data, 24, pPager._dbFileVers, 0, pPager._dbFileVers.Length);
             }
-            if (CODEC1(pPager, pPg.Data, pgno, codec_ctx.DECRYPT))
+            if (CODEC1(pPager, page._Data, pgno, codec_ctx.DECRYPT))
                 rc = RC.NOMEM;
             SysEx.IOTRACE("PGIN {0:x} {1}", pPager.GetHashCode(), pgno);
-            PAGERTRACE("FETCH {0} page {1}% hash({2,08:x})", PAGERID(pPager), pgno, pager_pagehash(pPg));
+            PAGERTRACE("FETCH {0} page {1}% hash({2,08:x})", PAGERID(pPager), pgno, pager_pagehash(page));
             return rc;
         }
 
-        private RC pagerPagecount(ref Pgno pnPage)
+        private RC pagerPagecount(ref Pid pnPage)
         {
             // Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
             // if the database size is not available. The database size is not available from the WAL sub-system if the log file is empty or
@@ -112,19 +111,19 @@ namespace Core
                     if (rc != RC.OK)
                         return rc;
                 }
-                nPage = (Pgno)(n / _pageSize);
+                nPage = (Pid)(n / _pageSize);
                 if (nPage == 0 && n > 0)
                     nPage = 1;
             }
             // If the current number of pages in the file is greater than the configured maximum pager number, increase the allowed limit so
             // that the file can be read.
-            if (nPage > this._mxPgno)
-                this._mxPgno = (Pgno)nPage;
+            if (nPage > this._pids)
+                this._pids = (Pid)nPage;
             pnPage = nPage;
             return RC.OK;
         }
 
-        private RC pagerOpentemp(ref VirtualFile pFile, VFSOPEN vfsFlags)
+        private RC pagerOpentemp(ref VFile pFile, VFSOPEN vfsFlags)
         {
             vfsFlags |= VFSOPEN.READWRITE | VFSOPEN.CREATE | VFSOPEN.EXCLUSIVE | VFSOPEN.DELETEONCLOSE;
             VFSOPEN dummy = 0;
@@ -156,15 +155,15 @@ namespace Core
             var rc = RC.OK;
             // This routine is only called from b-tree and only when there are no outstanding pages. This implies that the pager state should either
             // be OPEN or READER. READER is only possible if the pager is or was in exclusive access mode.
-            Debug.Assert(this._pcache.sqlite3PcacheRefCount() == 0);
+            Debug.Assert(this._pcache.RefCount() == 0);
             Debug.Assert(assert_pager_state());
             Debug.Assert(this._state == PAGER.OPEN || this._state == PAGER.READER);
-            if (WIN.NEVER(_inMemory &&_errorCode != 0))
+            if (SysEx.NEVER(_memoryDB &&_errorCode != 0))
                 return _errorCode;
             if (!pagerUseWal() && _state == PAGER.OPEN)
             {
                 int bHotJournal = 1; // True if there exists a hot journal-file
-                Debug.Assert(_inMemory);
+                Debug.Assert(_memoryDB);
                 Debug.Assert(_noReadlock == 0 || _readOnly);
                 if (_noReadlock == 0)
                 {
@@ -257,7 +256,7 @@ namespace Core
                     // a codec is in use.
                     // There is a vanishingly small chance that a change will not be detected.  The chance of an undetected change is so small that
                     // it can be neglected.
-                    Pgno nPage = 0;
+                    Pid nPage = 0;
                     var dbFileVers = new byte[this._dbFileVers.Length];
                     rc = pagerPagecount(ref nPage);
                     if (rc != 0)
@@ -295,7 +294,7 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0==MEMDB
 #else
-0 == this._inMemory
+0 == this._memoryDB
 #endif
 );
                 pager_unlock();
@@ -426,7 +425,7 @@ namespace Core
             // The following call to PagerSetPagesize() serves to set the value of Pager.pageSize and to allocate the Pager.pTmpSpace buffer.
             if (rc == RC.OK)
             {
-                Debug.Assert(pPager._inMemory == 0);
+                Debug.Assert(pPager._memoryDB == 0);
                 rc = pPager.SetPageSize(ref szPageDflt, -1);
             }
             // If an error occurred in either of the blocks above, free the Pager structure and close the file.
@@ -444,7 +443,7 @@ namespace Core
             SysEx.IOTRACE("OPEN {0:x} {1}", pPager.GetHashCode(), pPager._filename);
             pPager._useJournal = (byte)(useJournal ? 1 : 0);
             pPager._noReadlock = (byte)(noReadlock && readOnly ? 1 : 0);
-            pPager._mxPgno = SQLITE_MAX_PAGE_COUNT;
+            pPager._pids = SQLITE_MAX_PAGE_COUNT;
 #if false
             Debug.Assert(pPager.state == (tempFile != 0 ? PAGER.EXCLUSIVE : PAGER.UNLOCK));
 #endif
@@ -452,7 +451,7 @@ namespace Core
             Debug.Assert(tempFile == LOCKINGMODE.NORMAL || tempFile == LOCKINGMODE.EXCLUSIVE);
             pPager._exclusiveMode = tempFile != 0;
             pPager._changeCountDone = pPager._tempFile;
-            pPager._inMemory = memDb;
+            pPager._memoryDB = memDb;
             pPager._readOnly = readOnly;
             Debug.Assert(useJournal || pPager._tempFile);
             pPager._noSync = pPager._tempFile;
@@ -481,7 +480,7 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0 == MEMDB
 #else
-0 == this._inMemory
+0 == this._memoryDB
 #endif
 );
                 rc = this._file.Sync(this._syncFlags);
@@ -492,7 +491,7 @@ namespace Core
 #if SQLITE_OMIT_MEMORYDB
 0 == MEMDB
 #else
-0 == this._inMemory
+0 == this._memoryDB
 #endif
 );
                 var refArg = 0L;

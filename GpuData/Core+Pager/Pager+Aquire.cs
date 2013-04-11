@@ -1,104 +1,91 @@
 ﻿using System;
 using System.Diagnostics;
-using DbPage = Core.PgHdr;
-using Pgno = System.UInt32;
+using Pid = System.UInt32;
 namespace Core
 {
     public partial class Pager
     {
-        public RC Get(Pgno pgno, ref DbPage ppPage, byte noContent = 0)
+        public RC Get(Pid pid, ref PgHdr page, bool noContent = false)
         {
             Debug.Assert(_state >= PAGER.READER);
             Debug.Assert(assert_pager_state());
-            if (pgno == 0)
-                return WIN.SQLITE_CORRUPT_BKPT();
+            if (pid == 0)
+                return SysEx.CORRUPT_BKPT();
             // If the pager is in the error state, return an error immediately.  Otherwise, request the page from the PCache layer.
-            var rc = (_errorCode != RC.OK ? _errorCode : _pcache.FetchPage(pgno, 1, ref ppPage));
-            PgHdr pPg = null;
+            var rc = (_errorCode != RC.OK ? _errorCode : _pcache.FetchPage(pid, 1, out page));
             if (rc != RC.OK)
             {
-                // Either the call to sqlite3PcacheFetch() returned an error or the pager was already in the error-state when this function was called.
-                // Set pPg to 0 and jump to the exception handler.  */
-                pPg = null;
+                page = null;
                 goto pager_get_err;
             }
-            Debug.Assert((ppPage).ID == pgno);
-            Debug.Assert((ppPage).Pager == this || (ppPage).Pager == null);
-            if ((ppPage).Pager != null && 0 == noContent)
+            Debug.Assert(page.ID == pid);
+            Debug.Assert(page.Pager == this || page.Pager == null);
+            if (page.Pager != null && !noContent)
             {
                 // In this case the pcache already contains an initialized copy of the page. Return without further ado.
-                Debug.Assert(pgno <= PAGER_MAX_PGNO && pgno != PAGER_MJ_PGNO(this));
+                Debug.Assert(pid <= MAX_PID && pid != MJ_PID(this));
                 return RC.OK;
+            }
+            // The pager cache has created a new page. Its content needs to be initialized.
+            page.Pager = this;
+            page.Extra = _memPageBuilder;
+            // The maximum page number is 2^31. Return CORRUPT if a page number greater than this, or the unused locking-page, is requested.
+            if (pid > MAX_PID || pid == MJ_PID(this))
+            {
+                rc = SysEx.CORRUPT_BKPT();
+                goto pager_get_err;
+            }
+            if (_memoryDB || _dbSize < pid || noContent || !_file.Open)
+            {
+                if (pid > _pids)
+                {
+                    rc = RC.FULL;
+                    goto pager_get_err;
+                }
+                if (noContent)
+                {
+                    if (pid <= _dbOrigSize)
+                        _inJournal.Set(pid);
+                    addToSavepointBitvecs(pid);
+                }
+                Array.Clear(page._Data, 0, _pageSize);
+                SysEx.IOTRACE("ZERO {0:x} {1}\n", GetHashCode(), pid);
             }
             else
             {
-                // The pager cache has created a new page. Its content needs to be initialized.
-                pPg = ppPage;
-                pPg.Pager = this;
-                pPg.Extra = _memPageBuilder;
-                // The maximum page number is 2^31. Return SQLITE_CORRUPT if a page number greater than this, or the unused locking-page, is requested.
-                if (pgno > PAGER_MAX_PGNO || pgno == PAGER_MJ_PGNO(this))
-                {
-                    rc = WIN.SQLITE_CORRUPT_BKPT();
+                Debug.Assert(page.Pager == this);
+                rc = readDbPage(page);
+                if (rc != RC.OK)
                     goto pager_get_err;
-                }
-                if (_inMemory != 0 || _dbSize < pgno || noContent != 0 || !_file.Open)
-                {
-                    if (pgno > _mxPgno)
-                    {
-                        rc = RC.FULL;
-                        goto pager_get_err;
-                    }
-                    if (noContent != 0)
-                    {
-                        // Failure to set the bits in the InJournal bit-vectors is benign. It merely means that we might do some extra work to journal a
-                        // page that does not need to be journaled.  Nevertheless, be sure to test the case where a malloc error occurs while trying to set
-                        // a bit in a bit vector.
-                        if (pgno <= _dbOrigSize)
-                            _inJournal.Set(pgno);
-                        addToSavepointBitvecs(pgno);
-                    }
-                    Array.Clear(pPg.Data, 0, _pageSize);
-                    Console.WriteLine("ZERO {0:x} {1}\n", GetHashCode(), pgno);
-                }
-                else
-                {
-                    Debug.Assert(pPg.Pager == this);
-                    rc = readDbPage(pPg);
-                    if (rc != RC.OK)
-                        goto pager_get_err;
-                }
-                pager_set_pagehash(pPg);
             }
+            pager_set_pagehash(page);
             return RC.OK;
         pager_get_err:
             Debug.Assert(rc != RC.OK);
-            if (pPg != null)
-                PCache.DropPage(pPg);
-            pagerUnlockIfUnused();
-            ppPage = null;
+            if (page != null)
+                PCache.DropPage(page);
+            UnlockIfUnused();
+            page = null;
             return rc;
         }
 
-        // was:sqlite3PagerLookup
-        public DbPage Lookup(Pgno pgno)
+        public PgHdr Lookup(Pid pid)
         {
-            PgHdr pPg = null;
-            Debug.Assert(pgno != 0);
+            Debug.Assert(pid != 0);
             Debug.Assert(_pcache != null);
             Debug.Assert(_state >= PAGER.READER && _state != PAGER.ERROR);
-            _pcache.FetchPage(pgno, 0, ref pPg);
-            return pPg;
+            PgHdr page;
+            _pcache.FetchPage(pid, 0, out page);
+            return page;
         }
 
-        // was:sqlite3PagerUnref
-        public static void Unref(DbPage pPg)
+        public static void Unref(PgHdr page)
         {
-            if (pPg != null)
+            if (page != null)
             {
-                var pPager = pPg.Pager;
-                PCache.ReleasePage(pPg);
-                pPager.pagerUnlockIfUnused();
+                var pager = page.Pager;
+                PCache.ReleasePage(page);
+                pager.UnlockIfUnused();
             }
         }
     }

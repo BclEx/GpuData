@@ -1,10 +1,12 @@
 ﻿using IPgHdr = Core.Name.PgHdr1;
-using Pgno = System.UInt32;
+using Pid = System.UInt32;
 namespace Core
 {
     public class PgHdr
     {
-        public enum PGHDR : int
+        public byte[] _Data;
+
+        public enum PGHDR : ushort
         {
             DIRTY = 0x002, // Page has changed
             NEED_SYNC = 0x004, // Fsync the rollback journal before writing this page to the database
@@ -13,45 +15,43 @@ namespace Core
             DONT_WRITE = 0x020, // Do not write content to disk
         }
 
-        public byte[] Data;          // Content of this page
         public object Extra;        // Extra content
         public PgHdr Dirtys;          // Transient list of dirty pages
-        public Pgno ID;             // The page number for this page
+        public Pid ID;             // The page number for this page
         public Pager Pager;          // The pager to which this page belongs
-#if DEBUG
+#if CHECK_PAGES
         public uint PageHash;          // Hash of page content
 #endif
         public PGHDR Flags;             // PGHDR flags defined below
 
-        // Elements above are public.  All that follows is private to pcache.c and should not be accessed by other modules.
-
-        public int Refs;              // Number of users of this page
-        public PCache Cache;         // Cache that owns this page
-        public bool CacheAllocated;   // True, if allocated from cache
-
-        public PgHdr DirtyNext;      // Next element in list of dirty pages
-        public PgHdr DirtyPrev;      // Previous element in list of dirty pages
+        public bool CacheAllocated; // True, if allocated from cache
         public IPgHdr PgHdr1;        // Cache page header this this page
+
+        // Elements above are public.  All that follows is private to pcache.c and should not be accessed by other modules.
+        internal int Refs;            // Number of users of this page
+        internal PCache Cache;        // Cache that owns this page
+        internal PgHdr DirtyNext;      // Next element in list of dirty pages
+        internal PgHdr DirtyPrev;      // Previous element in list of dirty pages
 
         public static implicit operator bool(PgHdr b) { return (b != null); }
 
         public void ClearState()
         {
-            this.Data = null;
-            this.Extra = null;
-            this.Dirtys = null;
-            this.ID = 0;
-            this.Pager = null;
+            _Data = null;
+            Extra = null;
+            Dirtys = null;
+            ID = 0;
+            Pager = null;
 #if DEBUG
-            this.PageHash = 0;
+            PageHash = 0;
 #endif
-            this.Flags = 0;
-            this.Refs = 0;
-            this.CacheAllocated = false;
-            this.Cache = null;
-            this.DirtyNext = null;
-            this.DirtyPrev = null;
-            this.PgHdr1 = null;
+            Flags = 0;
+            Refs = 0;
+            CacheAllocated = false;
+            Cache = null;
+            DirtyNext = null;
+            DirtyPrev = null;
+            PgHdr1 = null;
         }
     }
 }

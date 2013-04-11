@@ -261,7 +261,7 @@ namespace Core
             var iHdrOff = this._journalOff; // Offset of header in journal file
             // Write the master journal data to the end of the journal file. If an error occurs, return the error code to the caller.
             RC rc;
-            if (RC.OK != (rc = this._journalFile.WriteByte(iHdrOff, (uint)PAGER_MJ_PGNO(this)))
+            if (RC.OK != (rc = this._journalFile.WriteByte(iHdrOff, (uint)MJ_PID(this)))
                 || RC.OK != (rc = this._journalFile.Write(Encoding.UTF8.GetBytes(zMaster), nMaster, iHdrOff + 4))
                 || RC.OK != (rc = this._journalFile.WriteByte(iHdrOff + 4 + nMaster, (uint)nMaster))
                 || RC.OK != (rc = this._journalFile.WriteByte(iHdrOff + 4 + nMaster + 4, cksum))
@@ -402,7 +402,7 @@ namespace Core
                 // If the sub-journal was opened successfully (or was already open), write the journal record into the file. 
                 if (rc == RC.OK)
                 {
-                    var pData = pPg.Data;
+                    var pData = pPg._Data;
                     long offset = pPager._nSubRec * (4 + pPager._pageSize);
                     byte[] pData2 = null;
                     if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
@@ -453,14 +453,14 @@ namespace Core
                     if (rc == RC.OK)
                         if (nPage == 0)
                         {
-                            MallocEx.sqlite3BeginBenignMalloc();
+                            MallocEx.BeginBenignMalloc();
                             if (pagerLockDb(VFSLOCK.RESERVED) == RC.OK)
                             {
                                 pVfs.xDelete(this._journal, 0);
                                 if (!this._exclusiveMode)
                                     pagerUnlockDb(VFSLOCK.SHARED);
                             }
-                            MallocEx.sqlite3EndBenignMalloc();
+                            MallocEx.EndBenignMalloc();
                         }
                         else
                         {

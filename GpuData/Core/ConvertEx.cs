@@ -269,7 +269,7 @@ namespace Core
         {
             byte i = 0;
             do { i++; v >>= 7; }
-            while (v != 0 && WIN.ALWAYS(i < 9));
+            while (v != 0 && SysEx.ALWAYS(i < 9));
             return i;
         }
 

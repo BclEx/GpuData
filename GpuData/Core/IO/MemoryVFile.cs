@@ -37,7 +37,7 @@ namespace Core.IO
             if (_readpoint.Offset != offset || offset == 0)
             {
                 var offset2 = 0;
-                for (chunk = First; WIN.ALWAYS(chunk != null) && (offset2 + JOURNAL_CHUNKSIZE) <= offset; chunk = chunk.Next)
+                for (chunk = First; SysEx.ALWAYS(chunk != null) && (offset2 + JOURNAL_CHUNKSIZE) <= offset; chunk = chunk.Next)
                     offset2 += JOURNAL_CHUNKSIZE;
             }
             else

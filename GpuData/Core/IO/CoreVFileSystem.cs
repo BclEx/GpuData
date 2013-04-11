@@ -98,8 +98,8 @@ namespace Core.IO
             if (fs == null || fs.SafeFileHandle.IsInvalid)
             {
                 file.LastErrorID = (uint)Marshal.GetLastWin32Error();
-                WIN._Error(RC.CANTOPEN, "winOpen", path);
-                return (readWrite ? Open(path, file, ((flags | OPEN.READONLY) & ~(OPEN.CREATE | OPEN.READWRITE)), out outFlags) : WIN.SQLITE_CANTOPEN_BKPT());
+                SysEx._Error(RC.CANTOPEN, "winOpen", path);
+                return (readWrite ? Open(path, file, ((flags | OPEN.READONLY) & ~(OPEN.CREATE | OPEN.READWRITE)), out outFlags) : SysEx.SQLITE_CANTOPEN_BKPT());
             }
             outFlags = (readWrite ? OPEN.READWRITE : OPEN.READONLY);
             file.Clear();
@@ -130,7 +130,7 @@ namespace Core.IO
             if (rc == RC.OK)
                 return rc;
             error = Marshal.GetLastWin32Error();
-            return (rc == RC.INVALID && error == WIN.ERROR_FILE_NOT_FOUND ? RC.OK : WIN._Error(RC.IOERR_DELETE, "winDelete", path));
+            return (rc == RC.INVALID && error == SysEx.ERROR_FILE_NOT_FOUND ? RC.OK : SysEx._Error(RC.IOERR_DELETE, "winDelete", path));
         }
 
         public override RC Access(string path, ACCESS flags, out int outRC)
@@ -156,7 +156,7 @@ namespace Core.IO
                     }
                     catch (IOException) { attr = FileAttributes.ReadOnly; }
             }
-            catch (IOException) { WIN._Error(RC.IOERR_ACCESS, "winAccess", path); }
+            catch (IOException) { SysEx._Error(RC.IOERR_ACCESS, "winAccess", path); }
             switch (flags)
             {
                 case ACCESS.READ:
