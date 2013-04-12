@@ -23,8 +23,8 @@ namespace Core
         private class _u
         {
             public byte[] Bitmap = new byte[BITVEC_NELEM]; // Bitmap representation
-            public uint[] Hash = new uint[BITVEC_NINT];              // Hash table representation
-            public Bitvec[] Sub = new Bitvec[BITVEC_NPTR];        // Recursive representation
+            public uint[] Hash = new uint[BITVEC_NINT];     // Hash table representation
+            public Bitvec[] Sub = new Bitvec[BITVEC_NPTR];  // Recursive representation
         }
         private _u u = new _u();
 
@@ -32,17 +32,6 @@ namespace Core
         {
             _size = size;
         }
-
-        public static void Destroy(ref Bitvec p)
-        {
-            if (p == null)
-                return;
-            if (p._divisor != 0)
-                for (uint i = 0; i < BITVEC_NPTR; i++)
-                    Destroy(ref p.u.Sub[i]);
-        }
-
-        public uint Length { get { return _size; } }
 
         public static implicit operator bool(Bitvec b) { return (b != null); }
 
@@ -56,7 +45,7 @@ namespace Core
         /// <returns></returns>
         public bool Get(uint index)
         {
-            if (index == 0 || index > _size)
+            if (index > _size || index == 0)
                 return false;
             index--;
             var p = this;
@@ -159,8 +148,7 @@ namespace Core
                 uint bin = index / p._divisor;
                 index %= p._divisor;
                 p = p.u.Sub[bin];
-                if (p == null)
-                    return;
+                if (p == null) return;
             }
             if (p._size <= BITVEC_NBIT)
                 p.u.Bitmap[index / BITVEC_SZELEM] &= (byte)~((1 << (int)(index & (BITVEC_SZELEM - 1))));
@@ -183,6 +171,20 @@ namespace Core
                         p.u.Hash[h] = values[j];
                     }
             }
+        }
+
+        public static void Destroy(ref Bitvec p)
+        {
+            if (p == null)
+                return;
+            if (p._divisor != 0)
+                for (uint index = 0; index < BITVEC_NPTR; index++)
+                    Destroy(ref p.u.Sub[index]);
+        }
+
+        public uint Length
+        {
+            get { return _size; }
         }
     }
 }

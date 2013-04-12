@@ -136,23 +136,35 @@
     <Compile Include="Core+PCache1\00.PGroup.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Core\Bitvec.cs" />
-    <Compile Include="Core\MutexEx.cs" />
-    <Compile Include="Core\ConvertEx.cs" />
-    <Compile Include="Core\StatusEx.cs" />
+    <Compile Include="Core\00.Bitvec.cs" />
+    <Compile Include="Core\20.MutexEx.cs" />
+    <Compile Include="Core\10.ConvertEx.cs" />
+    <Compile Include="Core\40.StatusEx.cs" />
     <Compile Include="Main.cs" />
-    <Compile Include="Core\SysEx.cs" />
-    <Compile Include="Core\RC.cs" />
-    <Compile Include="Core\IO\VFile.cs" />
-    <Compile Include="Core\IO\VFileSystem.cs" />
-    <Compile Include="Core\IO\MemoryVFile.cs" />
-    <Compile Include="Core\IO\CoreVFile.cs" />
-    <Compile Include="Core\IO\CoreVFileSystem.cs" />
+    <Compile Include="Core\50.SysEx.cs" />
+    <Compile Include="Core\30.RC.cs" />
+    <Compile Include="Core\IO\30.VFile.cs" />
+    <Compile Include="Core\IO\40.VFileSystem.cs" />
+    <Compile Include="Core\IO\20.MemoryVFile.cs" />
+    <Compile Include="Core\IO\00.CoreVFile.cs" />
+    <Compile Include="Core\IO\10.CoreVFileSystem.cs" />
     <Content Include="Core+PCache1\30.PgFreeslot.cpp" />
     <Content Include="Core+PCache1\40.PCacheGlobal.cpp" />
     <Content Include="Core+PCache1\11.PCache1+PageAllocation.cpp" />
     <Content Include="Core+PCache1\12.PCache1+General.cpp" />
     <Content Include="Core+PCache1\13.PCache1+Interface.cpp" />
+    <Content Include="Core\00.Bitvec.cpp" />
+    <Content Include="Core\10.ConvertEx.cpp" />
+    <Content Include="Core\20.MutexEx.cpp" />
+    <Content Include="Core\30.RC.cpp" />
+    <Content Include="Core\40.StatusEx.cpp" />
+    <Content Include="Core\50.SysEx.cpp" />
+    <Content Include="Core\01.Bitvec-Tests.cpp" />
+    <Content Include="Core\IO\00.CoreVFile.cpp" />
+    <Content Include="Core\IO\10.CoreVFileSystem.cpp" />
+    <Content Include="Core\IO\20.MemoryVFile.cpp" />
+    <Content Include="Core\IO\30.VFile.cpp" />
+    <Content Include="Core\IO\40.VFileSystem.cpp" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup />

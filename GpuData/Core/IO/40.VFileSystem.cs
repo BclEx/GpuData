@@ -64,11 +64,11 @@ namespace Core.IO
         public static VFileSystem FindVfs(string name)
         {
             if (string.IsNullOrEmpty(name))
-            return null;
+                return null;
             VFileSystem vfs = null;
             var mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
             MutexEx.Enter(mutex);
-            for (vfs = _vfsList; vfs != null && name != vfs.Name; vfs = vfs.Next) {}
+            for (vfs = _vfsList; vfs != null && name != vfs.Name; vfs = vfs.Next) { }
             MutexEx.Leave(mutex);
             return vfs;
         }

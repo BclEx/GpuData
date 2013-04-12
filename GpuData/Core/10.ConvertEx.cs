@@ -33,7 +33,11 @@ namespace Core
             uint a, b, s;
             a = p[offset + 0];
             // a: p0 (unmasked) 
-            if (0 == (a & 0x80)) { v = a; return 1; }
+            if ((a & 0x80) == 0)
+            {
+                v = a;
+                return 1;
+            }
             b = p[offset + 1];
             // b: p1 (unmasked)
             if (0 == (b & 0x80))
@@ -122,7 +126,7 @@ namespace Core
                 v = ((ulong)s) << 32 | a;
                 return 7;
             }
-            /* CSE2 from below */
+            // CSE2 from below
             a &= SLOT_0_2_0;
             //p++;
             b = b << 14;
@@ -190,8 +194,7 @@ namespace Core
             }
             // A 32-bit varint is used to store size information in btrees. Objects are rarely larger than 2MiB limit of a 3-byte varint.
             // A 3-byte varint is sufficient, for example, to record the size of a 1048569-byte BLOB or string.
-            // We only unroll the first 1-, 2-, and 3- byte cases.  The very rare larger cases can be handled by the slower 64-bit varint
-            // routine.
+            // We only unroll the first 1-, 2-, and 3- byte cases.  The very rare larger cases can be handled by the slower 64-bit varint routine.
             {
                 ulong ulong_v = 0;
                 byte n = _getVariant9L(p, offset, out ulong_v);
