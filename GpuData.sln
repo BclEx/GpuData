@@ -3,16 +3,40 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GpuData", "GpuData\GpuData.csproj", "{30180E7B-AABE-4F33-9C2C-F8A447024674}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GpuTest", "GpuData\GpuTest\GpuTest.vcxproj", "{780961B3-26FB-4322-90F1-909E861E9628}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|Mixed Platforms = Debug|Mixed Platforms
+		Debug|Win32 = Debug|Win32
 		Release|Any CPU = Release|Any CPU
+		Release|Mixed Platforms = Release|Mixed Platforms
+		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Debug|Mixed Platforms.ActiveCfg = Debug|x86
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Debug|Mixed Platforms.Build.0 = Debug|x86
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Debug|Win32.ActiveCfg = Debug|x86
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Debug|Win32.Build.0 = Debug|x86
 		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Release|Mixed Platforms.ActiveCfg = Release|x86
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Release|Mixed Platforms.Build.0 = Release|x86
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Release|Win32.ActiveCfg = Release|x86
+		{30180E7B-AABE-4F33-9C2C-F8A447024674}.Release|Win32.Build.0 = Release|x86
+		{780961B3-26FB-4322-90F1-909E861E9628}.Debug|Any CPU.ActiveCfg = Debug|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Debug|Mixed Platforms.Build.0 = Debug|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Debug|Win32.ActiveCfg = Debug|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Debug|Win32.Build.0 = Debug|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Release|Any CPU.ActiveCfg = Release|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Release|Mixed Platforms.ActiveCfg = Release|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Release|Mixed Platforms.Build.0 = Release|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Release|Win32.ActiveCfg = Release|Win32
+		{780961B3-26FB-4322-90F1-909E861E9628}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

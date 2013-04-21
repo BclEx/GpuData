@@ -1,12 +1,13 @@
 ﻿namespace Core
 {
-	struct PGroup 
-	{
-		MutexEx *Mutex;					// MUTEX_STATIC_LRU or NULL
-		unsigned int MaxPages;			// Sum of nMax for purgeable caches
-		unsigned int MinPages;			// Sum of nMin for purgeable caches
-		unsigned int MaxPinned;         // nMaxpage + 10 - nMinPage
-		unsigned int CurrentPage;		// Number of purgeable pages allocated
-		PgHdr1 *LruHead, *LruTail;		// LRU list of unpinned pages
-	};
+
+#ifdef OMIT_WSD
+# define PENDING_BYTE     (0x40000000)
+#else
+# define PENDING_BYTE      sqlite3PendingByte
+#endif
+#define RESERVED_BYTE     (PENDING_BYTE+1)
+#define SHARED_FIRST      (PENDING_BYTE+2)
+#define SHARED_SIZE       510
+
 }

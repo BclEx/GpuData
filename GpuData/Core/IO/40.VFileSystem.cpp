@@ -1,6 +1,6 @@
 ﻿namespace Core
 {
-	static sqlite3_vfs *_vfsList = nullptr;
+	static VFileSystem::VFileSystem *_vfsList = nullptr;
 
 	VFileSystem *VFileSystem::Find(const char *name)
 	{
@@ -14,7 +14,7 @@
 		return vfs;
 	}
 
-	static void VFileSystem::UnlinkVfs(VFileSystem *vfs)
+	void VFileSystem::UnlinkVfs(VFileSystem *vfs)
 	{
 		assert(MutexEx::Held(MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER)));
 		if (!vfs) { }
@@ -30,7 +30,7 @@
 		}
 	}
 
-	int VFileSystme::RegisterVfs(VFileSystem *vfs, bool _default)
+	int VFileSystem::RegisterVfs(VFileSystem *vfs, bool _default)
 	{
 		MutexEx *mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER);
 		MutexEx::Enter(mutex);

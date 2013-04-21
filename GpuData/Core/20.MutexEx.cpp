@@ -1,12 +1,11 @@
 ﻿namespace Core
 {
-	struct PGroup 
+	class MutexEx 
 	{
-		MutexEx *Mutex;					// MUTEX_STATIC_LRU or NULL
-		unsigned int MaxPages;			// Sum of nMax for purgeable caches
-		unsigned int MinPages;			// Sum of nMin for purgeable caches
-		unsigned int MaxPinned;         // nMaxpage + 10 - nMinPage
-		unsigned int CurrentPage;		// Number of purgeable pages allocated
-		PgHdr1 *LruHead, *LruTail;		// LRU list of unpinned pages
+		inline static void Enter(MutexEx mutex) { }
+		inline static void Leave(MutexEx mutex) { }
+		inline static bool Held(MutexEx mutex) { return true; }
+		inline static bool NotHeld(MutexEx mutex) { return true; }
+		inline static void Free(MutexEx mutex) { }
 	};
 }
