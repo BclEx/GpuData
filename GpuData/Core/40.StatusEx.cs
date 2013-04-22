@@ -17,7 +17,6 @@ namespace Core
             MALLOC_COUNT = 9,
         }
 
-
         public class sqlite3StatType
         {
             public int[] nowValue = new int[10];        // Current value
@@ -26,7 +25,7 @@ namespace Core
 
         public static sqlite3StatType sqlite3Stat = new sqlite3StatType();
 
-#if SQLITE_OMIT_WSD
+#if OMIT_WSD
 #else
         internal static void wsdStatInit() { }
         internal static sqlite3StatType wsdStat = sqlite3Stat;

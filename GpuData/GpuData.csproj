@@ -140,6 +140,7 @@
     <Compile Include="Core\20.MutexEx.cs" />
     <Compile Include="Core\10.ConvertEx.cs" />
     <Compile Include="Core\40.StatusEx.cs" />
+    <Compile Include="Core\01.Bitvec-Tests.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Core\50.SysEx.cs" />
     <Compile Include="Core\30.RC.cs" />
@@ -153,19 +154,22 @@
     <Content Include="Core+PCache1\11.PCache1+PageAllocation.cpp" />
     <Content Include="Core+PCache1\12.PCache1+General.cpp" />
     <Content Include="Core+PCache1\13.PCache1+Interface.cpp" />
-    <Content Include="Core\00.Bitvec.cpp" />
-    <Content Include="Core\10.ConvertEx.cpp" />
-    <Content Include="Core\20.MutexEx.cpp" />
-    <Content Include="Core\30.RC.cpp" />
+    <None Include="Core\00.Bitvec.cu" />
+    <None Include="Core\10.ConvertEx.cu" />
+    <Content Include="Core\00.Bitvec.cu.h" />
+    <Content Include="Core\20.MutexEx.cu.h" />
+    <Content Include="Core\30.RC.cu.h" />
     <Content Include="Core\40.StatusEx.cpp" />
-    <Content Include="Core\50.SysEx.cpp" />
-    <Content Include="Core\01.Bitvec-Tests.cpp" />
+    <Content Include="Core\50.SysEx.cu.h" />
+    <None Include="Core\01.Bitvec-Tests.cu" />
+    <Content Include="Core\Core+Types.cu.h" />
+    <Content Include="Core\Core.cu.h" />
     <Content Include="Core\IO\00.CoreVFile.cpp" />
     <Content Include="Core\IO\10.CoreVFileSystem.cpp" />
     <Content Include="Core\IO\20.MemoryVFile.cpp" />
     <Content Include="Core\IO\30.VFile.cpp" />
     <Content Include="Core\IO\40.VFileSystem.cpp" />
+    <None Include="Core\50.SysEx.cu" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
-  <ItemGroup />
 </Project>
