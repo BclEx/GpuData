@@ -1,4 +1,5 @@
-﻿namespace Core
+﻿//bitvec.c
+namespace Core
 {
 #define BITVEC_SZ 512
 #define BITVEC_USIZE (((BITVEC_SZ - (3 * sizeof(uint32))) / sizeof(Bitvec *)) * sizeof(Bitvec *))

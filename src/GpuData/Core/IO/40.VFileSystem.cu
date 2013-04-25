@@ -1,4 +1,5 @@
-﻿namespace Core
+﻿//
+namespace Core
 {
 	static VFileSystem::VFileSystem *_vfsList = nullptr;
 

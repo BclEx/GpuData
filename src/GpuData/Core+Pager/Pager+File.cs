@@ -107,7 +107,7 @@ namespace Core
                 Debug.Assert(_file.Open || _tempFile);
                 if (_file.Open)
                 {
-                    var rc = _file.FileSize(ref n);
+                    var rc = _file.get_FileSize(ref n);
                     if (rc != RC.OK)
                         return rc;
                 }

@@ -107,7 +107,7 @@ namespace Core
                 if (rc == RC.OK && iLimit > 0)
                 {
                     long sz = 0;
-                    rc = this._journalFile.FileSize(ref sz);
+                    rc = this._journalFile.get_FileSize(ref sz);
                     if (rc == RC.OK && sz > iLimit)
                         rc = this._journalFile.Truncate(iLimit);
                 }
@@ -273,7 +273,7 @@ namespace Core
             // will not be able to find the master-journal name to determine whether or not the journal is hot.
             // Easiest thing to do in this scenario is to truncate the journal file to the required size.
             long jrnlSize = 0;  // Size of journal file on disk
-            if (RC.OK == (rc = this._journalFile.FileSize(ref jrnlSize)) && jrnlSize > this._journalOff)
+            if (RC.OK == (rc = this._journalFile.get_FileSize(ref jrnlSize)) && jrnlSize > this._journalOff)
                 rc = this._journalFile.Truncate(this._journalOff);
             return rc;
         }
@@ -284,7 +284,7 @@ namespace Core
             if (!this._noSync)
                 rc = this._journalFile.Sync(VirtualFile.SYNC.NORMAL);
             if (rc == RC.OK)
-                rc = this._journalFile.FileSize(ref this._journalHdr);
+                rc = this._journalFile.get_FileSize(ref this._journalHdr);
             return rc;
         }
 

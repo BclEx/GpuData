@@ -96,7 +96,7 @@ namespace Core.IO
 #endif
         }
 
-        public override RC FileSize(ref long size)
+        public override RC get_FileSize(ref long size)
         {
             size = (S.CanRead ? S.Length : 0);
             return RC.OK;

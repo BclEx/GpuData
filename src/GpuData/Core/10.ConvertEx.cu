@@ -1,4 +1,5 @@
-﻿#include "Core.cu.h"
+﻿//
+#include "Core.cu.h"
 using namespace Core;
 
 namespace Core

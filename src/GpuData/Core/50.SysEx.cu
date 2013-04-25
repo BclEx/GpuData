@@ -3,8 +3,9 @@ using namespace Core;
 
 namespace Core
 {
-	//static uint8 randomByte()
-	//{
+	static uint8 randomByte()
+	{
+		return 1;
 	//	unsigned char t;
 	//	if(!wsdPrng.isInit)
 	//	{
@@ -31,15 +32,15 @@ namespace Core
 	//	wsdPrng.s[wsdPrng.j] = t;
 	//	t += wsdPrng.s[wsdPrng.i];
 	//	return wsdPrng.s[t];
-	//}
+	}
 
 	void SysEx::SetRandom(int n, void *buffer)
 	{
 		unsigned char *b = (unsigned char *)buffer;
 		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_PRNG);
 		MutexEx::Enter(mutex);
-		//while (n--)
-		//	*(b++) = randomByte();
+		while (n--)
+			*(b++) = randomByte();
 		MutexEx::Leave(mutex);
 	}
 

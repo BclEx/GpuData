@@ -14,8 +14,8 @@ namespace Core.IO
 
         public class FilePoint
         {
-            public long Offset;           // Offset from the beginning of the file 
-            public FileChunk Chunk;      // Specific chunk into which cursor points 
+            public long Offset;     // Offset from the beginning of the file 
+            public FileChunk Chunk; // Specific chunk into which cursor points 
         }
 
         public FileChunk First;              // Head of in-memory chunk-list
@@ -26,8 +26,6 @@ namespace Core.IO
         {
             Open = true;
         }
-
-        public override RC Close() { Truncate(0); return RC.OK; }
 
         public override RC Read(byte[] buffer, int amount, long offset)
         {
@@ -43,15 +41,15 @@ namespace Core.IO
             else
                 chunk = _readpoint.Chunk;
             var chunkOffset = (int)(offset % JOURNAL_CHUNKSIZE);
-            var izOut = 0;
+            var @out = 0;
             var read = amount;
             do
             {
-                var spaceTE = JOURNAL_CHUNKSIZE - chunkOffset;
-                var space = Math.Min(read, spaceTE);
-                Buffer.BlockCopy(chunk.Chunk, chunkOffset, buffer, izOut, space);
-                izOut += space;
-                read -= spaceTE;
+                var space = JOURNAL_CHUNKSIZE - chunkOffset;
+                var copy = Math.Min(read, space);
+                Buffer.BlockCopy(chunk.Chunk, chunkOffset, buffer, @out, copy);
+                @out += copy;
+                read -= space;
                 chunkOffset = 0;
             } while (read >= 0 && (chunk = chunk.Next) != null && read > 0);
             _readpoint.Offset = (int)(offset + amount);
@@ -63,7 +61,7 @@ namespace Core.IO
         {
             // An in-memory journal file should only ever be appended to. Random access writes are not required by sqlite.
             Debug.Assert(offset == _endpoint.Offset);
-            var izWrite = 0;
+            var b = 0;
             while (amount > 0)
             {
                 var chunk = _endpoint.Chunk;
@@ -80,8 +78,8 @@ namespace Core.IO
                     else { Debug.Assert(First == null); First = newChunk; }
                     _endpoint.Chunk = newChunk;
                 }
-                Buffer.BlockCopy(buffer, izWrite, _endpoint.Chunk.Chunk, chunkOffset, space);
-                izWrite += space;
+                Buffer.BlockCopy(buffer, b, _endpoint.Chunk.Chunk, chunkOffset, space);
+                b += space;
                 amount -= space;
                 _endpoint.Offset += space;
             }
@@ -91,12 +89,12 @@ namespace Core.IO
         public override RC Truncate(long size)
         {
             Debug.Assert(size == 0);
-            var pChunk = First;
-            while (pChunk != null)
-            {
-                var pTmp = pChunk;
-                pChunk = pChunk.Next;
-            }
+            //var chunk = First;
+            //while (chunk != null)
+            //{
+            //    var tmp = chunk;
+            //    chunk = chunk.Next;
+            //}
             // clear
             First = null;
             _endpoint = new FilePoint();
@@ -104,6 +102,21 @@ namespace Core.IO
             return RC.OK;
         }
 
-        public override RC FileSize(ref long size) { size = _endpoint.Offset; return RC.OK; }
+        public override RC Close()
+        {
+            Truncate(0);
+            return RC.OK;
+        }
+        
+        public override RC Sync(SYNC flags)
+        {
+            return RC.OK;
+        }
+
+        public override RC get_FileSize(out long size)
+        {
+            size = _endpoint.Offset;
+            return RC.OK;
+        }
     }
 }

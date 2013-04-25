@@ -79,8 +79,8 @@ namespace Core.IO
         public abstract RC Read(byte[] buffer, int amount, long offset);
         public abstract RC Write(byte[] buffer, int amount, long offset);
         public abstract RC Truncate(long size);
-        public virtual RC Sync(SYNC flags) { return RC.OK; }
-        public abstract RC FileSize(ref long size);
+        public abstract RC Sync(SYNC flags);
+        public abstract RC get_FileSize(ref long size);
         public virtual RC Lock(LOCK lockType) { return RC.OK; }
         public virtual RC Unlock(LOCK lockType) { return RC.OK; }
         public virtual RC CheckReservedLock(ref int outRC) { return RC.OK; }

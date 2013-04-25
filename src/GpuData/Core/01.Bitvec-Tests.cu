@@ -1,4 +1,5 @@
-﻿#include "Core.cu.h"
+﻿//bitvec.c
+#include "Core.cu.h"
 using namespace Core;
 
 namespace Core

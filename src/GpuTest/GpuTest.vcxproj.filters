@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Core">
+      <UniqueIdentifier>{637a2db8-578e-4e0e-b8f3-57afbbfb34e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\IO">
+      <UniqueIdentifier>{361deaef-74e7-4d20-9dd9-43157d7c0c70}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="..\GpuData\Core\00.Bitvec.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\01.Bitvec-Tests.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\10.ConvertEx.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\50.SysEx.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\GpuData\Core\Core.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\Core+Types.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime.cu.h" />
+  </ItemGroup>
+</Project>

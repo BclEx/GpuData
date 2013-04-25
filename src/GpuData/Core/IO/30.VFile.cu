@@ -6,4 +6,8 @@
 #define PENDING_LOCK    3
 #define EXCLUSIVE_LOCK  4
 
+	class VFile
+	{
+	public:
+	};
 }
