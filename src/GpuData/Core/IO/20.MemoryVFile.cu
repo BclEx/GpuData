@@ -1,4 +1,7 @@
 ﻿// memjournal.c
+#include "../Core.cu.h"
+using namespace Core;
+
 namespace Core
 {
 #define JOURNAL_CHUNKSIZE ((int)(1024 - sizeof(FileChunk *)))
@@ -18,20 +21,20 @@ namespace Core
 		FileChunk *Chunk;	// Specific chunk into which cursor points
 	};
 
-	class MemoryVFile
+	class MemoryVFile : VFile
 	{
 	private:
 		FileChunk *First;       // Head of in-memory chunk-list
 		FilePoint _endpoint;    // Pointer to the end of the file
 		FilePoint _readpoint;   // Pointer to the end of the last xRead()
+		void Open();
 	public:
-		int Read(void *buffer, int amount, int64 offset);
-		int Write(const void *buffer, int amount, int64 offset);
-		int Truncate(int64 size);
-		int Close();
-		int Sync(int flags);
-		int get_FileSize(int64 &size);
-
+		virtual int Read(void *buffer, int amount, int64 offset);
+		virtual int Write(const void *buffer, int amount, int64 offset);
+		virtual int Truncate(int64 size);
+		virtual int Close();
+		virtual int Sync(int flags);
+		virtual int get_FileSize(int64 &size);
 	};
 
 	int MemoryVFile::Read(void *buffer, int amount, int64 offset)
@@ -42,19 +45,19 @@ namespace Core
 		if (_readpoint.Offset != offset || offset == 0)
 		{
 			int64 offset2 = 0;
-			for (chunk = First; SysEx__ALWAYS(chunk) && (offset2 + JOURNAL_CHUNKSIZE) <= offset; chunk = chunk->Next)
+			for (chunk = First; SysEx_ALWAYS(chunk) && (offset2 + JOURNAL_CHUNKSIZE) <= offset; chunk = chunk->Next)
 				offset2 += JOURNAL_CHUNKSIZE;
 		}
 		else
 			chunk = _readpoint.Chunk;
 		int chunkOffset = (int)(offset % JOURNAL_CHUNKSIZE);
-		uint8 *out = buffer;
+		uint8 *out = (uint8 *)buffer;
 		int read = amount;
 		do
 		{
 			int space = JOURNAL_CHUNKSIZE - chunkOffset;
 			int copy = MIN(read, (JOURNAL_CHUNKSIZE - chunkOffset));
-			memcpy(out, &chunk->Chunk[chunkOffset], copy);
+			_memcpy(out, &chunk->Chunk[chunkOffset], copy);
 			out += copy;
 			read -= space;
 			chunkOffset = 0;
@@ -81,11 +84,11 @@ namespace Core
 				if (!newChunk)
 					return RC::IOERR_NOMEM;
 				newChunk->Next = nullptr;
-				if (chunk) { _assert(First); chunk->Next = newChunk; }
+				if (chunk) { _assert(First != nullptr); chunk->Next = newChunk; }
 				else { _assert(!First); First = newChunk; }
 				_endpoint.Chunk = newChunk;
 			}
-			memcpy(&_endpoint.Chunk->Chunk[chunkOffset], b, space);
+			_memcpy(&_endpoint.Chunk->Chunk[chunkOffset], b, space);
 			b += space;
 			amount -= space;
 			_endpoint.Offset += space;
@@ -103,8 +106,7 @@ namespace Core
 			chunk = chunk->Next;
 			SysEx::Free(tmp);
 		}
-		//TODO::SET THIS
-		sqlite3MemJournalOpen(pJfd);
+		Open();
 		return RC::OK;
 	}
 
@@ -123,5 +125,11 @@ namespace Core
 	{
 		size = (int64)_endpoint.Offset;
 		return RC::OK;
+	}
+
+	void MemoryVFile::Open()
+	{
+		_assert(SysEx_HASALIGNMENT8(this));
+		_memset(this, 0, sizeof(MemoryVFile));
 	}
 }

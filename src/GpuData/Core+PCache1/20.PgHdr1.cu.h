@@ -1,4 +1,5 @@
-﻿namespace Core
+﻿// pcache1.c
+namespace Core
 {
 	struct PgHdr1
 	{

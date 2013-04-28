@@ -1,4 +1,4 @@
-﻿//
+﻿// util.c
 #include "Core.cu.h"
 using namespace Core;
 

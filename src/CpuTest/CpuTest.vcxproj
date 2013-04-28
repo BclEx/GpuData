@@ -76,19 +76,27 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\GpuData\Core\40.StatusEx.cpp" />
     <ClCompile Include="..\GpuData\Core\50.SysEx.cu">
       <FileType>Document</FileType>
     </ClCompile>
     <ClCompile Include="Program.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\GpuData\Core+PCache1\00.PGroup.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache1\10.PCache1.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache1\20.PgHdr1.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache1\30.PgFreeslot.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache1\40.PCacheGlobal.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache1\Core+PCache1.cu.h" />
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
     <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\30.RC.cu.h" />
+    <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core+Types.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />
+    <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h" />
+    <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h" />
     <ClInclude Include="..\Runtime.cu.h" />
   </ItemGroup>
   <ItemGroup>
@@ -98,7 +106,27 @@
     <ClCompile Include="..\GpuData\Core\01.Bitvec-Tests.cu">
       <FileType>Document</FileType>
     </ClCompile>
-    <None Include="..\GpuData\Core\10.ConvertEx.cu" />
+    <None Include="..\GpuData\Core+PCache1\11.PCache1+PageAllocation.cu" />
+    <None Include="..\GpuData\Core+PCache1\12.PCache1+General.cu" />
+    <None Include="..\GpuData\Core+PCache1\13.PCache1+Interface.cu" />
+    <ClCompile Include="..\GpuData\Core\10.ConvertEx.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core\IO\40.VFileSystem.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core\IO\00.CoreVFile.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core\IO\10.CoreVFileSystem.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core\40.StatusEx.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

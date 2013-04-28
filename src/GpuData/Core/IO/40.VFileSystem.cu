@@ -1,26 +1,27 @@
-﻿//
+﻿// os.c
+#include "../Core.cu.h"
+using namespace Core;
+
 namespace Core
 {
-	static VFileSystem::VFileSystem *_vfsList = nullptr;
+	static VFileSystem *_vfsList = nullptr;
 
 	VFileSystem *VFileSystem::Find(const char *name)
 	{
 		VFileSystem *vfs = nullptr;
-#if THREADSAFE
-		MutexEx *mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER);
-#endif
+		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER);
 		MutexEx::Enter(mutex);
-		for (vfs = _vfsList; vfs && strcmp(vfs, vfs->Name); vfs = vfs->Next) { }
+		for (vfs = _vfsList; vfs && _strcmp(name, vfs->Name); vfs = vfs->Next) { }
 		MutexEx::Leave(mutex);
 		return vfs;
 	}
 
-	void VFileSystem::UnlinkVfs(VFileSystem *vfs)
+	static void UnlinkVfs(VFileSystem *vfs)
 	{
-		assert(MutexEx::Held(MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER)));
+		_assert(MutexEx::Held(MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER)));
 		if (!vfs) { }
 		else if (_vfsList == vfs)
-			vfsList = pVfs->pNext;
+			_vfsList = vfs->Next;
 		else if (_vfsList)
 		{
 			VFileSystem *p = _vfsList;
@@ -33,7 +34,7 @@ namespace Core
 
 	int VFileSystem::RegisterVfs(VFileSystem *vfs, bool _default)
 	{
-		MutexEx *mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER);
+		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER);
 		MutexEx::Enter(mutex);
 		UnlinkVfs(vfs);
 		if (_default || !_vfsList)
@@ -46,17 +47,15 @@ namespace Core
 			vfs->Next = _vfsList->Next;
 			_vfsList->Next = vfs;
 		}
-		assert(_vfsList);
+		_assert(_vfsList != nullptr);
 		MutexEx::Leave(mutex);
 		return RC::OK;
 	}
 
 	int VFileSystem::UnregisterVfs(VFileSystem *vfs)
 	{
-#if THREADSAFE
-		MutexEx *mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER);
-#endif
-MutexEx:Enter(mutex);
+		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER);
+		MutexEx::Enter(mutex);
 		UnlinkVfs(vfs);
 		MutexEx::Leave(mutex);
 		return RC::OK;

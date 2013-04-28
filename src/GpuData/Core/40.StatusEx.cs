@@ -17,18 +17,18 @@ namespace Core
             MALLOC_COUNT = 9,
         }
 
-        public class sqlite3StatType
+        public class StatType
         {
             public int[] nowValue = new int[10];        // Current value
             public int[] mxValue = new int[10];         // Maximum value
         }
 
-        public static sqlite3StatType sqlite3Stat = new sqlite3StatType();
+        public static StatType Stat = new StatType();
 
 #if OMIT_WSD
 #else
         internal static void wsdStatInit() { }
-        internal static sqlite3StatType wsdStat = sqlite3Stat;
+        internal static StatType wsdStat = Stat;
 #endif
 
         internal static int StatusValue(STATUS op)

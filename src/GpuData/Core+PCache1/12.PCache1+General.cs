@@ -12,13 +12,13 @@ namespace Core
             var nNew = nHash * 2;
             if (nNew < 256)
                 nNew = 256;
-            LeaveMutex(Group);
+            PCache1_LeaveMutex(Group);
             if (nHash != 0)
                 MallocEx.BeginBenignMalloc();
             var apNew = new PgHdr1[nNew];
             if (nHash != 0)
                 MallocEx.EndBenignMalloc();
-            EnterMutex(Group);
+            PCache1_EnterMutex(Group);
             if (apNew != null)
             {
                 for (var i = 0; i < nHash; i++)

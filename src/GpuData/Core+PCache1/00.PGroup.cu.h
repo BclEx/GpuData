@@ -1,8 +1,9 @@
-﻿namespace Core
+﻿// pcache1.c
+namespace Core
 {
 	struct PGroup 
 	{
-		MutexEx *Mutex;					// MUTEX_STATIC_LRU or NULL
+		MutexEx Mutex;					// MUTEX_STATIC_LRU or NULL
 		unsigned int MaxPages;			// Sum of nMax for purgeable caches
 		unsigned int MinPages;			// Sum of nMin for purgeable caches
 		unsigned int MaxPinned;         // nMaxpage + 10 - nMinPage

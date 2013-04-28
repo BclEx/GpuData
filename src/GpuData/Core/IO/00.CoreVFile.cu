@@ -1,4 +1,6 @@
-﻿namespace Core
+﻿// journal.c
+// 
+namespace Core
 {
 
 #ifdef OMIT_WSD

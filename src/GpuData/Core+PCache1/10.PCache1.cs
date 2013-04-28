@@ -27,9 +27,9 @@ namespace Core
             MaxKey = 0;
         }
 
-        private static PgHdr PGHDR1_TO_PAGE(PgHdr1 p) { return p.Page; }
-        private static PgHdr1 PAGE_TO_PGHDR1(PCache1 c, PgHdr p) { return (PgHdr1)p.PgHdr1; }
-        private static void EnterMutex(PGroup x) { MutexEx.Enter(x.Mutex); }
-        private static void LeaveMutex(PGroup x) { MutexEx.Leave(x.Mutex); }
+        //private static PgHdr PGHDR1_TO_PAGE(PgHdr1 p) { return p.Page; }
+        //private static PgHdr1 PAGE_TO_PGHDR1(PCache1 c, PgHdr p) { return (PgHdr1)p.PgHdr1; }
+        private static void PCache1_EnterMutex(PGroup x) { MutexEx.Enter(x.Mutex); }
+        private static void PCache1_LeaveMutex(PGroup x) { MutexEx.Leave(x.Mutex); }
     }
 }

@@ -38,7 +38,7 @@ namespace Core.IO
 
         public VFileSystem Next;       // Next registered VFS
         public string Name = "win32";            // Name of this virtual file system
-        public object AppData = 0;         // Pointer to application-specific data
+        //public object AppData = 0;         // Pointer to application-specific data
         //public int szOsFile = -1;            // Size of subclassed VirtualFile
         //public int mxPathname = MAX_PATH;          // Maximum file pathname length
 
@@ -53,7 +53,7 @@ namespace Core.IO
             //ct.mxPathname = this.mxPathname;
             ct.Next = this.Next;
             ct.Name = this.Name;
-            ct.AppData = this.AppData;
+            //ct.AppData = this.AppData;
         }
 
         public abstract RC Open(string path, VFile file, OPEN flags, out OPEN outFlags);

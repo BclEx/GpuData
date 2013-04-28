@@ -11,6 +11,13 @@ __device__ inline void _assert(const bool condition)
 		printf("assert");
 }
 
+// strcmp
+template <typename T>
+__device__ inline bool _strcmp(const T *dest, const T *src)
+{
+	return false;
+}
+
 // Memcpy
 template <typename T>
 __device__ inline void _memcpy(T *dest, const T *src, size_t length)

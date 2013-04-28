@@ -15,7 +15,7 @@ namespace Core
 		// Allocate the Bitvec to be tested and a linear array of bits to act as the reference
 		Bitvec *bitvec = new Bitvec(size);
 		unsigned char *v = (unsigned char *)SysEx::Alloc((size + 7) / 8 + 1, true);
-		void *tmpSpace = SysEx::Alloc(BITVEC_SZ, false);
+		void *tmpSpace = SysEx::Alloc(BITVEC_SZ);
 		if (!bitvec || !v || !tmpSpace)
 			goto bitvec_end;
 
