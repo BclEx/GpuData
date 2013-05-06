@@ -1,100 +1,212 @@
-﻿using System;
+﻿using Pid = System.UInt32;
+using IPCache = Core.PCache1;
+using System;
 using System.Diagnostics;
-using IPCache = Core.Name.PCache1;
-using Pgno = System.UInt32;
 namespace Core
 {
     public partial class PCache
     {
-        private const int N_SORT_BUCKET = 32;
+        //static PCache()
+        //{
+        //    Name.PCache1.xInit(0);
+        //}
+
+        public PgHdr Dirty, DirtyTail;  // List of dirty pages in LRU order
+        public PgHdr Synced;        // Last synced page in dirty page list
+        public int Refs;            // Number of referenced pages
+        public int SizeCache;       // Configured cache size
+        public int SizePage;        // Size of every page in this cache
+        public int SizeExtra;       // Size of extra space for each page
+        public bool Purgeable;      // True if pages are on backing store
+        public Func<object, PgHdr, RC> Stress;   // Call to try make a page clean
+        public object StressArg;    // Argument to xStress
+        public IPCache Cache;       // Pluggable cache module
+        public PgHdr Page1;         // Reference to page 1
+
+        public void ClearState()
+        {
+            Dirty = DirtyTail = null;
+            Synced = null;
+            Refs = 0;
+        }
+    }
+
+    partial class PCache
+    {
+        #region Linked List
 
 #if EXPENSIVE_ASSERT
-        private static void expensive_assert(bool x) { Debug.Assert(x); }
+        private bool CheckSynced()
+        {
+            PgHdr p;
+            for (p = DirtyTail; p != Synced; p = p.DirtyPrev)
+                Debug.Assert(p.Refs != 0 || (p.Flags & PgHdr.PGHDR.NEED_SYNC) != 0);
+            return (p == null || p.Refs != 0 || (p.Flags & PgHdr.PGHDR.NEED_SYNC) == 0);
+        }
 #endif
 
-        private static RC sqlite3PcacheInitialize() { return IPCache.xInit(IPCache.pArg); }
-        private static void sqlite3PcacheShutdown() { IPCache.xShutdown(IPCache.pArg); }
-        internal static int sqlite3PcacheSize() { return 4; }
+        private static void RemoveFromDirtyList(PgHdr page)
+        {
+            var p = page.Cache;
+            Debug.Assert(page.DirtyNext != null || page == p.DirtyTail);
+            Debug.Assert(page.DirtyPrev != null || page == p.Dirty);
+            // Update the PCache1.pSynced variable if necessary.
+            if (p.Synced == page)
+            {
+                var synced = page.DirtyPrev;
+                while (synced != null && (synced.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
+                    synced = synced.DirtyPrev;
+                p.Synced = synced;
+            }
+            if (page.DirtyNext != null)
+                page.DirtyNext.DirtyPrev = page.DirtyPrev;
+            else
+            {
+                Debug.Assert(page == p.DirtyTail);
+                p.DirtyTail = page.DirtyPrev;
+            }
+            if (page.DirtyPrev != null)
+                page.DirtyPrev.DirtyNext = page.DirtyNext;
+            else
+            {
+                Debug.Assert(page == p.Dirty);
+                p.Dirty = page.DirtyNext;
+            }
+            page.DirtyNext = null;
+            page.DirtyPrev = null;
+#if EXPENSIVE_ASSERT
+            Debug.Assert(CheckSynced(p));
+#endif
+        }
 
-        internal static void Open(int szPage, int szExtra, bool bPurgeable, Func<object, PgHdr, RC> xStress, object pStress, PCache p)
+        private static void AddToDirtyList(PgHdr page)
+        {
+            var p = page.Cache;
+            Debug.Assert(page.DirtyNext == null && page.DirtyPrev == null && p.Dirty != page);
+            page.DirtyNext = p.Dirty;
+            if (page.DirtyNext != null)
+            {
+                Debug.Assert(page.DirtyNext.DirtyPrev == null);
+                page.DirtyNext.DirtyPrev = page;
+            }
+            p.Dirty = page;
+            if (p.DirtyTail == null)
+                p.DirtyTail = page;
+            if (p.Synced == null && (page.Flags & PgHdr.PGHDR.NEED_SYNC) == 0)
+                p.Synced = page;
+#if EXPENSIVE_ASSERT
+            Debug.Assert(pcacheCheckSynced(p));
+#endif
+        }
+
+        private static void Unpin(PgHdr page)
+        {
+            var cache = page.Cache;
+            if (cache.Purgeable)
+            {
+                if (page.ID == 1)
+                    cache.Page1 = null;
+                cache.Cache.Unpin(page, false);
+            }
+        }
+
+        #endregion
+
+        #region Interface
+
+        private const int N_SORT_BUCKET = 32;
+
+        private static RC Initialize() { return IPCache.Init(); }
+        private static void Shutdown() { IPCache.Shutdown(); }
+        internal static int Size() { return 4; }
+
+        internal static void Open(int sizePage, int sizeExtra, bool purgeable, Func<object, PgHdr, RC> stress, object stressArg, PCache p)
         {
             p.ClearState();
-            p.szPage = szPage;
-            p.szExtra = szExtra;
-            p.Purgeable = bPurgeable;
-            p.xStress = xStress;
-            p.pStress = pStress;
-            p.nMax = 100;
+            p.SizePage = sizePage;
+            p.SizeExtra = sizeExtra;
+            p.Purgeable = purgeable;
+            p.Stress = stress;
+            p.StressArg = stressArg;
+            p.SizeCache = 100;
         }
 
-        internal void SetPageSize(int szPage)
+        internal void SetPageSize(int sizePage)
         {
-            Debug.Assert(nRef == 0 && Dirty == null);
-            if (pCache != null)
+            Debug.Assert(Refs == 0 && Dirty == null);
+            if (Cache != null)
             {
-                IPCache.xDestroy(ref pCache);
-                pCache = null;
+                PCache1.Destroy(ref Cache);
+                Cache = null;
+                Page1 = null;
             }
-            this.szPage = szPage;
+            SizePage = sizePage;
         }
 
-        internal RC FetchPage(Pgno pgno, int createFlag, out PgHdr ppPage)
+        private int NumberOfCachePages()
+        {
+            if (SizeCache >= 0)
+                return SizeCache;
+            return (int)((-1024 * (long)SizeCache) / (SizePage + SizeExtra));
+        }
+
+        internal RC Fetch(Pid id, int createFlag, out PgHdr pageOut)
         {
             Debug.Assert(createFlag == 1 || createFlag == 0);
-            Debug.Assert(pgno > 0);
+            Debug.Assert(id > 0);
             // If the pluggable cache (sqlite3_pcache*) has not been allocated, allocate it now.
-            if (pCache == null && createFlag != 0)
+            if (Cache == null && createFlag != 0)
             {
-                var nByte = szPage + szExtra + 0;
-                var p = IPCache.xCreate(nByte, Purgeable);
-                p.xCachesize(nMax);
-                pCache = p;
+                var p = PCache1.Create(SizePage, SizeExtra + 0, Purgeable);
+                p.Cachesize(NumberOfCachePages());
+                Cache = p;
             }
-            var eCreate = createFlag * (1 + ((!Purgeable || null == Dirty) ? 1 : 0));
-            PgHdr pPage = null;
-            if (pCache != null)
-                pPage = pCache.xFetch(pgno, eCreate);
-            if (pPage == null && eCreate == 1)
+            PgHdr page = null;
+            var create = createFlag * (1 + ((!Purgeable || Dirty == null) ? 1 : 0));
+            if (Cache != null)
+                page = Cache.Fetch(id, create);
+            if (page == null && create == 1)
             {
-                PgHdr pPg;
                 // Find a dirty page to write-out and recycle. First try to find a page that does not require a journal-sync (one with PGHDR_NEED_SYNC
                 // cleared), but if that is not possible settle for any other unreferenced dirty page.
 #if EXPENSIVE_ASSERT
-                expensive_assert(pcacheCheckSynced(pCache));
+                CheckSynced(this);
 #endif
-                for (pPg = Synced; pPg != null && (pPg.Refs != 0 || (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0); pPg = pPg.DirtyPrev) ;
-                Synced = pPg;
-                if (pPg == null)
-                    for (pPg = DirtyTail; pPg != null && pPg.Refs != 0; pPg = pPg.DirtyPrev) ;
-                if (pPg != null)
+                PgHdr pg;
+                for (pg = Synced; pg != null && (pg.Refs != 0 || (pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0); pg = pg.DirtyPrev) ;
+                Synced = pg;
+                if (pg == null)
+                    for (pg = DirtyTail; pg != null && pg.Refs != 0; pg = pg.DirtyPrev) ;
+                if (pg != null)
                 {
 #if LOG_CACHE_SPILL
                     sqlite3_log(SQLITE_FULL, "spill page %d making room for %d - cache used: %d/%d", pPg.pgno, pgno, sqlite3GlobalConfig.pcache.xPagecount(pCache.pCache), pCache.nMax);
 #endif
-                    var rc = xStress(pStress, pPg);
+                    var rc = Stress(StressArg, pg);
                     if (rc != RC.OK && rc != RC.BUSY)
                         return rc;
                 }
-                pPage = pCache.xFetch(pgno, 2);
+                page = Cache.Fetch(id, 2);
             }
-            if (pPage != null)
+            if (page != null)
             {
-                if (pPage._Data == null)
+                if (page._Data == null)
                 {
-                    pPage._Data = MallocEx.Malloc(pCache.SizePage);
-                    pPage.Cache = this;
-                    pPage.ID = pgno;
+                    page._Data = SysEx.Alloc(Cache.SizePage);
+                    page.Extra = this;
+                    page.Cache = this;
+                    page.ID = id;
                 }
-                Debug.Assert(pPage.Cache == this);
-                Debug.Assert(pPage.ID == pgno);
-                if (pPage.Refs == 0)
-                    nRef++;
-                pPage.Refs++;
-                if (pgno == 1)
-                    Page1 = pPage;
+                Debug.Assert(page.Cache == this);
+                Debug.Assert(page.ID == id);
+                if (page.Refs == 0)
+                    Refs++;
+                page.Refs++;
+                if (id == 1)
+                    Page1 = page;
             }
-            ppPage = pPage;
-            return (pPage == null && eCreate != 0 ? RC.NOMEM : RC.OK);
+            pageOut = page;
+            return (page == null && create != 0 ? RC.NOMEM : RC.OK);
         }
 
         internal static void ReleasePage(PgHdr p)
@@ -106,12 +218,12 @@ namespace Core
                 var pCache = p.Cache;
                 pCache.nRef--;
                 if ((p.Flags & PgHdr.PGHDR.DIRTY) == 0)
-                    pcacheUnpin(p);
+                    Unpin(p);
                 else
                 {
                     // Move the page to the head of the dirty list.
-                    pcacheRemoveFromDirtyList(p);
-                    pcacheAddToDirtyList(p);
+                    RemoveFromDirtyList(p);
+                    AddToDirtyList(p);
                 }
             }
         }
@@ -123,7 +235,7 @@ namespace Core
             PCache pCache;
             Debug.Assert(p.Refs == 1);
             if ((p.Flags & PgHdr.PGHDR.DIRTY) != 0)
-                pcacheRemoveFromDirtyList(p);
+                RemoveFromDirtyList(p);
             pCache = p.Cache;
             pCache.nRef--;
             if (p.ID == 1)
@@ -138,7 +250,7 @@ namespace Core
             if (0 == (p.Flags & PgHdr.PGHDR.DIRTY))
             {
                 p.Flags |= PgHdr.PGHDR.DIRTY;
-                pcacheAddToDirtyList(p);
+                AddToDirtyList(p);
             }
         }
 
@@ -146,10 +258,10 @@ namespace Core
         {
             if ((p.Flags & PgHdr.PGHDR.DIRTY) != 0)
             {
-                pcacheRemoveFromDirtyList(p);
+                RemoveFromDirtyList(p);
                 p.Flags &= ~(PgHdr.PGHDR.DIRTY | PgHdr.PGHDR.NEED_SYNC);
                 if (p.Refs == 0)
-                    pcacheUnpin(p);
+                    Unpin(p);
             }
         }
 
@@ -176,8 +288,8 @@ namespace Core
             p.ID = newPgno;
             if ((p.Flags & PgHdr.PGHDR.DIRTY) != 0 && (p.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
             {
-                pcacheRemoveFromDirtyList(p);
-                pcacheAddToDirtyList(p);
+                RemoveFromDirtyList(p);
+                AddToDirtyList(p);
             }
         }
 
@@ -302,5 +414,7 @@ namespace Core
                 xIter(pDirty);
         }
 #endif
+
+        #endregion
     }
 }

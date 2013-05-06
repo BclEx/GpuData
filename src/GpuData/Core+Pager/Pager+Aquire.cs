@@ -12,7 +12,7 @@ namespace Core
             if (pid == 0)
                 return SysEx.CORRUPT_BKPT();
             // If the pager is in the error state, return an error immediately.  Otherwise, request the page from the PCache layer.
-            var rc = (_errorCode != RC.OK ? _errorCode : _pcache.FetchPage(pid, 1, out page));
+            var rc = (_errorCode != RC.OK ? _errorCode : _pcache.Fetch(pid, 1, out page));
             if (rc != RC.OK)
             {
                 page = null;
@@ -75,7 +75,7 @@ namespace Core
             Debug.Assert(_pcache != null);
             Debug.Assert(_state >= PAGER.READER && _state != PAGER.ERROR);
             PgHdr page;
-            _pcache.FetchPage(pid, 0, out page);
+            _pcache.Fetch(pid, 0, out page);
             return page;
         }
 

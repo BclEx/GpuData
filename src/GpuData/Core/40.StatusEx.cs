@@ -25,46 +25,36 @@ namespace Core
 
         public static StatType Stat = new StatType();
 
-#if OMIT_WSD
-#else
-        internal static void wsdStatInit() { }
-        internal static StatType wsdStat = Stat;
-#endif
-
         internal static int StatusValue(STATUS op)
         {
-            wsdStatInit();
-            Debug.Assert(op >= 0 && (int)op < wsdStat.nowValue.Length);
-            return wsdStat.nowValue[(int)op];
+            Debug.Assert(op >= 0 && (int)op < Stat.nowValue.Length);
+            return Stat.nowValue[(int)op];
         }
 
         internal static void StatusAdd(STATUS op, int N)
         {
-            wsdStatInit();
-            Debug.Assert(op >= 0 && (int)op < wsdStat.nowValue.Length);
-            wsdStat.nowValue[(int)op] += N;
-            if (wsdStat.nowValue[(int)op] > wsdStat.mxValue[(int)op])
-                wsdStat.mxValue[(int)op] = wsdStat.nowValue[(int)op];
+            Debug.Assert(op >= 0 && (int)op < Stat.nowValue.Length);
+            Stat.nowValue[(int)op] += N;
+            if (Stat.nowValue[(int)op] > Stat.mxValue[(int)op])
+                Stat.mxValue[(int)op] = Stat.nowValue[(int)op];
         }
 
         internal static void StatusSet(STATUS op, int X)
         {
-            wsdStatInit();
-            Debug.Assert(op >= 0 && (int)op < wsdStat.nowValue.Length);
-            wsdStat.nowValue[(int)op] = X;
-            if (wsdStat.nowValue[(int)op] > wsdStat.mxValue[(int)op])
-                wsdStat.mxValue[(int)op] = wsdStat.nowValue[(int)op];
+            Debug.Assert(op >= 0 && (int)op < Stat.nowValue.Length);
+            Stat.nowValue[(int)op] = X;
+            if (Stat.nowValue[(int)op] > Stat.mxValue[(int)op])
+                Stat.mxValue[(int)op] = Stat.nowValue[(int)op];
         }
 
-        public static RC sqlite3_status(STATUS op, ref int pCurrent, ref int pHighwater, int resetFlag)
+        public static RC Status(STATUS op, ref int pCurrent, ref int pHighwater, int resetFlag)
         {
-            wsdStatInit();
-            if (op < 0 || (int)op >= wsdStat.nowValue.Length)
+            if (op < 0 || (int)op >= Stat.nowValue.Length)
                 return SysEx.SQLITE_MISUSE_BKPT();
-            pCurrent = wsdStat.nowValue[(int)op];
-            pHighwater = wsdStat.mxValue[(int)op];
+            pCurrent = Stat.nowValue[(int)op];
+            pHighwater = Stat.mxValue[(int)op];
             if (resetFlag != 0)
-                wsdStat.mxValue[(int)op] = wsdStat.nowValue[(int)op];
+                Stat.mxValue[(int)op] = Stat.nowValue[(int)op];
             return RC.OK;
         }
 

@@ -82,12 +82,9 @@
     <ClCompile Include="Program.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\GpuData\Core+PCache1\00.PGroup.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache1\10.PCache1.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache1\20.PgHdr1.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache1\30.PgFreeslot.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache1\40.PCacheGlobal.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache1\Core+PCache1.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache\Core+PCache.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache\PCache.cu.h" />
+    <ClInclude Include="..\GpuData\Core+PCache\PCache1.cu.h" />
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
     <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\30.RC.cu.h" />
@@ -103,12 +100,6 @@
     <ClCompile Include="..\GpuData\Core\00.Bitvec.cu">
       <FileType>Document</FileType>
     </ClCompile>
-    <ClCompile Include="..\GpuData\Core\01.Bitvec-Tests.cu">
-      <FileType>Document</FileType>
-    </ClCompile>
-    <None Include="..\GpuData\Core+PCache1\11.PCache1+PageAllocation.cu" />
-    <None Include="..\GpuData\Core+PCache1\12.PCache1+General.cu" />
-    <None Include="..\GpuData\Core+PCache1\13.PCache1+Interface.cu" />
     <ClCompile Include="..\GpuData\Core\10.ConvertEx.cu">
       <FileType>Document</FileType>
     </ClCompile>
@@ -125,6 +116,14 @@
       <FileType>Document</FileType>
     </ClCompile>
     <ClCompile Include="..\GpuData\Core\40.StatusEx.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core+PCache\PCache.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core+PCache\PCache1.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>

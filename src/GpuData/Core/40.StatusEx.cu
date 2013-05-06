@@ -13,39 +13,34 @@ namespace Core
 
 	int StatusEx::StatusValue(StatusEx::STATUS op)
 	{
-		wsdStatInit;
-		_assert(op >= 0 && op < ArraySize(wsdStat.nowValue));
-		return wsdStat.nowValue[op];
+		_assert(op >= 0 && op < _static_arraylength(Stat.nowValue));
+		return Stat.nowValue[op];
 	}
 
-	void StatusEx::StatusAdd(int op, int N)
+	void StatusEx::StatusAdd(StatusEx::STATUS op, int N)
 	{
-		wsdStatInit;
-		_assert(op >= 0 && op < ArraySize(wsdStat.nowValue));
-		wsdStat.nowValue[op] += N;
-		if (wsdStat.nowValue[op]>wsdStat.mxValue[op])
-			wsdStat.mxValue[op] = wsdStat.nowValue[op];
+		_assert(op >= 0 && op < _static_arraylength(Stat.nowValue));
+		Stat.nowValue[op] += N;
+		if (Stat.nowValue[op] > Stat.mxValue[op])
+			Stat.mxValue[op] = Stat.nowValue[op];
 	}
 
-	void StatusEx::StatusSet(int op, int X){
-		wsdStatInit;
-		_assert(op >= 0 && op < ArraySize(wsdStat.nowValue));
-		wsdStat.nowValue[op] = X;
-		if (wsdStat.nowValue[op]>wsdStat.mxValue[op])
-			wsdStat.mxValue[op] = wsdStat.nowValue[op];
-	}
-
-	int StatusEx::Status(int op, int *pCurrent, int *pHighwater, int resetFlag)
+	void StatusEx::StatusSet(StatusEx::STATUS op, int X)
 	{
-		wsdStatInit;
-		if (op < 0 || op >= ArraySize(wsdStat.nowValue))
-			return RC::MISUSE_BKPT;
-		*pCurrent = wsdStat.nowValue[op];
-		*pHighwater = wsdStat.mxValue[op];
+		_assert(op >= 0 && op < _static_arraylength(Stat.nowValue));
+		Stat.nowValue[op] = X;
+		if (Stat.nowValue[op] > Stat.mxValue[op])
+			Stat.mxValue[op] = Stat.nowValue[op];
+	}
+
+	int StatusEx::Status(StatusEx::STATUS op, int *current, int *highwater, int resetFlag)
+	{
+		if (op < 0 || op >= _static_arraylength(Stat.nowValue))
+			return SysEx::MISUSE_BKPT;
+		*current = Stat.nowValue[op];
+		*highwater = Stat.mxValue[op];
 		if (resetFlag)
-			wsdStat.mxValue[op] = wsdStat.nowValue[op];
+			Stat.mxValue[op] = Stat.nowValue[op];
 		return RC::OK;
 	}
-
-
 }

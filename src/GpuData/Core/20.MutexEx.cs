@@ -20,15 +20,6 @@ namespace Core
             STATIC_PMEM = 7, // sqlite3PageMalloc()
         }
 
-        public static MutexEx sqlite3_mutex_alloc(MUTEX id)
-        {
-            //#if !SQLITE_OMIT_AUTOINIT
-            //            if (sqlite3_initialize() != 0) return null;
-            //#endif
-            //            return sqlite3GlobalConfig.mutex.xMutexAlloc(id);
-            return null;
-        }
-
         public static MutexEx Alloc(MUTEX id)
         {
             //if (!sqlite3GlobalConfig.bCoreMutex)

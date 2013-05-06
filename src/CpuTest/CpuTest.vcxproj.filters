@@ -7,7 +7,7 @@
     <Filter Include="Core\IO">
       <UniqueIdentifier>{3c534211-7f99-4257-84ea-a1a05d9e5e89}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Core+PCache1">
+    <Filter Include="Core+PCache">
       <UniqueIdentifier>{7f5cb337-faf1-46be-ad93-b617e19cc7f6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -17,9 +17,6 @@
     </ClCompile>
     <ClCompile Include="Program.cpp" />
     <ClCompile Include="..\GpuData\Core\00.Bitvec.cu">
-      <Filter>Core</Filter>
-    </ClCompile>
-    <ClCompile Include="..\GpuData\Core\01.Bitvec-Tests.cu">
       <Filter>Core</Filter>
     </ClCompile>
     <ClCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu">
@@ -39,6 +36,12 @@
     </ClCompile>
     <ClCompile Include="..\GpuData\Core\10.ConvertEx.cu">
       <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core+PCache\PCache.cu">
+      <Filter>Core+PCache</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core+PCache\PCache1.cu">
+      <Filter>Core+PCache</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -67,37 +70,17 @@
     <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h">
       <Filter>Core\IO</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache1\00.PGroup.cu.h">
-      <Filter>Core+PCache1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache1\10.PCache1.cu.h">
-      <Filter>Core+PCache1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache1\Core+PCache1.cu.h">
-      <Filter>Core+PCache1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache1\20.PgHdr1.cu.h">
-      <Filter>Core+PCache1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache1\30.PgFreeslot.cu.h">
-      <Filter>Core+PCache1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache1\40.PCacheGlobal.cu.h">
-      <Filter>Core+PCache1</Filter>
-    </ClInclude>
     <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\GpuData\Core+PCache1\11.PCache1+PageAllocation.cu">
-      <Filter>Core+PCache1</Filter>
-    </None>
-    <None Include="..\GpuData\Core+PCache1\12.PCache1+General.cu">
-      <Filter>Core+PCache1</Filter>
-    </None>
-    <None Include="..\GpuData\Core+PCache1\13.PCache1+Interface.cu">
-      <Filter>Core+PCache1</Filter>
-    </None>
+    <ClInclude Include="..\GpuData\Core+PCache\Core+PCache.cu.h">
+      <Filter>Core+PCache</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+PCache\PCache.cu.h">
+      <Filter>Core+PCache</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+PCache\PCache1.cu.h">
+      <Filter>Core+PCache</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

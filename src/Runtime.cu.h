@@ -5,11 +5,23 @@
 #include <stdio.h>
 #define __device__
 
-__device__ inline void _assert(const bool condition)
+template <typename T>
+__device__ inline T *__arraySet(T *symbol, int length) { return symbol; }
+#define __arrayLength(symbol) 0
+#define _static_arraylength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
+
+#if !defined(DEBUG)
+#define ASSERTONLY(X) X
+#else
+#define ASSERTONLY(X)
+#endif
+
+__device__ inline void _assert(const int condition)
 {
 	if (!condition)
 		printf("assert");
 }
+
 
 // strcmp
 template <typename T>
@@ -18,7 +30,7 @@ __device__ inline bool _strcmp(const T *dest, const T *src)
 	return false;
 }
 
-// Memcpy
+// memcpy
 template <typename T>
 __device__ inline void _memcpy(T *dest, const T *src, size_t length)
 {
@@ -28,7 +40,7 @@ __device__ inline void _memcpy(T *dest, const T *src, size_t length)
 		*dest2 = *src2;
 }
 
-// Memset
+// memset
 template <typename T>
 __device__ inline void _memset(T *dest, const char value, size_t length)
 {

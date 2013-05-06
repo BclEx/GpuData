@@ -18,6 +18,9 @@ namespace Core
 			MALLOC_COUNT = 9,
 		};
 
-		int StatusValue(STATUS op)
+		static int StatusValue(STATUS op);
+		static void StatusAdd(STATUS op, int N);
+		static void StatusSet(StatusEx::STATUS op, int X);
+		static int Status(StatusEx::STATUS op, int *current, int *highwater, int resetFlag);
 	};
 }

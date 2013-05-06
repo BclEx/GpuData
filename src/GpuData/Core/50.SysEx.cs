@@ -96,7 +96,7 @@ namespace Core
         public static void Free(ref byte[] p) { p = null; }
         public static byte[] Malloc(int p) { return new byte[p]; }
         public static bool HeapNearlyFull() { return false; }
-        public static int MallocSize(byte[] p) { return p.Length; }
+        public static int AllocSize(byte[] p) { return p.Length; }
         public static byte[][] ScratchMalloc(byte[][] apCell, int nMaxCells) { throw new NotImplementedException(); }
         public static void ScratchFree(byte[][] apCell) { }
     }

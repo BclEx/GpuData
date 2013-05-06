@@ -52,9 +52,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Content Include="Core+PCache1\00.PGroup.cu.h" />
-    <Content Include="Core+PCache1\20.PgHdr1.cu.h" />
-    <Content Include="Core+PCache1\10.PCache1.cu.h" />
+    <Compile Include="Core+PCache\PCache+.cs" />
+    <Content Include="Core+PCache\PCache.cu.h" />
+    <Content Include="Core+PCache\PCache1.cu.h" />
     <Compile Include="Core+Pager\IBackup.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -97,50 +97,19 @@
     <Compile Include="Core+Pager\PagerSavepoint.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Core+Pager\PCache+General.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\PCache+LinkedList.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\PCache.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\PgHdr.cs">
+    <Compile Include="Core+PCache\PCache.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Core+Pager\Wal.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Core+PCache1\11.PCache1+PageAllocation.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\12.PCache1+General.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\13.PCache1+Interface.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\10.PCache1.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\40.PCacheGlobal.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\30.PgFreeslot.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\20.PgHdr1.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+PCache1\00.PGroup.cs">
+    <Compile Include="Core+PCache\PCache1.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Core\00.Bitvec.cs" />
     <Compile Include="Core\20.MutexEx.cs" />
     <Compile Include="Core\10.ConvertEx.cs" />
     <Compile Include="Core\40.StatusEx.cs" />
-    <Compile Include="Core\01.Bitvec-Tests.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Core\50.SysEx.cs" />
     <Compile Include="Core\30.RC.cs" />
@@ -149,12 +118,9 @@
     <Compile Include="Core\IO\20.MemoryVFile.cs" />
     <Compile Include="Core\IO\00.CoreVFile.cs" />
     <Compile Include="Core\IO\10.CoreVFileSystem.cs" />
-    <Content Include="Core+PCache1\30.PgFreeslot.cu.h" />
-    <Content Include="Core+PCache1\40.PCacheGlobal.cu.h" />
-    <None Include="Core+PCache1\11.PCache1+PageAllocation.cu" />
-    <None Include="Core+PCache1\12.PCache1+General.cu" />
-    <None Include="Core+PCache1\13.PCache1+Interface.cu" />
-    <Content Include="Core+PCache1\Core+PCache1.cu.h" />
+    <None Include="Core+PCache\PCache.cu" />
+    <None Include="Core+PCache\PCache1.cu" />
+    <Content Include="Core+PCache\Core+PCache.cu.h" />
     <Content Include="Core\IO\40.VFileSystem.cu.h" />
     <None Include="Core\00.Bitvec.cu" />
     <None Include="Core\10.ConvertEx.cu" />
@@ -163,7 +129,6 @@
     <Content Include="Core\30.RC.cu.h" />
     <None Include="Core\40.StatusEx.cu" />
     <Content Include="Core\50.SysEx.cu.h" />
-    <None Include="Core\01.Bitvec-Tests.cu" />
     <Content Include="Core\Core+Types.cu.h" />
     <Content Include="Core\Core.cu.h" />
     <Content Include="Core\40.StatusEx.cu.h" />
