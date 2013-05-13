@@ -15,7 +15,7 @@
     <DebugType>full</DebugType>
     <Optimize>False</Optimize>
     <OutputPath>bin\Debug</OutputPath>
-    <DefineConstants>DEBUG;OMIT_WAL</DefineConstants>
+    <DefineConstants>DEBUG;OMIT_WAL EXPENSIVE_ASSERT TEST</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <PlatformTarget>x86</PlatformTarget>
@@ -52,55 +52,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Core+PCache\PCache+.cs" />
+    <Compile Include="Core+PCache\PCache_h.cs" />
     <Content Include="Core+PCache\PCache.cu.h" />
     <Content Include="Core+PCache\PCache1.cu.h" />
-    <Compile Include="Core+Pager\IBackup.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Aquire.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Commit.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Debug.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+File.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Journal.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Lock.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Pager.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Properties.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Savepoint.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Stream.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager+Wal.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Pager.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\PagerSavepoint.cs">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="Core+PCache\PCache.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Core+Pager\Wal.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Core+PCache\PCache1.cs">

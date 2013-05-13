@@ -4,6 +4,22 @@ namespace Core
 	typedef struct PgHdr PgHdr;
 	typedef struct PCache PCache;
 
+	class IPCache
+	{
+	public:
+		virtual RC Init();
+		virtual void Shutdown();
+		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
+		virtual void Cachesize(uint max);
+		virtual void Shrink();
+		virtual int Pagecount();
+		virtual IPage *Fetch(unsigned int key, int createFlag);
+		virtual void Unpin(IPage *pg, bool reuseUnlikely);
+		virtual void Rekey(IPage *pg, unsigned int old, unsigned int new_);
+		virtual void Truncate(unsigned int limit);
+		virtual void Destroy(IPCache *p);
+	};
+
 	struct PgHdr
 	{
 		enum PGHDR : uint16
@@ -17,13 +33,13 @@ namespace Core
 		IPage *Page;				// Pcache object page handle
 		void *Data;					// Page data
 		void *Extra;				// Extra content
-		PgHdr *Dirties;				// Transient list of dirty pages
+		PgHdr *Dirty;				// Transient list of dirty pages
 		Pager *Pager;				// The pager this page is part of
 		Pid ID;						// Page number for this page
 #ifdef CHECK_PAGES
 		uint32 PageHash;            // Hash of page content
 #endif
-		PGHDR Flags;                // PGHDR flags defined below
+		uint16 Flags;                // PGHDR flags defined below
 		// Elements above are public.  All that follows is private to pcache.c and should not be accessed by other modules.
 		int16 Refs;					// Number of users of this page
 		PCache *Cache;              // Cache that owns this page
@@ -32,8 +48,8 @@ namespace Core
 	};
 
 
-//
-//#ifdef TEST
-//	void Stats(int*,int*,int*,int*);
-//#endif
+	//
+	//#ifdef TEST
+	//	void Stats(int*,int*,int*,int*);
+	//#endif
 }

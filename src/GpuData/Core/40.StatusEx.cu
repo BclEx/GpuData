@@ -36,7 +36,7 @@ namespace Core
 	int StatusEx::Status(StatusEx::STATUS op, int *current, int *highwater, int resetFlag)
 	{
 		if (op < 0 || op >= _static_arraylength(Stat.nowValue))
-			return SysEx::MISUSE_BKPT;
+			return SysEx_MISUSE_BKPT;
 		*current = Stat.nowValue[op];
 		*highwater = Stat.mxValue[op];
 		if (resetFlag)

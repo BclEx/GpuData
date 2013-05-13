@@ -50,7 +50,7 @@ namespace Core
         public static RC Status(STATUS op, ref int pCurrent, ref int pHighwater, int resetFlag)
         {
             if (op < 0 || (int)op >= Stat.nowValue.Length)
-                return SysEx.SQLITE_MISUSE_BKPT();
+                return SysEx.MISUSE_BKPT();
             pCurrent = Stat.nowValue[(int)op];
             pHighwater = Stat.mxValue[(int)op];
             if (resetFlag != 0)

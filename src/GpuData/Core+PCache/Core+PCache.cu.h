@@ -7,11 +7,6 @@ struct IPage
 	void *Extra;	// Extra information associated with the page
 };
 
-class IPCache
-{
-};
-
-
 typedef struct Pager Pager;
 
 #include "PCache.cu.h"

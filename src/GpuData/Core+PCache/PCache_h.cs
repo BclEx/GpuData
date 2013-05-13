@@ -1,7 +1,32 @@
 ﻿using Pid = System.UInt32;
+using IPage = Core.PgHdr;
 using System;
+
 namespace Core
 {
+    //public class IPage
+    //{
+    //    public object Buffer;	// The content of the page
+    //    public byte[] Extra;	// Extra information associated with the page
+    //}
+
+    public class Pager { }
+
+    public interface IPCache
+    {
+        RC Init();
+        void Shutdown();
+        IPCache Create(int sizePage, int sizeExtra, bool purgeable);
+        void Cachesize(uint max);
+        void Shrink();
+        int Pagecount();
+        IPage Fetch(uint key, int createFlag);
+        void Unpin(IPage pg, bool reuseUnlikely);
+        void Rekey(IPage pg, uint old, uint new_);
+        void Truncate(uint limit);
+        void Destroy(ref IPCache p);
+    };
+
     public class PgHdr
     {
         public enum PGHDR : ushort
@@ -12,9 +37,10 @@ namespace Core
             REUSE_UNLIKELY = 0x010, // A hint that reuse is unlikely
             DONT_WRITE = 0x020,     // Do not write content to disk
         }
-        public byte[] _Data;
+        public IPage Page;
+        public byte[] Data;
         public object Extra;        // Extra content
-        public PgHdr Dirties;       // Transient list of dirty pages
+        public PgHdr Dirty;       // Transient list of dirty pages
         public Pager Pager;         // The pager to which this page belongs
         public Pid ID;              // The page number for this page
 #if CHECK_PAGES
@@ -26,17 +52,18 @@ namespace Core
         internal PCache Cache;      // Cache that owns this page
         internal PgHdr DirtyNext;   // Next element in list of dirty pages
         internal PgHdr DirtyPrev;   // Previous element in list of dirty pages
-        //
-        public bool CacheAllocated; // True, if allocated from cache
-        public PgHdr1 PgHdr1;       // Cache page header this this page
 
-        public static implicit operator bool(PgHdr b) { return (b != null); }
+        // For C#
+        public bool _CacheAllocated { get; set; }
+        public PgHdr1 _PgHdr1 { get; set; }
+        //public static implicit operator bool(PgHdr b) { return (b != null); }
 
-        public void ClearState()
+        public void memset()
         {
-            _Data = null;
+            //Page = null;
+            Data = null;
             Extra = null;
-            Dirties = null;
+            Dirty = null;
             Pager = null;
             ID = 0;
 #if CHECK_PAGES
@@ -47,9 +74,11 @@ namespace Core
             Cache = null;
             DirtyNext = null;
             DirtyPrev = null;
-            //
-            CacheAllocated = false;
-            PgHdr1 = null;
+        }
+
+        internal void memsetData(int sizePage)
+        {
+            Data = SysEx.Alloc(sizePage);
         }
     }
 }

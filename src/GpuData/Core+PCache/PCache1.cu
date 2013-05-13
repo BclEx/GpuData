@@ -4,8 +4,6 @@ using namespace Core;
 
 namespace Core
 {
-	struct PCache {};
-
 	typedef struct PgHdr1 PgHdr1;
 
 	struct PGroup 
@@ -18,8 +16,9 @@ namespace Core
 		PgHdr1 *LruHead, *LruTail;		// LRU list of unpinned pages
 	};
 
-	struct PCache1
+	class PCache1 : IPCache
 	{
+	public:
 		// Cache configuration parameters. Page size (szPage) and the purgeable flag (bPurgeable) are set when the cache is created. nMax may be 
 		// modified at any time by a call to the pcache1Cachesize() method. The PGroup mutex must be held when accessing nMax.
 		PGroup *Group;					// PGroup this cache belongs to
@@ -39,17 +38,17 @@ namespace Core
 		static void PageFree(void *p);
 		bool UnderMemoryPressure();
 		//
-		static int Init();
-		static void Shutdown();
-		static PCache *Create(int sizePage, int sizeExtra, bool purgeable);
-		void Cachesize(int max);
-		void Shrink();
-		int Pagecount();
-		IPage *Fetch(unsigned int key, int createFlag);
-		void Unpin(IPage *pg, bool reuseUnlikely);
-		void Rekey(IPage *pg, unsigned int old, unsigned int new_);
-		void Truncate(unsigned int limit);
-		static void Destroy(PCache *p);
+		virtual RC Init();
+		virtual void Shutdown();
+		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
+		virtual void Cachesize(uint max);
+		virtual void Shrink();
+		virtual int Pagecount();
+		virtual IPage *Fetch(unsigned int key, int createFlag);
+		virtual void Unpin(IPage *pg, bool reuseUnlikely);
+		virtual void Rekey(IPage *pg, unsigned int old, unsigned int new_);
+		virtual void Truncate(unsigned int limit);
+		virtual void Destroy(IPCache *p);
 	};
 
 	struct PgHdr1
@@ -137,7 +136,7 @@ namespace Core
 #ifndef DISABLE_PAGECACHE_OVERFLOW_STATS
 			if (p)
 			{
-				int size = bytes; //SysEx::AllocSize(p);
+				int size = SysEx::AllocSize(p);
 				MutexEx::Enter(_pcache1.Mutex);
 				StatusEx::StatusAdd(StatusEx::STATUS::PAGECACHE_OVERFLOW, size);
 				MutexEx::Leave(_pcache1.Mutex);
@@ -193,16 +192,16 @@ namespace Core
 	}
 #endif
 
-	static PgHdr1 *AllocPage(PCache1 *t)
+	static PgHdr1 *AllocPage(PCache1 *cache)
 	{
 		// The group mutex must be released before pcache1Alloc() is called. This is because it may call sqlite3_release_memory(), which assumes that this mutex is not held.
-		_assert(MutexEx::Held(t->Group->Mutex));
-		MutexEx::Leave(t->Group->Mutex);
+		_assert(MutexEx::Held(cache->Group->Mutex));
+		MutexEx::Leave(cache->Group->Mutex);
 		PgHdr1 *p = nullptr;
 		void *pg;
 #ifdef PCACHE_SEPARATE_HEADER
-		pg = Alloc(t->SizePage);
-		p = (PgHdr1 *)SysEx::Alloc(sizeof(PgHdr1) + t->SizeExtra);
+		pg = Alloc(cache->SizePage);
+		p = (PgHdr1 *)SysEx::Alloc(sizeof(PgHdr1) + cache->SizeExtra);
 		if (!pg || !p)
 		{
 			Free(pg);
@@ -210,16 +209,16 @@ namespace Core
 			pg = nullptr;
 		}
 #else
-		pg = Alloc(sizeof(PgHdr1) + t->SizePage + t->SizeExtra);
-		p = (PgHdr1 *)&((uint8 *)pg)[t->SizePage];
+		pg = Alloc(sizeof(PgHdr1) + cache->SizePage + cache->SizeExtra);
+		p = (PgHdr1 *)&((uint8 *)pg)[cache->SizePage];
 #endif
-		MutexEx::Enter(t->Group->Mutex);
+		MutexEx::Enter(cache->Group->Mutex);
 		if (pg)
 		{
 			p->Page.Buffer = pg;
 			p->Page.Extra = &p[1];
-			if (t->Purgeable)
-				t->Group->CurrentPages++;
+			if (cache->Purgeable)
+				cache->Group->CurrentPages++;
 			return p;
 		}
 		return nullptr;
@@ -368,7 +367,7 @@ namespace Core
 
 #pragma region Interface
 
-	int PCache1::Init()
+	RC PCache1::Init()
 	{
 		_assert(!_pcache1.IsInit);
 		_memset(&_pcache1, 0, sizeof(_pcache1));
@@ -388,7 +387,7 @@ namespace Core
 		_memset(&_pcache1, 0, sizeof(_pcache1));
 	}
 
-	PCache *PCache1::Create(int sizePage, int sizeExtra, bool purgeable)
+	IPCache *PCache1::Create(int sizePage, int sizeExtra, bool purgeable)
 	{
 		// The seperateCache variable is true if each PCache has its own private PGroup.  In other words, separateCache is true for mode (1) where no
 		// mutexing is required.
@@ -427,10 +426,10 @@ namespace Core
 				MutexEx::Leave(group->Mutex);
 			}
 		}
-		return (PCache *)cache;
+		return (IPCache *)cache;
 	}
 
-	void PCache1::Cachesize(int max)
+	void PCache1::Cachesize(uint max)
 	{
 		if (Purgeable)
 		{
@@ -467,7 +466,7 @@ namespace Core
 		return pages;
 	}
 
-	IPage *PCache1::Fetch(unsigned int key, int createFlag)
+	IPage *PCache1::Fetch(Pid key, int createFlag)
 	{
 		_assert(Purgeable || createFlag != 1);
 		_assert(Purgeable || Min == 0);
@@ -621,7 +620,7 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Destroy(PCache *p)
+	void PCache1::Destroy(IPCache *p)
 	{
 		PCache1 *cache = (PCache1 *)p;
 		PGroup *group = cache->Group;

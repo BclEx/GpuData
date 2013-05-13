@@ -1,5 +1,5 @@
-#include "..\GpuData\Core\Core.cu.h"
-#include "..\GpuData\Core+PCache1\Core+PCache1.cu.h"
+//#include "..\GpuData\Core\Core.cu.h"
+#include "..\GpuData\Core+PCache\Core+PCache.cu.h"
 
 namespace Core
 {

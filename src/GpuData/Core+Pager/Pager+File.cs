@@ -210,7 +210,7 @@ namespace Core
                             Debug.Assert(rc != RC.OK || this._journalFile.IsOpen);
                             if (rc == RC.OK && (fout & VFSOPEN.READONLY) != 0)
                             {
-                                rc = SysEx.SQLITE_CANTOPEN_BKPT();
+                                rc = SysEx.CANTOPEN_BKPT();
                                 FileEx.OSClose(this._journalFile);
                             }
                         }
@@ -345,7 +345,7 @@ namespace Core
                     // This branch is taken when the journal path required by the database being opened will be more than pVfs.mxPathname
                     // bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
                     // check for a hot-journal before reading.
-                    rc = SysEx.SQLITE_CANTOPEN_BKPT();
+                    rc = SysEx.CANTOPEN_BKPT();
                 if (rc != RC.OK)
                     return rc;
             }

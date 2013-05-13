@@ -7,6 +7,11 @@ namespace Core.IO
 {
     public class CoreVFileSystem : VFileSystem
     {
+        internal const long ERROR_FILE_NOT_FOUND = 2L;
+        internal const long ERROR_HANDLE_DISK_FULL = 39L;
+        internal const long ERROR_NOT_SUPPORTED = 50L;
+        internal const long ERROR_DISK_FULL = 112L;
+        //
         const int SQLITE_DEFAULT_SECTOR_SIZE = 512;
         const int MAX_PATH = 260;
         static int MX_DELETION_ATTEMPTS = 5;
@@ -98,8 +103,8 @@ namespace Core.IO
             if (fs == null || fs.SafeFileHandle.IsInvalid)
             {
                 file.LastErrorID = (uint)Marshal.GetLastWin32Error();
-                SysEx._Error(RC.CANTOPEN, "winOpen", path);
-                return (readWrite ? Open(path, file, ((flags | OPEN.READONLY) & ~(OPEN.CREATE | OPEN.READWRITE)), out outFlags) : SysEx.SQLITE_CANTOPEN_BKPT());
+                SysEx.OSError(RC.CANTOPEN, "winOpen", path);
+                return (readWrite ? Open(path, file, ((flags | OPEN.READONLY) & ~(OPEN.CREATE | OPEN.READWRITE)), out outFlags) : SysEx.CANTOPEN_BKPT());
             }
             outFlags = (readWrite ? OPEN.READWRITE : OPEN.READONLY);
             file.Clear();
@@ -130,7 +135,7 @@ namespace Core.IO
             if (rc == RC.OK)
                 return rc;
             error = Marshal.GetLastWin32Error();
-            return (rc == RC.INVALID && error == SysEx.ERROR_FILE_NOT_FOUND ? RC.OK : SysEx._Error(RC.IOERR_DELETE, "winDelete", path));
+            return (rc == RC.INVALID && error == CoreVFileSystem.ERROR_FILE_NOT_FOUND ? RC.OK : SysEx.OSError(RC.IOERR_DELETE, "winDelete", path));
         }
 
         public override RC Access(string path, ACCESS flags, out int outRC)
@@ -156,7 +161,7 @@ namespace Core.IO
                     }
                     catch (IOException) { attr = FileAttributes.ReadOnly; }
             }
-            catch (IOException) { SysEx._Error(RC.IOERR_ACCESS, "winAccess", path); }
+            catch (IOException) { SysEx.OSError(RC.IOERR_ACCESS, "winAccess", path); }
             switch (flags)
             {
                 case ACCESS.READ:
@@ -235,5 +240,8 @@ namespace Core.IO
             time = winFiletimeEpoch + DateTime.UtcNow.ToFileTimeUtc() / (long)10000;
             return RC.OK;
         }
+        
+        // For C#
+        public static bool IsRunningMediumTrust() { return false; }
     }
 }

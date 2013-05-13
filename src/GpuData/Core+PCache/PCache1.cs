@@ -1,8 +1,9 @@
 ﻿using Pid = System.UInt32;
-using IPCache = Core.PCache1;
+using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
 using System.Text;
+
 namespace Core
 {
     public class PGroup
@@ -15,7 +16,7 @@ namespace Core
         public PgHdr1 LruHead, LruTail; // LRU list of unpinned pages
     }
 
-    public partial class PCache1
+    public partial class PCache1 : IPCache
     {
         // Cache configuration parameters. Page size (szPage) and the purgeable flag (bPurgeable) are set when the cache is created. nMax may be 
         // modified at any time by a call to the pcache1CacheSize() method. The PGroup mutex must be held when accessing nMax.
@@ -32,7 +33,7 @@ namespace Core
         public uint Pages;          // Total number of pages in apHash
         public PgHdr1[] Hash;       // Hash table for fast lookup by key
 
-        public void Clear()
+        public void memset()
         {
             Recyclables = 0;
             Pages = 0;
@@ -43,30 +44,31 @@ namespace Core
 
     public class PgHdr1
     {
-        public PgHdr Page;
+        public IPage Page;
         public Pid Key;             // Key value (page number)
         public PgHdr1 Next;         // Next in hash table chain
         public PCache1 Cache;       // Cache that currently owns this page
         public PgHdr1 LruNext;      // Next in LRU list of unpinned pages
         public PgHdr1 LruPrev;      // Previous in LRU list of unpinned pages
+        // For C#
+        public PgHdr _PgHdr = new PgHdr();
 
-        //public PgHdr Page = new PgHdr();  // Pointer to Actual Page Header
-
-        public void Clear()
+        public void memset()
         {
             Key = 0;
             Next = null;
             Cache = null;
-            //  Page.ClearState();
+            LruNext = LruPrev = null;
+            // For C#
+            _PgHdr.memset();
         }
     }
 
     public class PgFreeslot
     {
-        public PgFreeslot() { }
-        public PgFreeslot(PgHdr p) { _PgHdr = p; }
         public PgFreeslot Next; // Next free slot
-        internal PgHdr _PgHdr = new PgHdr();
+        // For C#
+        internal PgHdr _PgHdr;
     }
 
     public class PCacheGlobal
@@ -86,7 +88,11 @@ namespace Core
         // The following value requires a mutex to change.  We skip the mutex on reading because (1) most platforms read a 32-bit integer atomically and
         // (2) even if an incorrect value is read, no great harm is done since this is really just an optimization.
         public bool UnderPressure;         // True if low on PAGECACHE memory
-        //public static void Touch() { }
+
+        internal bool IsAllocated(object p)
+        {
+            return false;
+        }
     }
 
     public partial class PCache1
@@ -110,10 +116,10 @@ namespace Core
                 _pcache1.UnderPressure = false;
                 while (n-- > 0)
                 {
-                    //TODO: not a good translation of buffer
-                    var p = new PgFreeslot();
+                    var p = new PgFreeslot { _PgHdr = new PgHdr() }; //(PgFreeslot *)buffer;
                     p.Next = _pcache1.Free;
                     _pcache1.Free = p;
+                    //buffer = (void*)&((char*)buffer)[size];
                 }
                 _pcache1.End = buffer;
             }
@@ -127,7 +133,7 @@ namespace Core
             if (bytes <= _pcache1.SizeSlot)
             {
                 MutexEx.Enter(_pcache1.Mutex);
-                p = _pcache1.Free._PgHdr;
+                p = (PgHdr)_pcache1.Free._PgHdr;
                 if (p != null)
                 {
                     _pcache1.Free = _pcache1.Free.Next;
@@ -141,9 +147,10 @@ namespace Core
             if (p == null)
             {
                 // Memory is not available in the SQLITE_CONFIG_PAGECACHE pool.  Get it from sqlite3Malloc instead.
-                p = new PgHdr();
+                p = new PgHdr(); //SysEx::Alloc(bytes);
+                //if (p != null)
                 {
-                    var size = bytes;
+                    var size = bytes; //SysEx::AllocSize(p);
                     MutexEx.Enter(_pcache1.Mutex);
                     StatusEx.StatusAdd(StatusEx.STATUS.PAGECACHE_OVERFLOW, size);
                     MutexEx.Leave(_pcache1.Mutex);
@@ -158,11 +165,11 @@ namespace Core
             int freed = 0;
             if (p == null)
                 return 0;
-            if (p.CacheAllocated)
+            if (p._CacheAllocated) //if (p >= _pcache1.Start && p < _pcache1.End)
             {
                 MutexEx.Enter(_pcache1.Mutex);
                 StatusEx.StatusAdd(StatusEx.STATUS.PAGECACHE_USED, -1);
-                var slot = new PgFreeslot(p);
+                var slot = new PgFreeslot { _PgHdr = p }; //var slot = (PgFreeslot *)p;
                 slot.Next = _pcache1.Free;
                 _pcache1.Free = slot;
                 _pcache1.FreeSlots++;
@@ -174,11 +181,13 @@ namespace Core
             {
                 Debug.Assert(SysEx.MemdebugHasType(p, SysEx.MEMTYPE.PCACHE));
                 SysEx.MemdebugSetType(p, SysEx.MEMTYPE.HEAP);
-                freed = SysEx.AllocSize(p._Data);
+                freed = SysEx.AllocSize(p.Data);
+#if !DISABLE_PAGECACHE_OVERFLOW_STATS
                 MutexEx.Enter(_pcache1.Mutex);
                 StatusEx.StatusAdd(StatusEx.STATUS.PAGECACHE_OVERFLOW, -freed);
                 MutexEx.Leave(_pcache1.Mutex);
-                SysEx.Free(ref p._Data);
+#endif
+                SysEx.Free(ref p.Data);
             }
             return freed;
         }
@@ -186,7 +195,7 @@ namespace Core
 #if ENABLE_MEMORY_MANAGEMENT
         private static int MemSize(PgHdr p)
         {
-            if (p.CacheAllocated)
+            if (p._CacheAllocated)
                 return _pcache1.SizeSlot;
             Debug.Assert(SysEx.MemdebugHasType(p, SysEx.MEMTYPE.PCACHE));
             SysEx.MemdebugSetType(p, SysEx.MEMTYPE.HEAP);
@@ -196,15 +205,28 @@ namespace Core
         }
 #endif
 
-        private PgHdr1 AllocPage()
+        private static PgHdr1 AllocPage(PCache1 cache)
         {
-            var pg = Alloc(SizePage);
-            var p = new PgHdr1();
-            p.Page.Buffer = pg;
-            p.Page.Extra = null; // TODO: map for extra
-            if (Purgeable)
-                Group.CurrentPages++;
-            return p;
+            Debug.Assert(MutexEx.Held(cache.Group.Mutex));
+            MutexEx.Leave(cache.Group.Mutex);
+            PgHdr pg;
+            PgHdr1 p = null;
+#if true || PCACHE_SEPARATE_HEADER
+            pg = Alloc(cache.SizePage);
+            p = new PgHdr1();
+#else
+		    pg = Alloc(sizeof(PgHdr1) + t.SizePage + t.SizeExtra);
+		    p = (PgHdr1 *)&((uint8 *)pg)[t.SizePage];
+#endif
+            MutexEx.Enter(cache.Group.Mutex);
+            //if (pg != null)
+            {
+                //p.Page.Buffer = pg;
+                //p.Page.Extra = null;
+                if (cache.Purgeable)
+                    cache.Group.CurrentPages++;
+                return p;
+            }
         }
 
         private static void FreePage(ref PgHdr1 p)
@@ -213,8 +235,9 @@ namespace Core
             {
                 var cache = p.Cache;
                 Debug.Assert(MutexEx.Held(p.Cache.Group.Mutex));
-                Free(ref p.Page);
-
+#if !PCACHE_SEPARATE_HEADER
+                Free(ref p._PgHdr);
+#endif
                 if (cache.Purgeable)
                     cache.Group.CurrentPages--;
             }
@@ -247,25 +270,25 @@ namespace Core
 
         #region General
 
-        private RC ResizeHash()
+        private static RC ResizeHash(PCache1 p)
         {
-            Debug.Assert(MutexEx.Held(Group.Mutex));
-            var newLength = Hash.Length * 2;
+            Debug.Assert(MutexEx.Held(p.Group.Mutex));
+            var newLength = p.Hash.Length * 2;
             if (newLength < 256)
                 newLength = 256;
-            MutexEx.Leave(Group.Mutex);
-            if (Hash.Length != 0)
+            MutexEx.Leave(p.Group.Mutex);
+            if (p.Hash.Length != 0)
                 SysEx.BeginBenignMalloc();
             var newHash = new PgHdr1[newLength];
-            if (Hash.Length != 0)
+            if (p.Hash.Length != 0)
                 SysEx.EndBenignMalloc();
-            MutexEx.Enter(Group.Mutex);
+            MutexEx.Enter(p.Group.Mutex);
             if (newHash != null)
             {
-                for (var i = 0; i < Hash.Length; i++)
+                for (var i = 0; i < p.Hash.Length; i++)
                 {
                     PgHdr1 page;
-                    var next = Hash[i];
+                    var next = p.Hash[i];
                     while ((page = next) != null)
                     {
                         var h = (Pid)(page.Key % newLength);
@@ -274,9 +297,9 @@ namespace Core
                         newHash[h] = page;
                     }
                 }
-                Hash = newHash;
+                p.Hash = newHash;
             }
-            return (Hash != null ? RC.OK : RC.NOMEM);
+            return (p.Hash != null ? RC.OK : RC.NOMEM);
         }
 
         private static void PinPage(PgHdr1 page)
@@ -330,26 +353,26 @@ namespace Core
             }
         }
 
-        private void TruncateUnsafe(uint limit)
+        private static void TruncateUnsafe(PCache1 p, uint limit)
         {
 #if !DEBUG
             uint pages = 0;
 #endif
-            Debug.Assert(MutexEx.Held(Group.Mutex));
-            for (uint h = 0; h < Hash.Length; h++)
+            Debug.Assert(MutexEx.Held(p.Group.Mutex));
+            for (uint h = 0; h < p.Hash.Length; h++)
             {
-                var pp = Hash[h];
+                var pp = p.Hash[h];
                 PgHdr1 page;
                 PgHdr1 prev = null;
                 while ((page = pp) != null)
                 {
                     if (page.Key >= limit)
                     {
-                        Pages--;
+                        p.Pages--;
                         pp = page.Next;
                         PinPage(page);
-                        if (Hash[h] == page)
-                            Hash[h] = page.Next;
+                        if (p.Hash[h] == page)
+                            p.Hash[h] = page.Next;
                         else
                             prev.Next = pp;
                         FreePage(ref page);
@@ -373,12 +396,7 @@ namespace Core
 
         #region Interface
 
-        public static object pArg
-        {
-            get { return null; }
-        }
-
-        public static RC Init()
+        public RC Init()
         {
             Debug.Assert(_pcache1 == null);
             _pcache1 = new PCacheGlobal();
@@ -391,13 +409,13 @@ namespace Core
             return RC.OK;
         }
 
-        public static void Shutdown()
+        public void Shutdown()
         {
             Debug.Assert(_pcache1 != null);
             _pcache1 = null;
         }
 
-        public static IPCache Create(int sizePage, int sizeExtra, bool purgeable)
+        public IPCache Create(int sizePage, int sizeExtra, bool purgeable)
         {
             // The seperateCache variable is true if each PCache has its own private PGroup.  In other words, separateCache is true for mode (1) where no
             // mutexing is required.
@@ -435,7 +453,7 @@ namespace Core
             return (IPCache)cache;
         }
 
-        public void Cachesize(Pid max)
+        public void Cachesize(uint max)
         {
             if (Purgeable)
             {
@@ -472,7 +490,7 @@ namespace Core
             return pages;
         }
 
-        public PgHdr Fetch(Pid key, int createFlag)
+        public IPage Fetch(Pid key, int createFlag)
         {
             Debug.Assert(Purgeable || createFlag != 1);
             Debug.Assert(Purgeable || Min == 0);
@@ -494,6 +512,7 @@ namespace Core
                 PinPage(page);
                 goto fetch_out;
             }
+
             // The pGroup local variable will normally be initialized by the pcache1EnterMutex() macro above.  But if SQLITE_MUTEX_OMIT is defined,
             // then pcache1EnterMutex() is a no-op, so we have to initialize the local variable here.  Delaying the initialization of pGroup is an
             // optimization:  The common case is to exit the module before reaching this point.
@@ -508,7 +527,7 @@ namespace Core
             Debug.Assert(N90pct == Max * 9 / 10);
             if (createFlag == 1 && (pinned >= group.MaxPinned || pinned >= (int)N90pct || UnderMemoryPressure()))
                 goto fetch_out;
-            if (Pages >= Hash.Length && ResizeHash() != 0)
+            if (Pages >= Hash.Length && ResizeHash(this) != 0)
                 goto fetch_out;
 
             // Step 4. Try to recycle a page.
@@ -538,7 +557,7 @@ namespace Core
             if (page == null)
             {
                 if (createFlag == 1) SysEx.BeginBenignMalloc();
-                page = AllocPage();
+                page = AllocPage(this);
                 if (createFlag == 1) SysEx.EndBenignMalloc();
             }
             if (page != null)
@@ -563,9 +582,9 @@ namespace Core
             return page.Page;
         }
 
-        public void Unpin(PgHdr p2, bool reuseUnlikely)
+        public void Unpin(IPage pg, bool reuseUnlikely)
         {
-            var page = (PgHdr1)p2.PgHdr1;
+            var page = (PgHdr1)pg._PgHdr1;
             var group = Group;
             Debug.Assert(page.Cache == this);
             MutexEx.Enter(Group.Mutex);
@@ -596,9 +615,9 @@ namespace Core
             MutexEx.Leave(group.Mutex);
         }
 
-        public void Rekey(PgHdr p2, Pid old, Pid @new)
+        public void Rekey(IPage pg, Pid old, Pid new_)
         {
-            var page = (PgHdr1)p2.PgHdr1;
+            var page = (PgHdr1)pg._PgHdr1;
             Debug.Assert(page.Key == old);
             Debug.Assert(page.Cache == this);
             MutexEx.Enter(Group.Mutex);
@@ -610,12 +629,12 @@ namespace Core
                 Hash[h] = pp.Next;
             else
                 pp.Next = page.Next;
-            h = (uint)(@new % Hash.Length);
-            page.Key = @new;
+            h = (uint)(new_ % Hash.Length);
+            page.Key = new_;
             page.Next = Hash[h];
             Hash[h] = page;
-            if (@new > MaxKey)
-                MaxKey = @new;
+            if (new_ > MaxKey)
+                MaxKey = new_;
             MutexEx.Leave(Group.Mutex);
         }
 
@@ -624,39 +643,47 @@ namespace Core
             MutexEx.Enter(Group.Mutex);
             if (limit <= MaxKey)
             {
-                TruncateUnsafe(limit);
+                TruncateUnsafe(this, limit);
                 MaxKey = limit - 1;
             }
             MutexEx.Leave(Group.Mutex);
         }
 
-        public static void Destroy(ref IPCache cache)
+        public void Destroy(ref IPCache p)
         {
-            PGroup group = cache.Group;
+            var cache = (PCache1)p;
+            var group = cache.Group;
             Debug.Assert(cache.Purgeable || (cache.Max == 0 && cache.Min == 0));
             MutexEx.Enter(group.Mutex);
-            cache.TruncateUnsafe(0);
+            TruncateUnsafe(cache, 0);
+            Debug.Assert(group.MaxPages >= cache.Max);
             group.MaxPages -= cache.Max;
+            Debug.Assert(group.MinPages >= cache.Min);
             group.MinPages -= cache.Min;
             group.MaxPinned = group.MaxPages + 10 - group.MinPages;
             EnforceMaxPage(group);
             MutexEx.Leave(group.Mutex);
+            //SysEx.Free(ref cache.Hash);
+            //SysEx.Free(ref cache);
             cache = null;
         }
 
 #if ENABLE_MEMORY_MANAGEMENT
         int ReleaseMemory(int required)
         {
-            int free = 0;
             Debug.Assert(MutexEx.NotHeld(_pcache1.Group.Mutex));
             Debug.Assert(MutexEx.NotHeld(_pcache1.Mutex));
+            int free = 0;
             if (_pcache1.Start == null)
             {
                 PgHdr1 p;
                 MutexEx.Enter(_pcache1.Group.Mutex);
                 while ((required < 0 || free < required) && ((p = _pcache1.Group.LruTail) != null))
                 {
-                    free += MemSize(p.Page);
+                    free += MemSize(p.Page.Buffer);
+#if PCACHE_SEPARATE_HEADER
+                    free += MemSize(p);
+#endif
                     PinPage(p);
                     RemoveFromHash(p);
                     FreePage(ref p);

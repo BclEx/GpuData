@@ -28,9 +28,12 @@ namespace Core
 		__device__ inline static void StackFree(void *p) { }
 		__device__ inline static bool HeapNearlyFull() { return false; }
 		//
-		__device__ inline static void MemdebugSetType(void *p, MEMTYPE memType);
-		__device__ inline static int MemdebugHasType(void *p, MEMTYPE memType);
-		__device__ inline static int MemdebugNoType(void *p, MEMTYPE memType);
+#if MEMDEBUG
+#else
+		__device__ inline static void MemdebugSetType(void *p, MEMTYPE memType) { }
+		__device__ inline static bool MemdebugHasType(void *p, MEMTYPE memType) { return true; }
+		__device__ inline static bool MemdebugNoType(void *p, MEMTYPE memType) { return true; }
+#endif
 		//
 		__device__ static void SetRandom(int n, void *buffer);
 	};
@@ -44,6 +47,31 @@ namespace Core
 #define SysEx_HASALIGNMENT8(X) ((((char *)(X) - (char *)0)&3) == 0)
 #else
 #define SysEx_HASALIGNMENT8(X) ((((char *)(X) - (char *)0)&7) == 0)
+#endif
+
+#if DEBUG
+	__device__ inline static RC CORRUPT_BKPT_(int line)
+	{
+		//sqlite3_log(RC::CORRUPT, "database corruption at line %d of [%.10s]", line, "");
+		return RC::CORRUPT;
+	}
+	__device__ inline static RC MISUSE_BKPT_(int line)
+	{
+		//sqlite3_log(RC::MISUSE, "misuse at line %d of [%.10s]", line, "");
+		return RC::MISUSE;
+	}
+	__device__ inline static RC CANTOPEN_BKPT_(int line)
+	{
+		//sqlite3_log(RC::CANTOPEN, "cannot open file at line %d of [%.10s]", line, "");
+		return RC::CANTOPEN;
+	}
+#define SysEx_CORRUPT_BKPT CORRUPT_BKPT_(__LINE__)
+#define SysEx_MISUSE_BKPT MISUSE_BKPT_(__LINE__)
+#define SysEx_CANTOPEN_BKPT CANTOPEN_BKPT_(__LINE__)
+#else
+#define SysEx_CORRUPT_BKPT RC::CORRUPT
+#define SysEx_MISUSE_BKPT RC::MISUSE
+#define SysEx_CANTOPEN_BKPT RC::CANTOPEN
 #endif
 
 }

@@ -84,7 +84,7 @@ namespace Core
 				if (!newChunk)
 					return RC::IOERR_NOMEM;
 				newChunk->Next = nullptr;
-				if (chunk) { _assert(First); chunk->Next = newChunk; }
+				if (chunk) { _assert((int)First); chunk->Next = newChunk; }
 				else { _assert(!First); First = newChunk; }
 				_endpoint.Chunk = newChunk;
 			}

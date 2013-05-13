@@ -13,7 +13,7 @@ namespace Core
 		int SizePage;               // Size of every page in this cache
 		int SizeExtra;              // Size of extra space for each page
 		bool Purgeable;             // True if pages are on backing store
-		int (*Stress)(void *, PgHdr *);// Call to try make a page clean
+		RC (*Stress)(void *, PgHdr *);// Call to try make a page clean
 		void *StressArg;            // Argument to xStress
 		IPCache *Cache;				// Pluggable cache module
 		PgHdr *Page1;				// Reference to page 1
@@ -21,11 +21,9 @@ namespace Core
 		static int Initialize();
 		static void Shutdown();
 		//	static int SizeOf();
-		void Open(int sizePage, int sizeExtra, bool purgeable, int (*stress)(void *, PgHdr *), void *stressArg, PCache *p);
-
-		//	void BufferSetup(void *, int sz, int n);
+		void Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p);
 		void SetPageSize(int sizePage);
-		int Fetch(PCache *, Pid id, int createFlag, PgHdr **pageOut);
+		int Fetch(Pid id, bool createFlag, PgHdr **pageOut);
 		//	void Release(PgHdr *);
 		//	void Drop(PgHdr *);         // Remove page from cache
 		//	void MakeDirty(PgHdr *);    // Make sure page is marked dirty
@@ -52,6 +50,8 @@ namespace Core
 		//#ifdef ENABLE_MEMORY_MANAGEMENT
 		//	int ReleaseMemory(int);
 		//#endif
+		//	void BufferSetup(void *, int sz, int n);
+
 	};
 
 #pragma region Linked List
@@ -127,7 +127,7 @@ namespace Core
 		{
 			if (p->ID == 1)
 				cache->Page1 = nullptr;
-			cache->Cache.Unpin(p->Page, false);
+			cache->Cache->Unpin(p->Page, false);
 		}
 	}
 
@@ -135,11 +135,21 @@ namespace Core
 
 #pragma region Interface
 
-	int PCache::Initialize() { return PCache1.Init(); }
-	void PCache::Shutdown() { PCache1.Shutdown(); }
+	static IPCache *_pcache;
+
+	int PCache::Initialize() 
+	{ 
+		//if (_pcache == nullptr)
+		//	_pcache = new PCache1();
+		return _pcache->Init(); 
+	}
+	void PCache::Shutdown()
+	{
+		_pcache->Shutdown(); 
+	}
 	//int PCache::SizeOf() { return sizeof(PCache); }
 
-	void PCache::Open(int sizePage, int sizeExtra, bool purgeable, int (*stress)(void *, PgHdr *), void *stressArg, PCache *p)
+	void PCache::Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p)
 	{
 		_memset(p, 0, sizeof(PCache));
 		p->SizePage = sizePage;
@@ -152,31 +162,30 @@ namespace Core
 
 	void PCache::SetPageSize(int sizePage)
 	{
-		_assert(Refs == 0 && Dirties == nullptr);
+		_assert(Refs == 0 && Dirty == nullptr);
 		if (Cache)
 		{
-			PCache1.Destroy(Cache);
+			_pcache->Destroy(Cache);
 			Cache = nullptr;
 			Page1 = nullptr;
 		}
 		SizePage = sizePage;
 	}
 
-	static int NumberOfCachePages(PCache *p)
+	static uint NumberOfCachePages(PCache *p)
 	{
 		if (p->SizeCache >= 0)
-			return p->SizeCache;
-		return (int)((-1024 * (int64)p->SizeCache) / (p->SizePage + p->SizeExtra));
+			return (uint)p->SizeCache;
+		return (uint)((-1024 * (int64)p->SizeCache) / (p->SizePage + p->SizeExtra));
 	}
 
 	int PCache::Fetch(Pid id, bool createFlag, PgHdr **pageOut)
 	{
-		_assert(createFlag == 1 || createFlag == 0);
 		_assert(id > 0);
 		// If the pluggable cache (sqlite3_pcache*) has not been allocated, allocate it now.
 		if (!Cache && createFlag)
 		{
-			PCache *p = PCache1.Create(SizePage, SizeExtra + sizeof(PgHdr), Purgeable);
+			IPCache *p = _pcache->Create(SizePage, SizeExtra + sizeof(PgHdr), Purgeable);
 			if (!p)
 				return RC::NOMEM;
 			p->Cachesize(NumberOfCachePages(this));
@@ -185,13 +194,13 @@ namespace Core
 		IPage *page = nullptr;
 		int create = createFlag * (1 + (!Purgeable || !Dirty));
 		if (Cache)
-			page = Cache.Fetch(id, create);
-		if (!page && create == 1)
+			page = Cache->Fetch(id, create);
+		if (!page && create)
 		{
 			// Find a dirty page to write-out and recycle. First try to find a page that does not require a journal-sync (one with PGHDR_NEED_SYNC
 			// cleared), but if that is not possible settle for any other unreferenced dirty page.
 #if EXPENSIVE_ASSERT
-			CheckSynced();
+			CheckSynced(this);
 #endif
 			PgHdr *pg;
 			for (pg = Synced; pg && (pg->Refs || (pg->Flags & PgHdr::PGHDR::NEED_SYNC)); pg = pg->DirtyPrev) ;
@@ -201,13 +210,13 @@ namespace Core
 			if (pg)
 			{
 #ifdef LOG_CACHE_SPILL
-				sqlite3_log(SQLITE_FULL, "spill page %d making room for %d - cache used: %d/%d", pg->ID, id, cache->Cache.Pagecount(), NumberOfCachePages(cache));
+				SysEx::Log(RC::FULL, "spill page %d making room for %d - cache used: %d/%d", pg->ID, id, _pcache->Pagecount(), NumberOfCachePages(this));
 #endif
 				RC rc = Stress(StressArg, pg);
 				if (rc != RC::OK && rc != RC::BUSY)
 					return rc;
 			}
-			page = Cache.Fetch(id, 2);
+			page = Cache->Fetch(id, 2);
 		}
 		PgHdr *pgHdr = nullptr;
 		if (page)
@@ -271,7 +280,7 @@ namespace Core
 		cache->Refs--;
 		if (p->ID == 1)
 			cache->Page1 = nullptr;
-		cache->Cache.Unpin(p->Page, true);
+		cache->Cache->Unpin(p->Page, true);
 	}
 
 	void MakeDirty(PgHdr *p)
@@ -281,7 +290,7 @@ namespace Core
 		if ((p->Flags & PgHdr::PGHDR::DIRTY) == 0)
 		{
 			p->Flags |= PgHdr::PGHDR::DIRTY;
-			AddToDirtyList( p);
+			AddToDirtyList(p);
 		}
 	}
 
@@ -315,7 +324,7 @@ namespace Core
 		PCache *cache = p->Cache;
 		_assert(p->Refs > 0);
 		_assert(newID > 0);
-		cache->Cache.Rekey(p->Page, p->ID, newID);
+		cache->Cache->Rekey(p->Page, p->ID, newID);
 		p->ID = newID;
 		if ((p->Flags & PgHdr::PGHDR::DIRTY) && (p->Flags & PgHdr::PGHDR::NEED_SYNC))
 		{
@@ -346,14 +355,14 @@ namespace Core
 				_memset(cache->Page1->Data, 0, cache->SizePage);
 				id = 1;
 			}
-			cache->Cache.Truncate(id + 1);
+			cache->Cache->Truncate(id + 1);
 		}
 	}
 
 	void Close(PCache *cache)
 	{
 		if (cache->Cache)
-			PCache1::Destroy(cache->Cache);
+			_pcache->Destroy(cache->Cache);
 	}
 
 	void Clear(PCache *cache)
@@ -369,27 +378,27 @@ namespace Core
 		{
 			if (a->ID < b->ID)
 			{
-				tail->Dirties = a;
+				tail->Dirty = a;
 				tail = a;
-				a = a->Dirties;
+				a = a->Dirty;
 			}
 			else
 			{
-				tail->Dirties = b;
+				tail->Dirty = b;
 				tail = b;
-				b = b->Dirties;
+				b = b->Dirty;
 			}
 		}
 		if (a)
-			tail->Dirties = a;
+			tail->Dirty = a;
 		else if (b)
-			tail->Dirties = b;
+			tail->Dirty = b;
 		else
-			tail->Dirties = nullptr;
-		return result.Dirties;
+			tail->Dirty = nullptr;
+		return result.Dirty;
 	}
 
-#define N_SORT_BUCKET  32
+#define N_SORT_BUCKET 32
 
 	static PgHdr *SortDirtyList(PgHdr *in)
 	{
@@ -399,11 +408,11 @@ namespace Core
 		while (in)
 		{
 			p = in;
-			in = p->Dirties;
-			p->Dirties = nullptr;
+			in = p->Dirty;
+			p->Dirty = nullptr;
 			for (i = 0; SysEx_ALWAYS(i < N_SORT_BUCKET - 1); i++)
 			{
-				if (a[i] == 0)
+				if (a[i] == nullptr)
 				{
 					a[i] = p;
 					break;
@@ -411,7 +420,7 @@ namespace Core
 				else
 				{
 					p = MergeDirtyList(a[i], p);
-					a[i] = 0;
+					a[i] = nullptr;
 				}
 			}
 			if (SysEx_NEVER(i == N_SORT_BUCKET - 1))
@@ -428,7 +437,7 @@ namespace Core
 	{
 		for (PgHdr *p = cache->Dirty; p; p = p->DirtyNext)
 			p->Dirty = p->DirtyNext;
-		return SortDirtyList(cache->pDirty);
+		return SortDirtyList(cache->Dirty);
 	}
 
 	int RefCount(PCache *cache)
@@ -443,26 +452,23 @@ namespace Core
 
 	int Pagecount(PCache *cache)
 	{
-		int pages = 0;
-		if (cache->Cache)
-			pages = cache->Cache.Pagecount();
-		return pages;
+		return (cache->Cache ? cache->Cache->Pagecount() : 0);
 	}
 
 	void SetCachesize(PCache *cache, int maxPage)
 	{
 		cache->SizeCache = maxPage;
 		if (cache->Cache)
-			cache->Cache.Cachesize(NumberOfCachePages(cache));
+			cache->Cache->Cachesize(NumberOfCachePages(cache));
 	}
 
 	void Shrink(PCache *cache)
 	{
 		if (cache->Cache)
-			cache->Cache.Shrink();
+			cache->Cache->Shrink();
 	}
 
-#if defined(CHECK_PAGES) || !defined(DEBUG)
+#if defined(CHECK_PAGES) || defined(DEBUG)
 	void IterateDirty(PCache *cache, void (*iter)(PgHdr *))
 	{
 		for (PgHdr *dirty = cache->Dirty; dirty; dirty = dirty->DirtyNext)
