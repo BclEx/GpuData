@@ -8,7 +8,8 @@ namespace GpuData
     {
         public static void Main(string[] args)
         {
-            TestVFS();
+            //TestVFS();
+            //TestPager();
             //Console.ReadKey();
         }
 
@@ -20,6 +21,9 @@ namespace GpuData
             var file = new CoreVFile();
             VFileSystem.OPEN flagOut;
             var rc = vfs.Open(@"Test", file, VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.MAIN_DB, out flagOut);
+            if (rc != RC.OK)
+                throw new InvalidOperationException();
+            file.Close();
         }
 
         //private static void TestPager()

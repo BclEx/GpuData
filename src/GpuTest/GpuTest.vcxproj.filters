@@ -12,9 +12,6 @@
     <CudaCompile Include="..\GpuData\Core\00.Bitvec.cu">
       <Filter>Core</Filter>
     </CudaCompile>
-    <CudaCompile Include="..\GpuData\Core\01.Bitvec-Tests.cu">
-      <Filter>Core</Filter>
-    </CudaCompile>
     <CudaCompile Include="..\GpuData\Core\10.ConvertEx.cu">
       <Filter>Core</Filter>
     </CudaCompile>
@@ -33,5 +30,8 @@
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime.cu.h" />
+    <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

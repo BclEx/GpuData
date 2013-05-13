@@ -1,5 +1,5 @@
 ﻿// pcache1.c
-#include "Core+PCache.cu.h"
+#include "Core+Pager.cu.h"
 using namespace Core;
 
 namespace Core
@@ -9,10 +9,10 @@ namespace Core
 	struct PGroup 
 	{
 		MutexEx Mutex;					// MUTEX_STATIC_LRU or NULL
-		unsigned int MaxPages;			// Sum of nMax for purgeable caches
-		unsigned int MinPages;			// Sum of nMin for purgeable caches
-		unsigned int MaxPinned;         // nMaxpage + 10 - nMinPage
-		unsigned int CurrentPages;		// Number of purgeable pages allocated
+		uint MaxPages;			// Sum of nMax for purgeable caches
+		uint MinPages;			// Sum of nMin for purgeable caches
+		uint MaxPinned;         // nMaxpage + 10 - nMinPage
+		uint CurrentPages;		// Number of purgeable pages allocated
 		PgHdr1 *LruHead, *LruTail;		// LRU list of unpinned pages
 	};
 
@@ -25,14 +25,14 @@ namespace Core
 		int SizePage;                   // Size of allocated pages in bytes
 		int SizeExtra;                  // Size of extra space in bytes
 		bool Purgeable;					// True if cache is purgeable
-		unsigned int Min;				// Minimum number of pages reserved
-		unsigned int Max;				// Configured "cache_size" value
-		unsigned int N90pct;			// nMax*9/10
-		unsigned int MaxKey;			// Largest key seen since xTruncate()
+		uint Min;				// Minimum number of pages reserved
+		uint Max;				// Configured "cache_size" value
+		uint N90pct;			// nMax*9/10
+		uint MaxKey;			// Largest key seen since xTruncate()
 		// Hash table of all pages. The following variables may only be accessed when the accessor is holding the PGroup mutex.
-		unsigned int Recyclables;       // Number of pages in the LRU list
-		unsigned int Pages;             // Total number of pages in apHash
-		unsigned int _0; PgHdr1 **Hash;	// Hash table for fast lookup by key
+		uint Recyclables;       // Number of pages in the LRU list
+		uint Pages;             // Total number of pages in apHash
+		uint _0; PgHdr1 **Hash;	// Hash table for fast lookup by key
 	public:
 		static void *PageAlloc(int size);
 		static void PageFree(void *p);
@@ -44,21 +44,21 @@ namespace Core
 		virtual void Cachesize(uint max);
 		virtual void Shrink();
 		virtual int Pagecount();
-		virtual IPage *Fetch(unsigned int key, int createFlag);
+		virtual IPage *Fetch(Pid key, int createFlag);
 		virtual void Unpin(IPage *pg, bool reuseUnlikely);
-		virtual void Rekey(IPage *pg, unsigned int old, unsigned int new_);
-		virtual void Truncate(unsigned int limit);
+		virtual void Rekey(IPage *pg, Pid old, Pid new_);
+		virtual void Truncate(Pid limit);
 		virtual void Destroy(IPCache *p);
 	};
 
 	struct PgHdr1
 	{
 		IPage Page;
-		unsigned int Key;             // Key value (page number)
-		PgHdr1 *Next;                 // Next in hash table chain
-		PCache1 *Cache;               // Cache that currently owns this page
-		PgHdr1 *LruNext;              // Next in LRU list of unpinned pages
-		PgHdr1 *LruPrev;              // Previous in LRU list of unpinned pages
+		Pid Key;           // Key value (page number)
+		PgHdr1 *Next;       // Next in hash table chain
+		PCache1 *Cache;		// Cache that currently owns this page
+		PgHdr1 *LruNext;	// Next in LRU list of unpinned pages
+		PgHdr1 *LruPrev;	// Previous in LRU list of unpinned pages
 	};
 
 	struct PgFreeslot
@@ -261,7 +261,7 @@ namespace Core
 	static int ResizeHash(PCache1 *p)
 	{
 		_assert(MutexEx::Held(p->Group->Mutex));
-		unsigned int newLength = __arrayLength(p->Hash) * 2;
+		uint newLength = __arrayLength(p->Hash) * 2;
 		if (newLength < 256)
 			newLength = 256;
 		MutexEx::Leave(p->Group->Mutex);
@@ -271,13 +271,13 @@ namespace Core
 		MutexEx::Enter(p->Group->Mutex);
 		if (newHash)
 		{
-			for (unsigned int i = 0; i < __arrayLength(p->Hash); i++)
+			for (uint i = 0; i < __arrayLength(p->Hash); i++)
 			{
 				PgHdr1 *page;
 				PgHdr1 *next = p->Hash[i];
 				while ((page = next) != 0)
 				{
-					unsigned int h = page->Key % newLength;
+					uint h = (page->Key % newLength);
 					next = page->Next;
 					page->Next = newHash[h];
 					newHash[h] = page;
@@ -291,7 +291,7 @@ namespace Core
 
 	static void PinPage(PgHdr1 *page)
 	{
-		if (page == 0)
+		if (page == nullptr)
 			return;
 		PCache1 *cache = page->Cache;
 		PGroup *group = cache->Group;
@@ -316,7 +316,7 @@ namespace Core
 	{
 		PCache1 *cache = page->Cache;
 		_assert(MutexEx::Held(cache->Group->Mutex));
-		unsigned int h = page->Key % __arrayLength(cache->Hash);
+		uint h = (page->Key % __arrayLength(cache->Hash));
 		PgHdr1 **pp;
 		for (pp = &cache->Hash[h]; (*pp) != page; pp = &(*pp)->Next);
 		*pp = (*pp)->Next;
@@ -336,11 +336,11 @@ namespace Core
 		}
 	}
 
-	static void TruncateUnsafe(PCache1 *p, unsigned int limit)
+	static void TruncateUnsafe(PCache1 *p, Pid limit)
 	{
-		ASSERTONLY(unsigned int pages = 0;) 
+		ASSERTONLY(uint pages = 0;) 
 			_assert(MutexEx::Held(p->Group->Mutex));
-		for (unsigned int h = 0; h < __arrayLength(p->Hash); h++)
+		for (uint h = 0; h < __arrayLength(p->Hash); h++)
 		{
 			PgHdr1 **pp = &p->Hash[h]; 
 			PgHdr1 *page;
@@ -450,7 +450,7 @@ namespace Core
 		{
 			PGroup *group = Group;
 			MutexEx::Enter(group->Mutex);
-			unsigned int savedMaxPages = group->MaxPages;
+			uint savedMaxPages = group->MaxPages;
 			group->MaxPages = 0;
 			EnforceMaxPage(group);
 			group->MaxPages = savedMaxPages;
@@ -478,7 +478,7 @@ namespace Core
 		PgHdr1 *page = nullptr;
 		if (__arrayLength(cache->Hash) > 0)
 		{
-			unsigned int h = key % __arrayLength(cache->Hash);
+			uint h = (key % __arrayLength(cache->Hash));
 			for (page = Hash[h]; page && page->Key != key; page = page->Next) ;
 		}
 
@@ -498,7 +498,7 @@ namespace Core
 
 		// Step 3: Abort if createFlag is 1 but the cache is nearly full
 		_assert(Pages >= Recyclables);
-		unsigned int pinned = Pages - Recyclables;	
+		uint pinned = Pages - Recyclables;	
 		_assert(group->MaxPinned == group->MaxPages + 10 - group->MinPages);
 		_assert(N90pct == Max * 9 / 10);
 		if (createFlag == 1 && (pinned >= group->MaxPinned || pinned >= N90pct || UnderMemoryPressure()))
@@ -538,7 +538,7 @@ namespace Core
 		}
 		if (page)
 		{
-			unsigned int h = key % __arrayLength(cache->Hash);
+			uint h = (key % __arrayLength(cache->Hash));
 			Pages++;
 			page->Key = key;
 			page->Next = Hash[h];
@@ -589,18 +589,18 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Rekey(IPage *pg, unsigned int old, unsigned int new_)
+	void PCache1::Rekey(IPage *pg, Pid old, Pid new_)
 	{
 		PgHdr1 *page = (PgHdr1 *)pg;
 		_assert(page->Key == old);
 		_assert(page->Cache == this);
 		MutexEx::Enter(Group->Mutex);
-		unsigned int h = old % __arrayLength(cache->Hash);
+		uint h = (old % __arrayLength(cache->Hash));
 		PgHdr1 **pp = &Hash[h];
 		while ((*pp) != page)
 			pp = &(*pp)->Next;
 		*pp = page->Next;
-		h = new_ % __arrayLength(cache->Hash);
+		h = (new_ % __arrayLength(cache->Hash));
 		page->Key = new_;
 		page->Next = Hash[h];
 		Hash[h] = page;
@@ -609,7 +609,7 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Truncate(unsigned int limit)
+	void PCache1::Truncate(Pid limit)
 	{
 		MutexEx::Enter(Group->Mutex);
 		if (limit <= MaxKey)
@@ -667,16 +667,16 @@ fetch_out:
 #pragma endregion
 
 #pragma	region Tests
-#ifdef TESTS
+#ifdef TEST
 
-	__device__ void PCache1_BuiltinStats(int *current, int *max, int *min, int *recyclables)
+	__device__ void PCache1_BuiltinStats(uint *current, uint *max, uint *min, uint *recyclables)
 	{
-		int recyclables2 = 0;
+		uint recyclables2 = 0;
 		for (PgHdr1 *p = _pcache1.Group.LruHead; p; p = p->LruNext)
 			recyclables2++;
 		*current = _pcache1.Group.CurrentPages;
-		*max = (int)_pcache1.Group.MaxPages;
-		*min = (int)_pcache1.Group.MinPages;
+		*max = _pcache1.Group.MaxPages;
+		*min = _pcache1.Group.MinPages;
 		*recyclables = recyclables2;
 	}
 

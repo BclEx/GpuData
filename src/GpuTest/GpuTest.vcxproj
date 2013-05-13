@@ -82,11 +82,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="..\GpuData\Core\00.Bitvec.cu" />
-    <CudaCompile Include="..\GpuData\Core\01.Bitvec-Tests.cu" />
     <CudaCompile Include="..\GpuData\Core\10.ConvertEx.cu" />
     <CudaCompile Include="..\GpuData\Core\50.SysEx.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core+Types.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />

@@ -52,13 +52,16 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Core+PCache\PCache_h.cs" />
-    <Content Include="Core+PCache\PCache.cu.h" />
-    <Content Include="Core+PCache\PCache1.cu.h" />
-    <Compile Include="Core+PCache\PCache.cs">
+    <Compile Include="Core+Pager\Pager_h.cs" />
+    <Compile Include="Core+Pager\Pager.cs" />
+    <Compile Include="Core+Pager\PCache_h.cs" />
+    <Content Include="Core+Pager\Pager.cu.h" />
+    <Content Include="Core+Pager\PCache.cu.h" />
+    <Content Include="Core+Pager\PCache1.cu.h" />
+    <Compile Include="Core+Pager\PCache.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Core+PCache\PCache1.cs">
+    <Compile Include="Core+Pager\PCache1.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Core\00.Bitvec.cs" />
@@ -73,9 +76,10 @@
     <Compile Include="Core\IO\20.MemoryVFile.cs" />
     <Compile Include="Core\IO\00.CoreVFile.cs" />
     <Compile Include="Core\IO\10.CoreVFileSystem.cs" />
-    <None Include="Core+PCache\PCache.cu" />
-    <None Include="Core+PCache\PCache1.cu" />
-    <Content Include="Core+PCache\Core+PCache.cu.h" />
+    <None Include="Core+Pager\Pager.cu" />
+    <None Include="Core+Pager\PCache.cu" />
+    <None Include="Core+Pager\PCache1.cu" />
+    <Content Include="Core+Pager\Core+Pager.cu.h" />
     <Content Include="Core\IO\40.VFileSystem.cu.h" />
     <None Include="Core\00.Bitvec.cu" />
     <None Include="Core\10.ConvertEx.cu" />

@@ -7,7 +7,7 @@
     <Filter Include="Core\IO">
       <UniqueIdentifier>{3c534211-7f99-4257-84ea-a1a05d9e5e89}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Core+PCache">
+    <Filter Include="Core+Pager">
       <UniqueIdentifier>{7f5cb337-faf1-46be-ad93-b617e19cc7f6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -37,11 +37,14 @@
     <ClCompile Include="..\GpuData\Core\10.ConvertEx.cu">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="..\GpuData\Core+PCache\PCache.cu">
-      <Filter>Core+PCache</Filter>
+    <ClCompile Include="..\GpuData\Core+Pager\PCache.cu">
+      <Filter>Core+Pager</Filter>
     </ClCompile>
-    <ClCompile Include="..\GpuData\Core+PCache\PCache1.cu">
-      <Filter>Core+PCache</Filter>
+    <ClCompile Include="..\GpuData\Core+Pager\PCache1.cu">
+      <Filter>Core+Pager</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core+Pager\Pager.cu">
+      <Filter>Core+Pager</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -73,14 +76,17 @@
     <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache\Core+PCache.cu.h">
-      <Filter>Core+PCache</Filter>
+    <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h">
+      <Filter>Core+Pager</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache\PCache.cu.h">
-      <Filter>Core+PCache</Filter>
+    <ClInclude Include="..\GpuData\Core+Pager\PCache1.cu.h">
+      <Filter>Core+Pager</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData\Core+PCache\PCache1.cu.h">
-      <Filter>Core+PCache</Filter>
+    <ClInclude Include="..\GpuData\Core+Pager\Core+Pager.cu.h">
+      <Filter>Core+Pager</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Pager\Pager.cu.h">
+      <Filter>Core+Pager</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

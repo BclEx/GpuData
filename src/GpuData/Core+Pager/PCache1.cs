@@ -88,11 +88,6 @@ namespace Core
         // The following value requires a mutex to change.  We skip the mutex on reading because (1) most platforms read a 32-bit integer atomically and
         // (2) even if an incorrect value is read, no great harm is done since this is really just an optimization.
         public bool UnderPressure;         // True if low on PAGECACHE memory
-
-        internal bool IsAllocated(object p)
-        {
-            return false;
-        }
     }
 
     public partial class PCache1
@@ -285,13 +280,13 @@ namespace Core
             MutexEx.Enter(p.Group.Mutex);
             if (newHash != null)
             {
-                for (var i = 0; i < p.Hash.Length; i++)
+                for (var i = 0U; i < p.Hash.Length; i++)
                 {
                     PgHdr1 page;
                     var next = p.Hash[i];
                     while ((page = next) != null)
                     {
-                        var h = (Pid)(page.Key % newLength);
+                        var h = (uint)(page.Key % newLength);
                         next = page.Next;
                         page.Next = newHash[h];
                         newHash[h] = page;
@@ -329,7 +324,7 @@ namespace Core
         {
             var cache = page.Cache;
             Debug.Assert(MutexEx.Held(cache.Group.Mutex));
-            var h = (Pid)(page.Key % cache.Hash.Length);
+            var h = (uint)(page.Key % cache.Hash.Length);
             PgHdr1 pp;
             PgHdr1 prev = null;
             for (pp = cache.Hash[h]; pp != page; prev = pp, pp = pp.Next) ;
@@ -353,7 +348,7 @@ namespace Core
             }
         }
 
-        private static void TruncateUnsafe(PCache1 p, uint limit)
+        private static void TruncateUnsafe(PCache1 p, Pid limit)
         {
 #if !DEBUG
             uint pages = 0;
@@ -694,6 +689,23 @@ namespace Core
         }
 #endif
 
+        #endregion
+
+        #region Tests
+#if TEST
+
+        void PCache1_BuiltinStats(out uint current, out uint max, out uint min, out uint recyclables)
+        {
+            uint recyclables2 = 0;
+            for (PgHdr1 p = _pcache1.Group.LruHead; p != null; p = p.LruNext)
+                recyclables2++;
+            current = _pcache1.Group.CurrentPages;
+            max = _pcache1.Group.MaxPages;
+            min = _pcache1.Group.MinPages;
+            recyclables = recyclables2;
+        }
+
+#endif
         #endregion
     }
 }

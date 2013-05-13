@@ -1,5 +1,5 @@
 ﻿// pcache.c
-#include "Core+PCache.cu.h"
+#include "Core+Pager.cu.h"
 using namespace Core;
 
 namespace Core

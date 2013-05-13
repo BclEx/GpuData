@@ -10,7 +10,7 @@ namespace Core
     //    public byte[] Extra;	// Extra information associated with the page
     //}
 
-    public class Pager { }
+    public partial class Pager { }
 
     public interface IPCache
     {
@@ -20,10 +20,10 @@ namespace Core
         void Cachesize(uint max);
         void Shrink();
         int Pagecount();
-        IPage Fetch(uint key, int createFlag);
+        IPage Fetch(Pid key, int createFlag);
         void Unpin(IPage pg, bool reuseUnlikely);
-        void Rekey(IPage pg, uint old, uint new_);
-        void Truncate(uint limit);
+        void Rekey(IPage pg, Pid old, Pid new_);
+        void Truncate(Pid limit);
         void Destroy(ref IPCache p);
     };
 

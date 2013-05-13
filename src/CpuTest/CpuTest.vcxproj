@@ -82,9 +82,10 @@
     <ClCompile Include="Program.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\GpuData\Core+PCache\Core+PCache.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache\PCache.cu.h" />
-    <ClInclude Include="..\GpuData\Core+PCache\PCache1.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Pager\Core+Pager.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Pager\Pager.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Pager\PCache1.cu.h" />
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
     <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\30.RC.cu.h" />
@@ -120,10 +121,15 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\GpuData\Core+PCache\PCache.cu">
+    <ClCompile Include="..\GpuData\Core+Pager\PCache.cu">
       <FileType>Document</FileType>
     </ClCompile>
-    <ClCompile Include="..\GpuData\Core+PCache\PCache1.cu">
+    <ClCompile Include="..\GpuData\Core+Pager\PCache1.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core+Pager\Pager.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>

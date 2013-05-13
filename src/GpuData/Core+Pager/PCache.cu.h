@@ -13,10 +13,10 @@ namespace Core
 		virtual void Cachesize(uint max);
 		virtual void Shrink();
 		virtual int Pagecount();
-		virtual IPage *Fetch(unsigned int key, int createFlag);
+		virtual IPage *Fetch(Pid key, int createFlag);
 		virtual void Unpin(IPage *pg, bool reuseUnlikely);
-		virtual void Rekey(IPage *pg, unsigned int old, unsigned int new_);
-		virtual void Truncate(unsigned int limit);
+		virtual void Rekey(IPage *pg, Pid old, Pid new_);
+		virtual void Truncate(Pid limit);
 		virtual void Destroy(IPCache *p);
 	};
 
