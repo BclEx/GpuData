@@ -52,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Core+Pager\Core+Pager_h.cs" />
     <Compile Include="Core+Pager\Pager_h.cs" />
     <Compile Include="Core+Pager\Pager.cs" />
     <Compile Include="Core+Pager\PCache_h.cs" />
@@ -64,6 +65,7 @@
     <Compile Include="Core+Pager\PCache1.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Core+Pager\Wal.cs" />
     <Compile Include="Core\00.Bitvec.cs" />
     <Compile Include="Core\20.MutexEx.cs" />
     <Compile Include="Core\10.ConvertEx.cs" />

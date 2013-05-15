@@ -5,9 +5,9 @@ using Core.IO;
 
 namespace Core
 {
-    public partial class Pager
+    public partial class IPager
     {
-        public static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager)._pageSize)) + 1)); }
+        public static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
 
         [Flags]
         // NOTE: These values must match the corresponding BTREE_ values in btree.h.
@@ -35,7 +35,5 @@ namespace Core
             JMEMORY = 4,     // In-memory journal file
             WAL = 5,        // Use write-ahead logging
         }
-
-        public int _pageSize { get; set; }
     }
 }
