@@ -12,8 +12,6 @@ struct IPage
 
 #pragma endregion
 
-typedef struct Pager Pager;
-
 #pragma region IBackup
 
 class IBackup

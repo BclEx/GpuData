@@ -22,11 +22,6 @@ namespace Core.IO
         public FilePoint _endpoint = new FilePoint();            // Pointer to the end of the file
         public FilePoint _readpoint = new FilePoint();           // Pointer to the end of the last xRead()
 
-        public MemoryVFile()
-        {
-            Open = true;
-        }
-
         public override RC Read(byte[] buffer, int amount, long offset)
         {
             // SQLite never tries to read past the end of a rollback journal file 
@@ -95,10 +90,7 @@ namespace Core.IO
             //    var tmp = chunk;
             //    chunk = chunk.Next;
             //}
-            // clear
-            First = null;
-            _endpoint = new FilePoint();
-            _readpoint = new FilePoint();
+            Open();
             return RC.OK;
         }
 
@@ -107,7 +99,7 @@ namespace Core.IO
             Truncate(0);
             return RC.OK;
         }
-        
+
         public override RC Sync(SYNC flags)
         {
             return RC.OK;
@@ -117,6 +109,17 @@ namespace Core.IO
         {
             size = _endpoint.Offset;
             return RC.OK;
+        }
+
+        private void Open()
+        {
+            Opened = true;
+            //Debug.Assert(SysEx.HASALIGNMENT8(this));
+            //_memset(this, 0, sizeof(MemoryVFile));
+            // clear
+            First = null;
+            _endpoint = new FilePoint();
+            _readpoint = new FilePoint();
         }
     }
 }

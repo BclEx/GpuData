@@ -88,5 +88,8 @@
     <ClInclude Include="..\GpuData\Core+Pager\Pager.cu.h">
       <Filter>Core+Pager</Filter>
     </ClInclude>
+    <ClInclude Include="..\GpuData\Core\10.ConvertEx.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

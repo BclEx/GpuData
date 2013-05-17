@@ -55,7 +55,7 @@ namespace Core.IO
         }
 
         protected ulong _sectorSize;        // Sector size of the device file is on
-        public bool Open;
+        public bool Opened;
         public VFileSystem Vfs;        // The VFS used to open this file
         public FileStream S;           // Filestream access to this file
         // public HANDLE H;             // Handle for accessing the file
@@ -75,10 +75,10 @@ namespace Core.IO
             _sectorSize = 0;
         }
 
-        public abstract RC Close();
         public abstract RC Read(byte[] buffer, int amount, long offset);
         public abstract RC Write(byte[] buffer, int amount, long offset);
         public abstract RC Truncate(long size);
+        public abstract RC Close();
         public abstract RC Sync(SYNC flags);
         public abstract RC get_FileSize(out long size);
         public virtual RC Lock(LOCK lockType) { return RC.OK; }
@@ -92,9 +92,9 @@ namespace Core.IO
             set { _sectorSize = value; }
         }
 
-        public virtual IOCAP DeviceCharacteristics
+        public virtual IOCAP get_DeviceCharacteristics()
         {
-            get { return 0; }
+            return 0;
         }
 
         public virtual RC ShmLock(int offset, int n, int flags) { return RC.OK; }
@@ -102,27 +102,23 @@ namespace Core.IO
         public virtual RC ShmUnmap(int deleteFlag) { return RC.OK; }
         public virtual RC ShmMap(int iPg, int pgsz, int pInt, out object pvolatile) { pvolatile = null; return RC.OK; }
 
-        // Read a 32-bit integer from the given file descriptor.  Store the integer that is read in pRes.  Return SQLITE.OK if everything worked, or an
-        // error code is something goes wrong.
-        // All values are stored on disk as big-endian.
-        public RC ReadByte(int offset, ref int pRes)
+        public RC Read4(int offset, out int valueOut)
         {
             uint u32_pRes = 0;
-            var rc = ReadByte(offset, ref u32_pRes);
-            pRes = (int)u32_pRes;
+            var rc = Read4(offset, out u32_pRes);
+            valueOut = (int)u32_pRes;
             return rc;
         }
-        public RC ReadByte(long offset, ref uint pRes) { return ReadByte((int)offset, ref pRes); }
-        public RC ReadByte(int offset, ref uint pRes)
+        public RC Read4(long offset, out uint valueOut) { return Read4((int)offset, out valueOut); }
+        public RC Read4(int offset, out uint valueOut)
         {
-            var ac = new byte[4];
-            var rc = Read(ac, ac.Length, offset);
-            pRes = (rc == RC.OK ? ConvertEx.Get4(ac) : 0);
+            var b = new byte[4];
+            var rc = Read(b, b.Length, offset);
+            valueOut = (rc == RC.OK ? ConvertEx.Get4(b) : 0);
             return rc;
         }
 
-        // Write a 32-bit integer into the given file descriptor.  Return SQLITE.OK on success or an error code is something goes wrong.
-        public RC WriteByte(long offset, uint val)
+        public RC Write4(long offset, uint val)
         {
             var ac = new byte[4];
             ConvertEx.Put4(ac, val);

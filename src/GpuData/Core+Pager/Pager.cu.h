@@ -1,7 +1,7 @@
 ﻿// pager.h
 namespace Core
 {
-#define PAGER_MJ_PID(x) ((Pgno)((VFile::PENDING_BYTE/((x)->pageSize))+1))
+#define PAGER_MJ_PID(x) ((Pid)((PENDING_BYTE/((x)->PageSize))+1))
 
 	class IPager
 	{
@@ -31,4 +31,6 @@ namespace Core
 			WAL = 5,        // Use write-ahead logging
 		};
 	};
+
+	typedef class Pager Pager;
 }

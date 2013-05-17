@@ -35,7 +35,7 @@ namespace Core
 		//	void Close(PCache *);
 		//	void ClearSyncFlags(PCache *);
 		//	void Clear(PCache *);
-		//	int RefCount(PCache *);
+		// int RefCount(PCache *);
 		//	void Ref(PgHdr *);
 		//	int PageRefcount(PgHdr *);
 		//	int Pagecount(PCache *);

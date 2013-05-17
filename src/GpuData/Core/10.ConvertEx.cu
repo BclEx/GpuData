@@ -7,32 +7,14 @@ namespace Core
 #define SLOT_2_0     0x001fc07f
 #define SLOT_4_2_0   0xf01fc07f
 
-#define getVarint32(A,B) \
-	(u8)((*(A)<(u8)0x80)?((B)=(u32)*(A)),1:\
-	ConvertEx::GetVarint32((A),(u32 *)&(B)))
-#define putVarint32(A,B) \
-	(u8)(((u32)(B)<(u32)0x80)?(*(A)=(unsigned char)(B)),1:\
-	ConvertEx::PutVarint32((A),(B)))
+#define getVarint4(A,B) \
+	(uint8)((*(A)<(uint8)0x80)?((B)=(uint32)*(A)),1:\
+	ConvertEx::GetVarint4((A),(u32 *)&(B)))
+#define putVarint4(A,B) \
+	(uint8)(((uint32)(B)<(uint32)0x80)?(*(A)=(unsigned char)(B)),1:\
+	ConvertEx::PutVarint4((A),(B)))
 #define getVarint ConvertEx::GetVarint
 #define putVarint ConvertEx::PutVarint
-
-	class ConvertEx
-	{
-	public:
-		__device__ int PutVariant(unsigned char *p, uint64 v);
-		__device__ int PutVariant32(unsigned char *p, uint32 v);
-		__device__ uint8 GetVariant(const unsigned char *p, uint64 *v);
-		__device__ uint8 GetVariant32(const unsigned char *p, uint32 *v);
-		__device__ int GetVariantLength(uint64 v);
-		__device__ inline uint32 Get32(const uint8 *p) { return (p[0]<<24) | (p[1]<<16) | (p[2]<<8) | p[3]; }
-		__device__ inline void Put32(unsigned char *p, uint32 v)
-		{
-			p[0] = (uint8)(v>>24);
-			p[1] = (uint8)(v>>16);
-			p[2] = (uint8)(v>>8);
-			p[3] = (uint8)v;
-		}
-	};
 
 	int ConvertEx::PutVariant(unsigned char *p, uint64 v)
 	{
@@ -62,7 +44,7 @@ namespace Core
 		return n;
 	}
 
-	int ConvertEx::PutVariant32(unsigned char *p, uint32 v)
+	int ConvertEx::PutVariant4(unsigned char *p, uint32 v)
 	{
 		if ((v & ~0x3fff) == 0)
 		{
@@ -217,7 +199,7 @@ namespace Core
 		return 9;
 	}
 
-	uint8 ConvertEx::GetVariant32(const unsigned char *p, uint32 *v)
+	uint8 ConvertEx::GetVariant4(const unsigned char *p, uint32 *v)
 	{
 		uint32 a, b;
 		// The 1-byte case.  Overwhelmingly the most common.  Handled inline by the getVarin32() macro

@@ -20,24 +20,6 @@ namespace Core
             return rc;
         }
 
-
-//#if DEBUG || TRACE
-//        internal static bool OSTrace = false;
-//        internal static void OSTRACE(string x, params object[] args) { if (OSTrace) Console.WriteLine("a:" + string.Format(x, args)); }
-//#else
-//        internal static void OSTRACE(string x, params object[] args) { }
-//#endif
-
-//#if IOTRACE
-//        internal static bool IOTrace = true;
-//        public static void IOTRACE(string x, params object[] args) { if (IOTrace) Console.WriteLine("i:" + string.Format(x, args)); }
-//#else
-//        public static void IOTRACE(string x, params object[] args) { }
-//#endif
-
-
-
-
         [Flags]
         public enum MEMTYPE : byte
         {
@@ -111,6 +93,19 @@ namespace Core
         internal static RC CANTOPEN_BKPT() { return SQLITE_CANTOPEN; }
 #endif
 
+#if DEBUG
+        internal static bool OSTrace = false;
+        internal static void OSTRACE(string x, params object[] args) { if (OSTrace) Console.WriteLine("a:" + string.Format(x, args)); }
+        internal static bool IOTrace = true;
+        internal static void IOTRACE(string x, params object[] args) { if (IOTrace) Console.WriteLine("i:" + string.Format(x, args)); }
+#else
+        internal static void OSTRACE(string x, params object[] args) { }
+        internal static void IOTRACE(string x, params object[] args) { }
+#endif
 
+        internal static void MakeRandomness(int size, ref uint ChecksumInit)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

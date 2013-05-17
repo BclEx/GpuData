@@ -108,7 +108,7 @@ namespace Core.IO
             }
             outFlags = (readWrite ? OPEN.READWRITE : OPEN.READONLY);
             file.Clear();
-            file.Open = true;
+            file.Opened = true;
             file.S = fs;
             file.LastErrorID = 0;
             file.Vfs = this;

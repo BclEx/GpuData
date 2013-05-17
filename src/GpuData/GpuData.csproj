@@ -82,6 +82,7 @@
     <None Include="Core+Pager\PCache.cu" />
     <None Include="Core+Pager\PCache1.cu" />
     <Content Include="Core+Pager\Core+Pager.cu.h" />
+    <Content Include="Core\10.ConvertEx.cu.h" />
     <Content Include="Core\IO\40.VFileSystem.cu.h" />
     <None Include="Core\00.Bitvec.cu" />
     <None Include="Core\10.ConvertEx.cu" />

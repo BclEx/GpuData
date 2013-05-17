@@ -12,8 +12,10 @@ __device__ inline T *__arraySet(T *symbol, int length) { return symbol; }
 
 #if !defined(DEBUG)
 #define ASSERTONLY(X) X
+#define ASSERTCOVERAGE(X)
 #else
 #define ASSERTONLY(X)
+#define ASSERTCOVERAGE(X)
 #endif
 
 __device__ inline void _assert(const int condition)
@@ -21,7 +23,6 @@ __device__ inline void _assert(const int condition)
 	if (!condition)
 		printf("assert");
 }
-
 
 // strcmp
 template <typename T>
@@ -47,6 +48,13 @@ __device__ inline void _memset(T *dest, const char value, size_t length)
 	char *dest2 = (char *)dest;
 	for (size_t i = 0; i < length; ++i, ++dest2)
 		*dest2 = value;
+}
+
+// memcmp
+template <typename T, typename Y>
+__device__ inline int _memcmp(T *a, Y *b, size_t length)
+{
+	return 0;
 }
 
 #endif

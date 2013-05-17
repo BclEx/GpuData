@@ -30,38 +30,38 @@ namespace Core
             pager_unlock();
         }
 
-        private RC pagerUnlockDb(VFSLOCK eLock)
-        {
-            var rc = RC.OK;
-            Debug.Assert(!this._exclusiveMode || this._lock == eLock);
-            Debug.Assert(eLock == VFSLOCK.NO || eLock == VFSLOCK.SHARED);
-            Debug.Assert(eLock != VFSLOCK.NO || !this.pagerUseWal());
-            if (this._file.IsOpen)
-            {
-                Debug.Assert(this._lock >= eLock);
-                rc = this._file.Unlock(eLock);
-                if (this._lock != VFSLOCK.UNKNOWN)
-                    this._lock = eLock;
-                SysEx.IOTRACE("UNLOCK {0:x} {1}", this.GetHashCode(), eLock);
-            }
-            return rc;
-        }
+        //private RC pagerUnlockDb(VFSLOCK eLock)
+        //{
+        //    var rc = RC.OK;
+        //    Debug.Assert(!this._exclusiveMode || this._lock == eLock);
+        //    Debug.Assert(eLock == VFSLOCK.NO || eLock == VFSLOCK.SHARED);
+        //    Debug.Assert(eLock != VFSLOCK.NO || !this.pagerUseWal());
+        //    if (this._file.IsOpen)
+        //    {
+        //        Debug.Assert(this._lock >= eLock);
+        //        rc = this._file.Unlock(eLock);
+        //        if (this._lock != VFSLOCK.UNKNOWN)
+        //            this._lock = eLock;
+        //        SysEx.IOTRACE("UNLOCK {0:x} {1}", this.GetHashCode(), eLock);
+        //    }
+        //    return rc;
+        //}
 
-        private RC pagerLockDb(VFSLOCK eLock)
-        {
-            var rc = RC.OK;
-            Debug.Assert(eLock == VFSLOCK.SHARED || eLock == VFSLOCK.RESERVED || eLock == VFSLOCK.EXCLUSIVE);
-            if (this._lock < eLock || this._lock == VFSLOCK.UNKNOWN)
-            {
-                rc = this._file.Lock(eLock);
-                if (rc == RC.OK && (this._lock != VFSLOCK.UNKNOWN || eLock == VFSLOCK.EXCLUSIVE))
-                {
-                    this._lock = eLock;
-                    SysEx.IOTRACE("LOCK {0:x} {1}", this.GetHashCode(), eLock);
-                }
-            }
-            return rc;
-        }
+        //private RC pagerLockDb(VFSLOCK eLock)
+        //{
+        //    var rc = RC.OK;
+        //    Debug.Assert(eLock == VFSLOCK.SHARED || eLock == VFSLOCK.RESERVED || eLock == VFSLOCK.EXCLUSIVE);
+        //    if (this._lock < eLock || this._lock == VFSLOCK.UNKNOWN)
+        //    {
+        //        rc = this._file.Lock(eLock);
+        //        if (rc == RC.OK && (this._lock != VFSLOCK.UNKNOWN || eLock == VFSLOCK.EXCLUSIVE))
+        //        {
+        //            this._lock = eLock;
+        //            SysEx.IOTRACE("LOCK {0:x} {1}", this.GetHashCode(), eLock);
+        //        }
+        //    }
+        //    return rc;
+        //}
 
         private RC sqlite3PagerExclusiveLock()
         {

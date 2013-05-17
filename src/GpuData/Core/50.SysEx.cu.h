@@ -49,7 +49,7 @@ namespace Core
 #define SysEx_HASALIGNMENT8(X) ((((char *)(X) - (char *)0)&7) == 0)
 #endif
 
-#if DEBUG
+#if _DEBUG
 	__device__ inline static RC CORRUPT_BKPT_(int line)
 	{
 		//sqlite3_log(RC::CORRUPT, "database corruption at line %d of [%.10s]", line, "");
@@ -72,6 +72,15 @@ namespace Core
 #define SysEx_CORRUPT_BKPT RC::CORRUPT
 #define SysEx_MISUSE_BKPT RC::MISUSE
 #define SysEx_CANTOPEN_BKPT RC::CANTOPEN
+#endif
+
+#ifdef _DEBUG
+	extern bool OSTrace;
+	__device__ inline static void SysEx_OSTRACE(const char *, ...) { }
+	extern bool IOTrace;
+	__device__ inline static void SysEx_IOTRACE(const char *, ...) { }
+#else
+#define SysEx_IOTRACE(X)
 #endif
 
 }

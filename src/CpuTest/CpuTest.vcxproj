@@ -87,6 +87,7 @@
     <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h" />
     <ClInclude Include="..\GpuData\Core+Pager\PCache1.cu.h" />
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
+    <ClInclude Include="..\GpuData\Core\10.ConvertEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\30.RC.cu.h" />
     <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h" />
