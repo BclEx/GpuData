@@ -29,8 +29,8 @@ namespace Core
             PCACHE = 0x08,       // Page cache allocations
             DB = 0x10,           // Uses sqlite3DbMalloc, not sqlite_malloc
         }
-        public static void BeginBenignMalloc() { }
-        public static void EndBenignMalloc() { }
+        public static void BeginBenignAlloc() { }
+        public static void EndBenignAlloc() { }
         public static byte[] Alloc(int size) { return new byte[size]; }
         public static byte[] Alloc(int size, bool clear) { return new byte[size]; }
         public static int AllocSize(byte[] p)

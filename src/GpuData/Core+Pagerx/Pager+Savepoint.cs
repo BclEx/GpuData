@@ -83,31 +83,31 @@ namespace Core
             return rc;
         }
 
-        private void releaseAllSavepoints()
-        {
-            for (var ii = 0; ii < nSavepoint; ii++)
-                Bitvec.Destroy(ref _savepoint[ii].pInSavepoint);
-            if (!_exclusiveMode || _journal2File is MemJournalFile)
-                FileEx.OSClose(_journal2File);
-            _savepoint = null;
-            nSavepoint = 0;
-            _nSubRec = 0;
-        }
+        //private void releaseAllSavepoints()
+        //{
+        //    for (var ii = 0; ii < nSavepoint; ii++)
+        //        Bitvec.Destroy(ref _savepoint[ii].pInSavepoint);
+        //    if (!_exclusiveMode || _journal2File is MemJournalFile)
+        //        FileEx.OSClose(_journal2File);
+        //    _savepoint = null;
+        //    nSavepoint = 0;
+        //    _nSubRec = 0;
+        //}
 
-        private RC addToSavepointBitvecs(Pgno pgno)
-        {
-            var rc = RC.OK;
-            for (var ii = 0; ii < nSavepoint; ii++)
-            {
-                var p = _savepoint[ii];
-                if (pgno <= p.nOrig)
-                {
-                    rc |= p.pInSavepoint.Set(pgno);
-                    Debug.Assert(rc == RC.OK || rc == RC.NOMEM);
-                }
-            }
-            return rc;
-        }
+        //private RC addToSavepointBitvecs(Pgno pgno)
+        //{
+        //    var rc = RC.OK;
+        //    for (var ii = 0; ii < nSavepoint; ii++)
+        //    {
+        //        var p = _savepoint[ii];
+        //        if (pgno <= p.nOrig)
+        //        {
+        //            rc |= p.pInSavepoint.Set(pgno);
+        //            Debug.Assert(rc == RC.OK || rc == RC.NOMEM);
+        //        }
+        //    }
+        //    return rc;
+        //}
 
         // was:sqlite3PagerOpenSavepoint
         public RC OpenSavepoint(int nSavepoint)

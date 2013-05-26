@@ -10,25 +10,25 @@ namespace Core
                 pagerUnlockAndRollback();
         }
 
-        private void pagerUnlockAndRollback()
-        {
-            if (this._state != PAGER.ERROR && this._state != PAGER.OPEN)
-            {
-                Debug.Assert(assert_pager_state());
-                if (this._state >= PAGER.WRITER_LOCKED)
-                {
-                    MallocEx.BeginBenignMalloc();
-                    Rollback();
-                    MallocEx.EndBenignMalloc();
-                }
-                else if (!this._exclusiveMode)
-                {
-                    Debug.Assert(this._state == PAGER.READER);
-                    pager_end_transaction(0);
-                }
-            }
-            pager_unlock();
-        }
+        //private void pagerUnlockAndRollback()
+        //{
+        //    if (this._state != PAGER.ERROR && this._state != PAGER.OPEN)
+        //    {
+        //        Debug.Assert(assert_pager_state());
+        //        if (this._state >= PAGER.WRITER_LOCKED)
+        //        {
+        //            MallocEx.BeginBenignMalloc();
+        //            Rollback();
+        //            MallocEx.EndBenignMalloc();
+        //        }
+        //        else if (!this._exclusiveMode)
+        //        {
+        //            Debug.Assert(this._state == PAGER.READER);
+        //            pager_end_transaction(0);
+        //        }
+        //    }
+        //    pager_unlock();
+        //}
 
         //private RC pagerUnlockDb(VFSLOCK eLock)
         //{

@@ -27,7 +27,7 @@ namespace Core
 	public:
 		__device__ Bitvec(uint32 size);
 		__device__ bool Get(uint32 index);
-		__device__ int Set(uint32 index);
+		__device__ RC Set(uint32 index);
 		__device__ void Clear(uint32 index, void *buffer);
 		__device__ static inline void Destroy(Bitvec *p)
 		{

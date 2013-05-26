@@ -52,6 +52,7 @@ namespace Core.IO
             SAFE_APPEND = 0x00000200,
             SEQUENTIAL = 0x00000400,
             UNDELETABLE_WHEN_OPEN = 0x00000800,
+            POWERSAFE_OVERWRITE = 0x00001000,
         }
 
         protected ulong _sectorSize;        // Sector size of the device file is on

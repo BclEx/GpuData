@@ -9,33 +9,33 @@ namespace Contoso.Core
 {
     public partial class Pager
     {
-#if SQLITE_HAS_CODEC
-        private void pagerReportSize()
-        {
-            if (this.xCodecSizeChng != null)
-                this.xCodecSizeChng(this.pCodec, this.pageSize, this.nReserve);
-        }
-#else
-        private void pagerReportSize( ) { }
-#endif
+//#if SQLITE_HAS_CODEC
+//        private void pagerReportSize()
+//        {
+//            if (this.xCodecSizeChng != null)
+//                this.xCodecSizeChng(this.pCodec, this.pageSize, this.nReserve);
+//        }
+//#else
+//        private void pagerReportSize( ) { }
+//#endif
 
-        private void setSectorSize()
-        {
-            Debug.Assert(this.fd.IsOpen || this.tempFile);
-            if (!this.tempFile)
-            {
-                // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize()
-                // call will segfault.
-                this.sectorSize = (Pgno)this.fd.SectorSize;
-            }
-            if (this.sectorSize < 32)
-            {
-                Debug.Assert(MAX_SECTOR_SIZE >= 512);
-                this.sectorSize = 512;
-            }
-            if (this.sectorSize > MAX_SECTOR_SIZE)
-                this.sectorSize = MAX_SECTOR_SIZE;
-        }
+        //private void setSectorSize()
+        //{
+        //    Debug.Assert(this.fd.IsOpen || this.tempFile);
+        //    if (!this.tempFile)
+        //    {
+        //        // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize()
+        //        // call will segfault.
+        //        this.sectorSize = (Pgno)this.fd.SectorSize;
+        //    }
+        //    if (this.sectorSize < 32)
+        //    {
+        //        Debug.Assert(MAX_SECTOR_SIZE >= 512);
+        //        this.sectorSize = 512;
+        //    }
+        //    if (this.sectorSize > MAX_SECTOR_SIZE)
+        //        this.sectorSize = MAX_SECTOR_SIZE;
+        //}
 
         // was:sqlite3PagerSetCachesize
         public void SetCacheSize(int mxPage) { this.pPCache.sqlite3PcacheSetCachesize(mxPage); }

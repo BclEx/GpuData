@@ -24,15 +24,15 @@ namespace Core
         public int SizePage;        // Size of allocated pages in bytes
         public int SizeExtra;       // Size of extra space in bytes
         public bool Purgeable;      // True if cache is purgeable
-        public uint Min;             // Minimum number of pages reserved
-        public uint Max;             // Configured "cache_size" value
-        public uint N90pct;          // nMax*9/10
+        public uint Min;            // Minimum number of pages reserved
+        public uint Max;            // Configured "cache_size" value
+        public uint N90pct;         // nMax*9/10
         public Pid MaxKey;          // Largest key seen since xTruncate()
         // Hash table of all pages. The following variables may only be accessed when the accessor is holding the PGroup mutex.
         public uint Recyclables;    // Number of pages in the LRU list
         public uint Pages;          // Total number of pages in apHash
         public PgHdr1[] Hash;       // Hash table for fast lookup by key
-
+        // For C#
         public void memset()
         {
             Recyclables = 0;
@@ -52,7 +52,6 @@ namespace Core
         public PgHdr1 LruPrev;      // Previous in LRU list of unpinned pages
         // For C#
         public PgHdr _PgHdr = new PgHdr();
-
         public void memset()
         {
             Key = 0;
@@ -66,7 +65,7 @@ namespace Core
 
     public class PgFreeslot
     {
-        public PgFreeslot Next; // Next free slot
+        public PgFreeslot Next;     // Next free slot
         // For C#
         internal PgHdr _PgHdr;
     }
@@ -87,7 +86,7 @@ namespace Core
         public int FreeSlots;       // Number of unused pcache slots
         // The following value requires a mutex to change.  We skip the mutex on reading because (1) most platforms read a 32-bit integer atomically and
         // (2) even if an incorrect value is read, no great harm is done since this is really just an optimization.
-        public bool UnderPressure;         // True if low on PAGECACHE memory
+        public bool UnderPressure;  // True if low on PAGECACHE memory
     }
 
     public partial class PCache1
@@ -194,7 +193,7 @@ namespace Core
                 return _pcache1.SizeSlot;
             Debug.Assert(SysEx.MemdebugHasType(p, SysEx.MEMTYPE.PCACHE));
             SysEx.MemdebugSetType(p, SysEx.MEMTYPE.HEAP);
-            var size = SysEx.AllocSize(p._Data);
+            var size = SysEx.AllocSize(p.Data);
             SysEx.MemdebugSetType(p, SysEx.MEMTYPE.PCACHE);
             return size;
         }
@@ -210,8 +209,8 @@ namespace Core
             pg = Alloc(cache.SizePage);
             p = new PgHdr1();
 #else
-		    pg = Alloc(sizeof(PgHdr1) + t.SizePage + t.SizeExtra);
-		    p = (PgHdr1 *)&((uint8 *)pg)[t.SizePage];
+		    //pg = Alloc(sizeof(PgHdr1) + t.SizePage + t.SizeExtra);
+		    //p = (PgHdr1 *)&((uint8 *)pg)[t.SizePage];
 #endif
             MutexEx.Enter(cache.Group.Mutex);
             //if (pg != null)
@@ -230,7 +229,7 @@ namespace Core
             {
                 var cache = p.Cache;
                 Debug.Assert(MutexEx.Held(p.Cache.Group.Mutex));
-#if !PCACHE_SEPARATE_HEADER
+#if true || PCACHE_SEPARATE_HEADER
                 Free(ref p._PgHdr);
 #endif
                 if (cache.Purgeable)
@@ -238,7 +237,7 @@ namespace Core
             }
         }
 
-        private static PgHdr PageMalloc(int size)
+        private static PgHdr PageAlloc(int size)
         {
             return Alloc(size);
         }
@@ -273,10 +272,10 @@ namespace Core
                 newLength = 256;
             MutexEx.Leave(p.Group.Mutex);
             if (p.Hash.Length != 0)
-                SysEx.BeginBenignMalloc();
+                SysEx.BeginBenignAlloc();
             var newHash = new PgHdr1[newLength];
             if (p.Hash.Length != 0)
-                SysEx.EndBenignMalloc();
+                SysEx.EndBenignAlloc();
             MutexEx.Enter(p.Group.Mutex);
             if (newHash != null)
             {
@@ -350,7 +349,7 @@ namespace Core
 
         private static void TruncateUnsafe(PCache1 p, Pid limit)
         {
-#if !DEBUG
+#if DEBUG
             uint pages = 0;
 #endif
             Debug.Assert(MutexEx.Held(p.Group.Mutex));
@@ -375,15 +374,15 @@ namespace Core
                     else
                     {
                         pp = page.Next;
-#if !DEBUG
+#if DEBUG
                         pages++;
 #endif
                     }
                     prev = page;
                 }
             }
-#if !DEBUG
-            Debug.Assert(Pages == pages);
+#if DEBUG
+            Debug.Assert(p.Pages == pages);
 #endif
         }
 
@@ -422,9 +421,13 @@ namespace Core
 #else
             bool separateCache = _config_coreMutex > 0;
 #endif
+            Debug.Assert((sizePage & (sizePage - 1)) == 0 && sizePage >= 512 && sizePage <= 65536);
+            Debug.Assert(sizeExtra < 300);
+            //int size = sizeof(PCache1) + sizeof(PGroup) * (int)separateCache;
             var cache = new PCache1();
+            if (cache != null)
             {
-                PGroup group;       // The group the new page cache will belong to
+                PGroup group;
                 if (separateCache)
                 {
                     //group = new PGroup();
@@ -477,7 +480,7 @@ namespace Core
             }
         }
 
-        public int Pagecount()
+        public int get_Pages()
         {
             MutexEx.Enter(Group.Mutex);
             var pages = (int)Pages;
@@ -551,9 +554,9 @@ namespace Core
             // Step 5. If a usable page buffer has still not been found, attempt to allocate a new one. 
             if (page == null)
             {
-                if (createFlag == 1) SysEx.BeginBenignMalloc();
+                if (createFlag == 1) SysEx.BeginBenignAlloc();
                 page = AllocPage(this);
-                if (createFlag == 1) SysEx.EndBenignMalloc();
+                if (createFlag == 1) SysEx.EndBenignAlloc();
             }
             if (page != null)
             {
@@ -675,7 +678,7 @@ namespace Core
                 MutexEx.Enter(_pcache1.Group.Mutex);
                 while ((required < 0 || free < required) && ((p = _pcache1.Group.LruTail) != null))
                 {
-                    free += MemSize(p.Page.Buffer);
+                    free += MemSize(p.Page);
 #if PCACHE_SEPARATE_HEADER
                     free += MemSize(p);
 #endif
@@ -694,7 +697,7 @@ namespace Core
         #region Tests
 #if TEST
 
-        void PCache1_BuiltinStats(out uint current, out uint max, out uint min, out uint recyclables)
+        void PCache1_testStats(out uint current, out uint max, out uint min, out uint recyclables)
         {
             uint recyclables2 = 0;
             for (PgHdr1 p = _pcache1.Group.LruHead; p != null; p = p.LruNext)

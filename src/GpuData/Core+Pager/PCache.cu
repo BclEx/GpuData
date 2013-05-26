@@ -4,56 +4,6 @@ using namespace Core;
 
 namespace Core
 {
-	struct PCache
-	{
-		PgHdr *Dirty, *DirtyTail;   // List of dirty pages in LRU order
-		PgHdr *Synced;              // Last synced page in dirty page list
-		int Refs;                   // Number of referenced pages
-		int SizeCache;              // Configured cache size
-		int SizePage;               // Size of every page in this cache
-		int SizeExtra;              // Size of extra space for each page
-		bool Purgeable;             // True if pages are on backing store
-		RC (*Stress)(void *, PgHdr *);// Call to try make a page clean
-		void *StressArg;            // Argument to xStress
-		IPCache *Cache;				// Pluggable cache module
-		PgHdr *Page1;				// Reference to page 1
-	public:
-		static int Initialize();
-		static void Shutdown();
-		//	static int SizeOf();
-		void Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p);
-		void SetPageSize(int sizePage);
-		int Fetch(Pid id, bool createFlag, PgHdr **pageOut);
-		//	void Release(PgHdr *);
-		//	void Drop(PgHdr *);         // Remove page from cache
-		//	void MakeDirty(PgHdr *);    // Make sure page is marked dirty
-		//	void MakeClean(PgHdr *);	// Mark a single page as clean
-		//	void CleanAll(PCache *);	// Mark all dirty list pages as clean
-		//	void Move(PgHdr*, Pid);
-		//	void Truncate(PCache*, Pid);
-		//	PgHdr *DirtyList(PCache *);
-		//	void Close(PCache *);
-		//	void ClearSyncFlags(PCache *);
-		//	void Clear(PCache *);
-		// int RefCount(PCache *);
-		//	void Ref(PgHdr *);
-		//	int PageRefcount(PgHdr *);
-		//	int Pagecount(PCache *);
-		//#if defined(CHECK_PAGES) || defined(DEBUG)
-		//	void IterateDirty(PCache *cache, void (*iter)(PgHdr *));
-		//#endif
-		//	void SetCachesize(PCache *, int);
-		//#ifdef TEST
-		//	int GetCachesize(PCache *);
-		//#endif
-		//	void Shrink(PCache *);
-		//#ifdef ENABLE_MEMORY_MANAGEMENT
-		//	int ReleaseMemory(int);
-		//#endif
-		//	void BufferSetup(void *, int sz, int n);
-
-	};
-
 #pragma region Linked List
 
 #if EXPENSIVE_ASSERT
@@ -246,7 +196,7 @@ namespace Core
 		return (pgHdr == nullptr && create ? RC::NOMEM : RC::OK);
 	}
 
-	void Release(PgHdr *p)
+	void PCache::Release(PgHdr *p)
 	{
 		_assert(p->Refs > 0);
 		p->Refs--;
@@ -265,13 +215,13 @@ namespace Core
 		}
 	}
 
-	void Ref(PgHdr *p)
+	void PCache::Ref(PgHdr *p)
 	{
 		_assert(p->Refs > 0);
 		p->Refs++;
 	}
 
-	void Drop(PgHdr *p)
+	void PCache::Drop(PgHdr *p)
 	{
 		_assert(p->Refs == 1);
 		if (p->Flags & PgHdr::PGHDR::DIRTY)
@@ -283,7 +233,7 @@ namespace Core
 		cache->Cache->Unpin(p->Page, true);
 	}
 
-	void MakeDirty(PgHdr *p)
+	void PCache::MakeDirty(PgHdr *p)
 	{
 		p->Flags &= ~PgHdr::PGHDR::DONT_WRITE;
 		_assert(p->Refs > 0);
@@ -294,7 +244,7 @@ namespace Core
 		}
 	}
 
-	void MakeClean(PgHdr *p)
+	void PCache::MakeClean(PgHdr *p)
 	{
 		if ((p->Flags & PgHdr::PGHDR::DIRTY))
 		{
@@ -305,21 +255,21 @@ namespace Core
 		}
 	}
 
-	void CleanAll(PCache *cache)
+	void PCache::CleanAll()
 	{
 		PgHdr *p;
-		while ((p = cache->Dirty) != nullptr)
+		while ((p = Dirty) != nullptr)
 			MakeClean(p);
 	}
 
-	void ClearSyncFlags(PCache *cache)
+	void PCache::ClearSyncFlags()
 	{
-		for (PgHdr *p = cache->Dirty; p; p = p->DirtyNext)
+		for (PgHdr *p = Dirty; p; p = p->DirtyNext)
 			p->Flags &= ~PgHdr::PGHDR::NEED_SYNC;
-		cache->Synced = cache->DirtyTail;
+		Synced = DirtyTail;
 	}
 
-	void Move(PgHdr *p, Pid newID)
+	void PCache::Move(PgHdr *p, Pid newID)
 	{
 		PCache *cache = p->Cache;
 		_assert(p->Refs > 0);
@@ -333,13 +283,13 @@ namespace Core
 		}
 	}
 
-	void Truncate(PCache *cache, Pid id)
+	void PCache::Truncate(Pid id)
 	{
-		if (cache->Cache)
+		if (Cache)
 		{
 			PgHdr *p;
 			PgHdr *next;
-			for (p = cache->Dirty; p; p = next)
+			for (p = Dirty; p; p = next)
 			{
 				next = p->DirtyNext;
 				// This routine never gets call with a positive pgno except right after sqlite3PcacheCleanAll().  So if there are dirty pages, it must be that pgno==0.
@@ -350,24 +300,24 @@ namespace Core
 					MakeClean(p);
 				}
 			}
-			if (id == 0 && cache->Page1)
+			if (id == 0 && Page1)
 			{
-				_memset(cache->Page1->Data, 0, cache->SizePage);
+				_memset(Page1->Data, 0, SizePage);
 				id = 1;
 			}
-			cache->Cache->Truncate(id + 1);
+			Cache->Truncate(id + 1);
 		}
 	}
 
-	void Close(PCache *cache)
+	void PCache::Close()
 	{
-		if (cache->Cache)
-			_pcache->Destroy(cache->Cache);
+		if (Cache)
+			_pcache->Destroy(Cache);
 	}
 
-	void Clear(PCache *cache)
+	void PCache::Clear()
 	{
-		Truncate(cache, 0); 
+		Truncate(0); 
 	}
 
 	static PgHdr *MergeDirtyList(PgHdr *a, PgHdr *b)
@@ -433,45 +383,45 @@ namespace Core
 		return p;
 	}
 
-	PgHdr *DirtyList(PCache *cache)
+	PgHdr *PCache::DirtyList()
 	{
-		for (PgHdr *p = cache->Dirty; p; p = p->DirtyNext)
+		for (PgHdr *p = Dirty; p; p = p->DirtyNext)
 			p->Dirty = p->DirtyNext;
-		return SortDirtyList(cache->Dirty);
+		return SortDirtyList(Dirty);
 	}
 
-	int RefCount(PCache *cache)
+	int PCache::get_Refs()
 	{
-		return cache->Refs;
+		return Refs;
 	}
 
-	int PageRefcount(PgHdr *p)
+	int get_PageRefs(PgHdr *p)
 	{
 		return p->Refs;
 	}
 
-	int Pagecount(PCache *cache)
+	int PCache::get_Pages()
 	{
-		return (cache->Cache ? cache->Cache->Pagecount() : 0);
+		return (Cache ? Cache->get_Pages() : 0);
 	}
 
-	void SetCachesize(PCache *cache, int maxPage)
+	void PCache::SetCachesize(int maxPage)
 	{
-		cache->SizeCache = maxPage;
-		if (cache->Cache)
-			cache->Cache->Cachesize(NumberOfCachePages(cache));
+		SizeCache = maxPage;
+		if (Cache)
+			Cache->Cachesize(NumberOfCachePages(this));
 	}
 
-	void Shrink(PCache *cache)
+	void PCache::Shrink()
 	{
-		if (cache->Cache)
-			cache->Cache->Shrink();
+		if (Cache)
+			Cache->Shrink();
 	}
 
-#if defined(CHECK_PAGES) || defined(DEBUG)
-	void IterateDirty(PCache *cache, void (*iter)(PgHdr *))
+#if defined(CHECK_PAGES) || defined(_DEBUG)
+	void PCache::IterateDirty(void (*iter)(PgHdr *))
 	{
-		for (PgHdr *dirty = cache->Dirty; dirty; dirty = dirty->DirtyNext)
+		for (PgHdr *dirty = Dirty; dirty; dirty = dirty->DirtyNext)
 			iter(dirty);
 	}
 #endif
@@ -481,7 +431,7 @@ namespace Core
 #pragma region Test 
 #ifdef TEST
 
-	int GetCachesize(PCache *cache)
+	__device__ uint PCache_testGetCachesize(PCache *cache)
 	{
 		return NumberOfCachePages(cache);
 	}

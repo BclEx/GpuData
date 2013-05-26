@@ -16,7 +16,7 @@ namespace Core
 			UNKNOWN = 5,
 		};
 
-		//dontknowwhere.c
+		// sqlite3.h
 		enum SYNC : char
 		{
 			NORMAL = 0x00002,
@@ -24,7 +24,7 @@ namespace Core
 			DATAONLY = 0x00010,
 		};
 
-		//dontknowwhere.c
+		// sqlite3.h
 		enum FCNTL : uint
 		{
 			LOCKSTATE = 1,
@@ -38,21 +38,22 @@ namespace Core
 			DB_UNCHANGED = 0xca093fa0,
 		};
 
-		//dontknowwhere.c
+		// sqlite3.h
 		enum IOCAP : uint
 		{
-			ATOMIC = 0x00000001,
-			ATOMIC512 = 0x00000002,
-			ATOMIC1K = 0x00000004,
-			ATOMIC2K = 0x00000008,
-			ATOMIC4K = 0x00000010,
-			ATOMIC8K = 0x00000020,
-			ATOMIC16K = 0x00000040,
-			ATOMIC32K = 0x00000080,
-			ATOMIC64K = 0x00000100,
-			SAFE_APPEND = 0x00000200,
-			SEQUENTIAL = 0x00000400,
-			UNDELETABLE_WHEN_OPEN = 0x00000800,
+            ATOMIC = 0x00000001,
+            ATOMIC512 = 0x00000002,
+            ATOMIC1K = 0x00000004,
+            ATOMIC2K = 0x00000008,
+            ATOMIC4K = 0x00000010,
+            ATOMIC8K = 0x00000020,
+            ATOMIC16K = 0x00000040,
+            ATOMIC32K = 0x00000080,
+            ATOMIC64K = 0x00000100,
+            SAFE_APPEND = 0x00000200,
+            SEQUENTIAL = 0x00000400,
+            UNDELETABLE_WHEN_OPEN = 0x00000800,
+            POWERSAFE_OVERWRITE = 0x00001000,
 		};
 
 		bool Opened;
@@ -91,6 +92,11 @@ namespace Core
 			char ac[4];
 			ConvertEx::Put4((uint8 *)ac, value);
 			return Write(ac, 4, offset);
+		}
+
+		__device__ inline static bool IsMemoryVFile(VFile *file)
+		{
+			return true;
 		}
 	};
 }

@@ -5,28 +5,6 @@ using System.Diagnostics;
 
 namespace Core
 {
-    public partial class PCache
-    {
-        public PgHdr Dirty, DirtyTail;  // List of dirty pages in LRU order
-        public PgHdr Synced;        // Last synced page in dirty page list
-        public int Refs;            // Number of referenced pages
-        public int SizeCache;       // Configured cache size
-        public int SizePage;        // Size of every page in this cache
-        public int SizeExtra;       // Size of extra space for each page
-        public bool Purgeable;      // True if pages are on backing store
-        public Func<object, PgHdr, RC> Stress;   // Call to try make a page clean
-        public object StressArg;    // Argument to xStress
-        public IPCache Cache;       // Pluggable cache module
-        public PgHdr Page1;         // Reference to page 1
-
-        public void memset()
-        {
-            Dirty = DirtyTail = null;
-            Synced = null;
-            Refs = 0;
-        }
-    }
-
     partial class PCache
     {
         #region Linked List
@@ -122,7 +100,7 @@ namespace Core
         {
             _pcache.Shutdown();
         }
-        //internal static int Size() { return 4; }
+        //internal static int SizeOf() { return 4; }
 
         public void Open(int sizePage, int sizeExtra, bool purgeable, Func<object, PgHdr, RC> stress, object stressArg, PCache p)
         {
@@ -220,7 +198,7 @@ namespace Core
             return (pgHdr == null && create != 0 ? RC.NOMEM : RC.OK);
         }
 
-        internal static void Release(PgHdr p)
+        public static void Release(PgHdr p)
         {
             Debug.Assert(p.Refs > 0);
             p.Refs--;
@@ -239,13 +217,13 @@ namespace Core
             }
         }
 
-        internal static void Ref(PgHdr p)
+        public static void Ref(PgHdr p)
         {
             Debug.Assert(p.Refs > 0);
             p.Refs++;
         }
 
-        internal static void Drop(PgHdr p)
+        public static void Drop(PgHdr p)
         {
             Debug.Assert(p.Refs == 1);
             if ((p.Flags & PgHdr.PGHDR.DIRTY) != 0)
@@ -257,7 +235,7 @@ namespace Core
             cache.Cache.Unpin(p.Page, true);
         }
 
-        internal static void MakeDirty(PgHdr p)
+        public static void MakeDirty(PgHdr p)
         {
             p.Flags &= ~PgHdr.PGHDR.DONT_WRITE;
             Debug.Assert(p.Refs > 0);
@@ -268,7 +246,7 @@ namespace Core
             }
         }
 
-        internal static void MakeClean(PgHdr p)
+        public static void MakeClean(PgHdr p)
         {
             if ((p.Flags & PgHdr.PGHDR.DIRTY) != 0)
             {
@@ -279,21 +257,21 @@ namespace Core
             }
         }
 
-        internal static void CleanAll(PCache cache)
+        public void CleanAll()
         {
             PgHdr p;
-            while ((p = cache.Dirty) != null)
+            while ((p = Dirty) != null)
                 MakeClean(p);
         }
 
-        internal static void ClearSyncFlags(PCache cache)
+        public void ClearSyncFlags()
         {
-            for (var p = cache.Dirty; p != null; p = p.DirtyNext)
+            for (var p = Dirty; p != null; p = p.DirtyNext)
                 p.Flags &= ~PgHdr.PGHDR.NEED_SYNC;
-            cache.Synced = cache.DirtyTail;
+            Synced = DirtyTail;
         }
 
-        internal static void MovePage(PgHdr p, Pid newID)
+        public static void Move(PgHdr p, Pid newID)
         {
             PCache cache = p.Cache;
             Debug.Assert(p.Refs > 0);
@@ -307,13 +285,13 @@ namespace Core
             }
         }
 
-        internal static void TruncatePage(PCache cache, Pid id)
+        public void Truncate(Pid id)
         {
-            if (cache.Cache != null)
+            if (Cache != null)
             {
                 PgHdr p;
                 PgHdr next;
-                for (p = cache.Dirty; p != null; p = next)
+                for (p = Dirty; p != null; p = next)
                 {
                     next = p.DirtyNext;
                     // This routine never gets call with a positive pgno except right after sqlite3PcacheCleanAll().  So if there are dirty pages, it must be that pgno==0.
@@ -324,24 +302,24 @@ namespace Core
                         MakeClean(p);
                     }
                 }
-                if (id == 0 && cache.Page1 != null)
+                if (id == 0 && Page1 != null)
                 {
-                    cache.Page1.memsetData(cache.SizePage);
+                    Page1.memsetData(SizePage);
                     id = 1;
                 }
-                cache.Cache.Truncate(id + 1);
+                Cache.Truncate(id + 1);
             }
         }
 
-        internal static void Close(PCache cache)
+        public void Close()
         {
-            if (cache.Cache != null)
-                _pcache.Destroy(ref cache.Cache);
+            if (Cache != null)
+                _pcache.Destroy(ref Cache);
         }
 
-        internal static void Clear(PCache cache)
+        public void Clear()
         {
-            TruncatePage(cache, 0);
+            Truncate(0);
         }
 
         private static PgHdr MergeDirtyList(PgHdr a, PgHdr b)
@@ -407,50 +385,61 @@ namespace Core
             return p;
         }
 
-        internal static PgHdr DirtyList(PCache cache)
+        public PgHdr DirtyList()
         {
-            for (var p = cache.Dirty; p != null; p = p.DirtyNext)
+            for (var p = Dirty; p != null; p = p.DirtyNext)
                 p.Dirty = p.DirtyNext;
-            return SortDirtyList(cache.Dirty);
+            return SortDirtyList(Dirty);
         }
 
-        internal static int RefCount(PCache cache)
+        public int get_Refs()
         {
-            return cache.Refs;
+            return Refs;
         }
 
-        internal static int PageRefcount(PgHdr p)
+        public static int get_PageRefs(PgHdr p)
         {
             return p.Refs;
         }
 
-        internal static int Pagecount(PCache cache)
+        public int get_Pages()
         {
-            return (cache.Cache != null ? cache.Cache.Pagecount() : 0);
+            return (Cache != null ? Cache.get_Pages() : 0);
         }
 
-        internal static void SetCachesize(PCache cache, int maxPage)
+        public void SetCachesize(int maxPage)
         {
-            cache.SizeCache = maxPage;
-            if (cache.Cache != null)
-                cache.Cache.Cachesize(NumberOfCachePages(cache));
+            SizeCache = maxPage;
+            if (Cache != null)
+                Cache.Cachesize(NumberOfCachePages(this));
         }
 
-        internal static void Shrink(PCache cache)
+        public void Shrink()
         {
-            if (cache.Cache != null)
-                cache.Cache.Shrink();
+            if (Cache != null)
+                Cache.Shrink();
         }
 
 #if CHECK_PAGES || DEBUG
         // For all dirty pages currently in the cache, invoke the specified callback. This is only used if the SQLITE_CHECK_PAGES macro is defined.
-        internal static void IterateDirty(PCache cache, Action<PgHdr> iter)
+        public void IterateDirty(Action<PgHdr> iter)
         {
-            for (var dirty = cache.Dirty; dirty != null; dirty = dirty.DirtyNext)
+            for (var dirty = Dirty; dirty != null; dirty = dirty.DirtyNext)
                 iter(dirty);
         }
 #endif
 
+        #endregion
+
+        #region Test
+#if TEST
+
+        public static uint PCache_testGetCachesize(PCache cache)
+        {
+            return NumberOfCachePages(cache);
+        }
+
+#endif
         #endregion
     }
 }

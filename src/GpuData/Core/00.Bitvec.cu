@@ -33,7 +33,7 @@ namespace Core
 		return false;
 	}
 
-	int Bitvec::Set(uint32 index)
+	RC Bitvec::Set(uint32 index)
 	{
 		_assert(index > 0);
 		_assert(index <= _size);
@@ -81,7 +81,7 @@ bitvec_set_rehash:
 			for (unsigned int j = 0; j < BITVEC_NINT; j++)
 				if (values[j]) rc |= p->Set(values[j]);
 			SysEx::StackFree(values);
-			return rc;
+			return (RC)rc;
 		}
 bitvec_set_end:
 		p->_set++;

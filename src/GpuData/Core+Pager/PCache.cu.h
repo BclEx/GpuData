@@ -12,7 +12,7 @@ namespace Core
 		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
 		virtual void Cachesize(uint max);
 		virtual void Shrink();
-		virtual int Pagecount();
+		virtual int get_Pages();
 		virtual IPage *Fetch(Pid key, int createFlag);
 		virtual void Unpin(IPage *pg, bool reuseUnlikely);
 		virtual void Rekey(IPage *pg, Pid old, Pid new_);
@@ -47,9 +47,53 @@ namespace Core
 		PgHdr *DirtyPrev;           // Previous element in list of dirty pages
 	};
 
-
-	//
-	//#ifdef TEST
-	//	void Stats(int*,int*,int*,int*);
-	//#endif
+	struct PCache
+	{
+		PgHdr *Dirty, *DirtyTail;   // List of dirty pages in LRU order
+		PgHdr *Synced;              // Last synced page in dirty page list
+		int Refs;                   // Number of referenced pages
+		int SizeCache;              // Configured cache size
+		int SizePage;               // Size of every page in this cache
+		int SizeExtra;              // Size of extra space for each page
+		bool Purgeable;             // True if pages are on backing store
+		RC (*Stress)(void *, PgHdr *);// Call to try make a page clean
+		void *StressArg;            // Argument to xStress
+		IPCache *Cache;				// Pluggable cache module
+		PgHdr *Page1;				// Reference to page 1
+	public:
+		//	void sqlite3PCacheBufferSetup(void *, int sz, int n);
+		__device__ static int Initialize();
+		__device__ static void Shutdown();
+		//	__device__ static int SizeOf();
+		__device__ static void Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p);
+		__device__ void SetPageSize(int sizePage);
+		__device__ int Fetch(Pid id, bool createFlag, PgHdr **pageOut);
+		__device__ static void Release(PgHdr *p);
+		__device__ static void Ref(PgHdr *p);
+		__device__ static void Drop(PgHdr *p);			// Remove page from cache
+		__device__ static void MakeDirty(PgHdr *p);	// Make sure page is marked dirty
+		__device__ static void MakeClean(PgHdr *p);	// Mark a single page as clean
+		__device__ void CleanAll();					// Mark all dirty list pages as clean
+		__device__ void ClearSyncFlags();
+		__device__ static void Move(PgHdr *p, Pid newID);
+		__device__ void Truncate(Pid id);
+		__device__ void Close();
+		__device__ void Clear();
+		__device__ PgHdr *DirtyList();
+		__device__ int get_Refs();
+		__device__ static int get_PageRefs(PgHdr *p);
+		__device__ int get_Pages();
+		__device__ void SetCachesize(int maxPage);
+		__device__ void Shrink();
+#if defined(CHECK_PAGES) || defined(_DEBUG)
+		__device__ void IterateDirty(void (*iter)(PgHdr *));
+#endif
+#ifdef ENABLE_MEMORY_MANAGEMENT
+		__device__ static int ReleaseMemory(int required);
+#endif
+#ifdef TEST
+		__device__ uint PCache_testGetCachesize(PCache *cache);
+		__device__ void PCache1_testStats(uint *current, uint *max, uint *min, uint *recyclables);
+#endif
+	};
 }

@@ -79,9 +79,6 @@
     <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h">
       <Filter>Core+Pager</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData\Core+Pager\PCache1.cu.h">
-      <Filter>Core+Pager</Filter>
-    </ClInclude>
     <ClInclude Include="..\GpuData\Core+Pager\Core+Pager.cu.h">
       <Filter>Core+Pager</Filter>
     </ClInclude>

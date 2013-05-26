@@ -5,7 +5,7 @@ namespace Core
 {
     public partial class Pager
     {
-        public RC Get(Pid pid, ref PgHdr page, bool noContent = false)
+        public RC Acquire(Pid pid, ref PgHdr page, bool noContent = false)
         {
             Debug.Assert(_state >= PAGER.READER);
             Debug.Assert(assert_pager_state());

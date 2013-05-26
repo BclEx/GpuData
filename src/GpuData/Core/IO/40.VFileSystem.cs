@@ -29,18 +29,18 @@ namespace Core.IO
             WAL = 0x00080000,               // VFS only 
         }
 
-        public enum ACCESS
+        public enum ACCESS : byte
         {
             EXISTS = 0,
-            READWRITE = 1, // Used by PRAGMA temp_store_directory
-            READ = 2, // Unused
+            READWRITE = 1,  // Used by PRAGMA temp_store_directory
+            READ = 2,       // Unused
         }
 
-        public VFileSystem Next;       // Next registered VFS
-        public string Name = "win32";            // Name of this virtual file system
-        //public object AppData = 0;         // Pointer to application-specific data
-        //public int szOsFile = -1;            // Size of subclassed VirtualFile
-        //public int mxPathname = MAX_PATH;          // Maximum file pathname length
+        public VFileSystem Next;        // Next registered VFS
+        public string Name = "win32";   // Name of this virtual file system
+        public object Tag;              // Pointer to application-specific data
+        //public int SizeOsFile = -1;   // Size of subclassed VirtualFile
+        public int MaxPathname = 256;   // Maximum file pathname length
 
         static VFileSystem()
         {
@@ -53,7 +53,7 @@ namespace Core.IO
             //ct.mxPathname = this.mxPathname;
             ct.Next = this.Next;
             ct.Name = this.Name;
-            //ct.AppData = this.AppData;
+            ct.Tag = this.Tag;
         }
 
         public abstract RC Open(string path, VFile file, OPEN flags, out OPEN outFlags);

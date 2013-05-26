@@ -65,426 +65,426 @@ namespace Contoso.Core
             return rc;
         }
 
-        private PgHdr pager_lookup(Pgno pgno)
-        {
-            // It is not possible for a call to PcacheFetch() with createFlag==0 to fail, since no attempt to allocate dynamic memory will be made.
-            PgHdr p = null;
-            this.pPCache.FetchPage(pgno, 0, ref p);
-            return p;
-        }
+        //private PgHdr pager_lookup(Pgno pgno)
+        //{
+        //    // It is not possible for a call to PcacheFetch() with createFlag==0 to fail, since no attempt to allocate dynamic memory will be made.
+        //    PgHdr p = null;
+        //    this.pPCache.FetchPage(pgno, 0, ref p);
+        //    return p;
+        //}
 
-        private void pager_reset()
-        {
-            if (this.pBackup != null)
-                this.pBackup.sqlite3BackupRestart();
-            this.pPCache.Clear();
-        }
+        //private void pager_reset()
+        //{
+        //    if (this.pBackup != null)
+        //        this.pBackup.sqlite3BackupRestart();
+        //    this.pPCache.Clear();
+        //}
 
-        private void pager_unlock()
-        {
-            Debug.Assert(this.eState == PAGER.READER
-                || this.eState == PAGER.OPEN
-                || this.eState == PAGER.ERROR);
-            BitArray.Destroy(ref this.pInJournal);
-            this.pInJournal = null;
-            releaseAllSavepoints();
-            if (pagerUseWal())
-            {
-                Debug.Assert(!this.jfd.IsOpen);
-                this.pWal.EndReadTransaction();
-                this.eState = PAGER.OPEN;
-            }
-            else if (!this.exclusiveMode)
-            {
-                var iDc = (this.fd.IsOpen ? this.fd.DeviceCharacteristics : 0);
-                // If the operating system support deletion of open files, then close the journal file when dropping the database lock.  Otherwise
-                // another connection with journal_mode=delete might delete the file out from under us.
-                Debug.Assert(((int)JOURNALMODE.MEMORY & 5) != 1);
-                Debug.Assert(((int)JOURNALMODE.OFF & 5) != 1);
-                Debug.Assert(((int)JOURNALMODE.WAL & 5) != 1);
-                Debug.Assert(((int)JOURNALMODE.DELETE & 5) != 1);
-                Debug.Assert(((int)JOURNALMODE.TRUNCATE & 5) == 1);
-                Debug.Assert(((int)JOURNALMODE.PERSIST & 5) == 1);
-                if (0 == (iDc & VirtualFile.IOCAP.UNDELETABLE_WHEN_OPEN) || 1 != ((int)this.journalMode & 5))
-                    FileEx.OSClose(this.jfd);
-                // If the pager is in the ERROR state and the call to unlock the database file fails, set the current lock to UNKNOWN_LOCK. See the comment
-                // above the #define for UNKNOWN_LOCK for an explanation of why this is necessary.
-                var rc = pagerUnlockDb(VFSLOCK.NO);
-                if (rc != RC.OK && this.eState == PAGER.ERROR)
-                    this.eLock = VFSLOCK.UNKNOWN;
-                // The pager state may be changed from PAGER_ERROR to PAGER_OPEN here without clearing the error code. This is intentional - the error
-                // code is cleared and the cache reset in the block below.
-                Debug.Assert(this.errCode != 0 || this.eState != PAGER.ERROR);
-                this.changeCountDone = false;
-                this.eState = PAGER.OPEN;
-            }
-            // If Pager.errCode is set, the contents of the pager cache cannot be trusted. Now that there are no outstanding references to the pager,
-            // it can safely move back to PAGER_OPEN state. This happens in both normal and exclusive-locking mode.
-            if (this.errCode != 0)
-            {
-                Debug.Assert(
-#if SQLITE_OMIT_MEMORYDB
-0==MEMDB
-#else
-0 == this.memDb
-#endif
-);
-                pager_reset();
-                this.changeCountDone = this.tempFile;
-                this.eState = PAGER.OPEN;
-                this.errCode = RC.OK;
-            }
-            this.journalOff = 0;
-            this.journalHdr = 0;
-            this.setMaster = 0;
-        }
+//        private void pager_unlock()
+//        {
+//            Debug.Assert(this.eState == PAGER.READER
+//                || this.eState == PAGER.OPEN
+//                || this.eState == PAGER.ERROR);
+//            BitArray.Destroy(ref this.pInJournal);
+//            this.pInJournal = null;
+//            releaseAllSavepoints();
+//            if (pagerUseWal())
+//            {
+//                Debug.Assert(!this.jfd.IsOpen);
+//                this.pWal.EndReadTransaction();
+//                this.eState = PAGER.OPEN;
+//            }
+//            else if (!this.exclusiveMode)
+//            {
+//                var iDc = (this.fd.IsOpen ? this.fd.DeviceCharacteristics : 0);
+//                // If the operating system support deletion of open files, then close the journal file when dropping the database lock.  Otherwise
+//                // another connection with journal_mode=delete might delete the file out from under us.
+//                Debug.Assert(((int)JOURNALMODE.MEMORY & 5) != 1);
+//                Debug.Assert(((int)JOURNALMODE.OFF & 5) != 1);
+//                Debug.Assert(((int)JOURNALMODE.WAL & 5) != 1);
+//                Debug.Assert(((int)JOURNALMODE.DELETE & 5) != 1);
+//                Debug.Assert(((int)JOURNALMODE.TRUNCATE & 5) == 1);
+//                Debug.Assert(((int)JOURNALMODE.PERSIST & 5) == 1);
+//                if (0 == (iDc & VirtualFile.IOCAP.UNDELETABLE_WHEN_OPEN) || 1 != ((int)this.journalMode & 5))
+//                    FileEx.OSClose(this.jfd);
+//                // If the pager is in the ERROR state and the call to unlock the database file fails, set the current lock to UNKNOWN_LOCK. See the comment
+//                // above the #define for UNKNOWN_LOCK for an explanation of why this is necessary.
+//                var rc = pagerUnlockDb(VFSLOCK.NO);
+//                if (rc != RC.OK && this.eState == PAGER.ERROR)
+//                    this.eLock = VFSLOCK.UNKNOWN;
+//                // The pager state may be changed from PAGER_ERROR to PAGER_OPEN here without clearing the error code. This is intentional - the error
+//                // code is cleared and the cache reset in the block below.
+//                Debug.Assert(this.errCode != 0 || this.eState != PAGER.ERROR);
+//                this.changeCountDone = false;
+//                this.eState = PAGER.OPEN;
+//            }
+//            // If Pager.errCode is set, the contents of the pager cache cannot be trusted. Now that there are no outstanding references to the pager,
+//            // it can safely move back to PAGER_OPEN state. This happens in both normal and exclusive-locking mode.
+//            if (this.errCode != 0)
+//            {
+//                Debug.Assert(
+//#if SQLITE_OMIT_MEMORYDB
+//0==MEMDB
+//#else
+//0 == this.memDb
+//#endif
+//);
+//                pager_reset();
+//                this.changeCountDone = this.tempFile;
+//                this.eState = PAGER.OPEN;
+//                this.errCode = RC.OK;
+//            }
+//            this.journalOff = 0;
+//            this.journalHdr = 0;
+//            this.setMaster = 0;
+//        }
 
-        internal RC pager_error(RC rc)
-        {
-            var rc2 = (RC)((int)rc & 0xff);
-            Debug.Assert(rc == RC.OK ||
-#if SQLITE_OMIT_MEMORYDB
-0==MEMDB
-#else
- 0 == this.memDb
-#endif
-);
-            Debug.Assert(this.errCode == RC.FULL || this.errCode == RC.OK || ((int)this.errCode & 0xff) == (int)RC.IOERR);
-            if (rc2 == RC.FULL || rc2 == RC.IOERR)
-            {
-                this.errCode = rc;
-                this.eState = PAGER.ERROR;
-            }
-            return rc;
-        }
+//        internal RC pager_error(RC rc)
+//        {
+//            var rc2 = (RC)((int)rc & 0xff);
+//            Debug.Assert(rc == RC.OK ||
+//#if SQLITE_OMIT_MEMORYDB
+//0==MEMDB
+//#else
+// 0 == this.memDb
+//#endif
+//);
+//            Debug.Assert(this.errCode == RC.FULL || this.errCode == RC.OK || ((int)this.errCode & 0xff) == (int)RC.IOERR);
+//            if (rc2 == RC.FULL || rc2 == RC.IOERR)
+//            {
+//                this.errCode = rc;
+//                this.eState = PAGER.ERROR;
+//            }
+//            return rc;
+//        }
 
-        private RC pager_end_transaction(int hasMaster)
-        {
-            // Do nothing if the pager does not have an open write transaction or at least a RESERVED lock. This function may be called when there
-            // is no write-transaction active but a RESERVED or greater lock is held under two circumstances:
-            //   1. After a successful hot-journal rollback, it is called with eState==PAGER_NONE and eLock==EXCLUSIVE_LOCK.
-            //   2. If a connection with locking_mode=exclusive holding an EXCLUSIVE lock switches back to locking_mode=normal and then executes a
-            //      read-transaction, this function is called with eState==PAGER_READER and eLock==EXCLUSIVE_LOCK when the read-transaction is closed.
-            Debug.Assert(assert_pager_state());
-            Debug.Assert(this.eState != PAGER.ERROR);
-            if (this.eState < PAGER.WRITER_LOCKED && this.eLock < VFSLOCK.RESERVED)
-                return RC.OK;
-            releaseAllSavepoints();
-            Debug.Assert(this.jfd.IsOpen || this.pInJournal == null);
-            var rc = RC.OK; // Error code from journal finalization operation
-            if (this.jfd.IsOpen)
-            {
-                Debug.Assert(!pagerUseWal());
-                // Finalize the journal file.
-                if (this.jfd is MemJournalFile)
-                {
-                    Debug.Assert(this.journalMode == JOURNALMODE.MEMORY);
-                    FileEx.OSClose(this.jfd);
-                }
-                else if (this.journalMode == JOURNALMODE.TRUNCATE)
-                {
-                    rc = (this.journalOff == 0 ? RC.OK : this.jfd.Truncate(0));
-                    this.journalOff = 0;
-                }
-                else if (this.journalMode == JOURNALMODE.PERSIST || (this.exclusiveMode && this.journalMode != JOURNALMODE.WAL))
-                {
-                    rc = zeroJournalHdr(hasMaster);
-                    this.journalOff = 0;
-                }
-                else
-                {
-                    // This branch may be executed with Pager.journalMode==MEMORY if a hot-journal was just rolled back. In this case the journal
-                    // file should be closed and deleted. If this connection writes to the database file, it will do so using an in-memory journal. 
-                    Debug.Assert(this.journalMode == JOURNALMODE.DELETE || this.journalMode == JOURNALMODE.MEMORY || this.journalMode == JOURNALMODE.WAL);
-                    FileEx.OSClose(this.jfd);
-                    if (!this.tempFile)
-                        rc = this.pVfs.xDelete(this.zJournal, 0);
-                }
-            }
-#if SQLITE_CHECK_PAGES
-            sqlite3PcacheIterateDirty(pPager.pPCache, pager_set_pagehash);
-            if (pPager.dbSize == 0 && sqlite3PcacheRefCount(pPager.pPCache) > 0)
-            {
-                var p = pager_lookup(pPager, 1);
-                if (p != null)
-                {
-                    p.pageHash = null;
-                    sqlite3PagerUnref(p);
-                }
-            }
-#endif
-            BitArray.Destroy(ref this.pInJournal);
-            this.pInJournal = null;
-            this.nRec = 0;
-            this.pPCache.CleanAllPages();
-            this.pPCache.TruncatePage(this.dbSize);
-            var rc2 = RC.OK;    // Error code from db file unlock operation
-            if (pagerUseWal())
-            {
-                // Drop the WAL write-lock, if any. Also, if the connection was in locking_mode=exclusive mode but is no longer, drop the EXCLUSIVE 
-                // lock held on the database file.
-                rc2 = this.pWal.EndWriteTransaction();
-                Debug.Assert(rc2 == RC.OK);
-            }
-            if (!this.exclusiveMode && (!pagerUseWal() || this.pWal.ExclusiveMode(0)))
-            {
-                rc2 = pagerUnlockDb(VFSLOCK.SHARED);
-                this.changeCountDone = false;
-            }
-            this.eState = PAGER.READER;
-            this.setMaster = 0;
-            return (rc == RC.OK ? rc2 : rc);
-        }
+//        private RC pager_end_transaction(int hasMaster)
+//        {
+//            // Do nothing if the pager does not have an open write transaction or at least a RESERVED lock. This function may be called when there
+//            // is no write-transaction active but a RESERVED or greater lock is held under two circumstances:
+//            //   1. After a successful hot-journal rollback, it is called with eState==PAGER_NONE and eLock==EXCLUSIVE_LOCK.
+//            //   2. If a connection with locking_mode=exclusive holding an EXCLUSIVE lock switches back to locking_mode=normal and then executes a
+//            //      read-transaction, this function is called with eState==PAGER_READER and eLock==EXCLUSIVE_LOCK when the read-transaction is closed.
+//            Debug.Assert(assert_pager_state());
+//            Debug.Assert(this.eState != PAGER.ERROR);
+//            if (this.eState < PAGER.WRITER_LOCKED && this.eLock < VFSLOCK.RESERVED)
+//                return RC.OK;
+//            releaseAllSavepoints();
+//            Debug.Assert(this.jfd.IsOpen || this.pInJournal == null);
+//            var rc = RC.OK; // Error code from journal finalization operation
+//            if (this.jfd.IsOpen)
+//            {
+//                Debug.Assert(!pagerUseWal());
+//                // Finalize the journal file.
+//                if (this.jfd is MemJournalFile)
+//                {
+//                    Debug.Assert(this.journalMode == JOURNALMODE.MEMORY);
+//                    FileEx.OSClose(this.jfd);
+//                }
+//                else if (this.journalMode == JOURNALMODE.TRUNCATE)
+//                {
+//                    rc = (this.journalOff == 0 ? RC.OK : this.jfd.Truncate(0));
+//                    this.journalOff = 0;
+//                }
+//                else if (this.journalMode == JOURNALMODE.PERSIST || (this.exclusiveMode && this.journalMode != JOURNALMODE.WAL))
+//                {
+//                    rc = zeroJournalHdr(hasMaster);
+//                    this.journalOff = 0;
+//                }
+//                else
+//                {
+//                    // This branch may be executed with Pager.journalMode==MEMORY if a hot-journal was just rolled back. In this case the journal
+//                    // file should be closed and deleted. If this connection writes to the database file, it will do so using an in-memory journal. 
+//                    Debug.Assert(this.journalMode == JOURNALMODE.DELETE || this.journalMode == JOURNALMODE.MEMORY || this.journalMode == JOURNALMODE.WAL);
+//                    FileEx.OSClose(this.jfd);
+//                    if (!this.tempFile)
+//                        rc = this.pVfs.xDelete(this.zJournal, 0);
+//                }
+//            }
+//#if SQLITE_CHECK_PAGES
+//            sqlite3PcacheIterateDirty(pPager.pPCache, pager_set_pagehash);
+//            if (pPager.dbSize == 0 && sqlite3PcacheRefCount(pPager.pPCache) > 0)
+//            {
+//                var p = pager_lookup(pPager, 1);
+//                if (p != null)
+//                {
+//                    p.pageHash = null;
+//                    sqlite3PagerUnref(p);
+//                }
+//            }
+//#endif
+//            BitArray.Destroy(ref this.pInJournal);
+//            this.pInJournal = null;
+//            this.nRec = 0;
+//            this.pPCache.CleanAllPages();
+//            this.pPCache.TruncatePage(this.dbSize);
+//            var rc2 = RC.OK;    // Error code from db file unlock operation
+//            if (pagerUseWal())
+//            {
+//                // Drop the WAL write-lock, if any. Also, if the connection was in locking_mode=exclusive mode but is no longer, drop the EXCLUSIVE 
+//                // lock held on the database file.
+//                rc2 = this.pWal.EndWriteTransaction();
+//                Debug.Assert(rc2 == RC.OK);
+//            }
+//            if (!this.exclusiveMode && (!pagerUseWal() || this.pWal.ExclusiveMode(0)))
+//            {
+//                rc2 = pagerUnlockDb(VFSLOCK.SHARED);
+//                this.changeCountDone = false;
+//            }
+//            this.eState = PAGER.READER;
+//            this.setMaster = 0;
+//            return (rc == RC.OK ? rc2 : rc);
+//        }
 
-        private uint pager_cksum(byte[] aData)
-        {
-            var cksum = this.cksumInit;
-            var i = this.pageSize - 200;
-            while (i > 0)
-            {
-                cksum += aData[i];
-                i -= 200;
-            }
-            return cksum;
-        }
+        //private uint pager_cksum(byte[] aData)
+        //{
+        //    var cksum = this.cksumInit;
+        //    var i = this.pageSize - 200;
+        //    while (i > 0)
+        //    {
+        //        cksum += aData[i];
+        //        i -= 200;
+        //    }
+        //    return cksum;
+        //}
 
-        private RC pager_playback_one_page(ref long pOffset, BitArray pDone, int isMainJrnl, int isSavepnt)
-        {
-            Debug.Assert((isMainJrnl & ~1) == 0);       // isMainJrnl is 0 or 1
-            Debug.Assert((isSavepnt & ~1) == 0);        // isSavepnt is 0 or 1
-            Debug.Assert(isMainJrnl != 0 || pDone != null);     // pDone always used on sub-journals
-            Debug.Assert(isSavepnt != 0 || pDone == null);      // pDone never used on non-savepoint
-            var aData = this.pTmpSpace;
-            Debug.Assert(aData != null);         // Temp storage must have already been allocated
-            Debug.Assert(!pagerUseWal() || (0 == isMainJrnl && isSavepnt != 0));
-            // Either the state is greater than PAGER_WRITER_CACHEMOD (a transaction or savepoint rollback done at the request of the caller) or this is
-            // a hot-journal rollback. If it is a hot-journal rollback, the pager is in state OPEN and holds an EXCLUSIVE lock. Hot-journal rollback
-            // only reads from the main journal, not the sub-journal.
-            Debug.Assert(this.eState >= PAGER.WRITER_CACHEMOD || (this.eState == PAGER.OPEN && this.eLock == VFSLOCK.EXCLUSIVE));
-            Debug.Assert(this.eState >= PAGER.WRITER_CACHEMOD || isMainJrnl != 0);
-            // Read the page number and page data from the journal or sub-journal file. Return an error code to the caller if an IO error occurs.
-            var jfd = (isMainJrnl != 0 ? this.jfd : this.sjfd); // The file descriptor for the journal file
-            Pgno pgno = 0;  // The page number of a page in journal
-            var rc = jfd.ReadByte(pOffset, ref pgno);
-            if (rc != RC.OK)
-                return rc;
-            rc = jfd.Read(aData, this.pageSize, pOffset + 4);
-            if (rc != RC.OK)
-                return rc;
-            pOffset += this.pageSize + 4 + isMainJrnl * 4;
-            // Sanity checking on the page.  This is more important that I originally thought.  If a power failure occurs while the journal is being written,
-            // it could cause invalid data to be written into the journal.  We need to detect this invalid data (with high probability) and ignore it.
-            if (pgno == 0 || pgno == PAGER_MJ_PGNO(this))
-            {
-                Debug.Assert(0 == isSavepnt);
-                return RC.DONE;
-            }
-            if (pgno > this.dbSize || pDone.Get(pgno))
-                return RC.OK;
-            uint cksum = 0;         // Checksum used for sanity checking
-            if (isMainJrnl != 0)
-            {
-                rc = jfd.ReadByte((pOffset) - 4, ref cksum);
-                if (rc != RC.OK)
-                    return rc;
-                if (0 == isSavepnt && pager_cksum(aData) != cksum)
-                    return RC.DONE;
-            }
-            // If this page has already been played by before during the current rollback, then don't bother to play it back again.
-            if (pDone != null && (rc = pDone.Set(pgno)) != RC.OK)
-                return rc;
-            // When playing back page 1, restore the nReserve setting
-            if (pgno == 1 && this.nReserve != aData[20])
-            {
-                this.nReserve = (aData)[20];
-                pagerReportSize();
-            }
-            var pPg = (pagerUseWal() ? null : pager_lookup(pgno)); // An existing page in the cache
-            Debug.Assert(pPg != null ||
-#if SQLITE_OMIT_MEMORYDB
-0==MEMDB
-#else
- this.memDb == 0
-#endif
-);
-            Debug.Assert(this.eState != PAGER.OPEN || pPg == null);
-            PAGERTRACE("PLAYBACK {0} page {1} hash({2,08:x}) {3}", PAGERID(this), pgno, pager_datahash(this.pageSize, aData), isMainJrnl != 0 ? "main-journal" : "sub-journal");
-            bool isSynced; // True if journal page is synced
-            if (isMainJrnl != 0)
-                isSynced = this.noSync || (pOffset <= this.journalHdr);
-            else
-                isSynced = (pPg == null || 0 == (pPg.Flags & PgHdr.PGHDR.NEED_SYNC));
-            if (this.fd.IsOpen && (this.eState >= PAGER.WRITER_DBMOD || this.eState == PAGER.OPEN) && isSynced)
-            {
-                long ofst = (pgno - 1) * this.pageSize;
-                Debug.Assert(!pagerUseWal());
-                rc = this.fd.Write(aData, this.pageSize, ofst);
-                if (pgno > this.dbFileSize)
-                    this.dbFileSize = pgno;
-                if (this.pBackup != null)
-                {
-                    if (CODEC1(this, aData, pgno, codec_ctx.DECRYPT))
-                        rc = RC.NOMEM;
-                    this.pBackup.sqlite3BackupUpdate(pgno, aData);
-                    if (CODEC2(this, aData, pgno, codec_ctx.ENCRYPT_READ_CTX, ref aData))
-                        rc = RC.NOMEM;
-                }
-            }
-            else if (0 == isMainJrnl && pPg == null)
-            {
-                // If this is a rollback of a savepoint and data was not written to the database and the page is not in-memory, there is a potential
-                // problem. When the page is next fetched by the b-tree layer, it will be read from the database file, which may or may not be
-                // current.
-                // There are a couple of different ways this can happen. All are quite obscure. When running in synchronous mode, this can only happen
-                // if the page is on the free-list at the start of the transaction, then populated, then moved using sqlite3PagerMovepage().
-                // The solution is to add an in-memory page to the cache containing the data just read from the sub-journal. Mark the page as dirty
-                // and if the pager requires a journal-sync, then mark the page as requiring a journal-sync before it is written.
-                Debug.Assert(isSavepnt != 0);
-                Debug.Assert(this.doNotSpill == 0);
-                this.doNotSpill++;
-                rc = this.Get(pgno, ref pPg, 1);
-                Debug.Assert(this.doNotSpill == 1);
-                this.doNotSpill--;
-                if (rc != RC.OK)
-                    return rc;
-                pPg.Flags &= ~PgHdr.PGHDR.NEED_READ;
-                PCache.MakePageDirty(pPg);
-            }
-            if (pPg != null)
-            {
-                // No page should ever be explicitly rolled back that is in use, except for page 1 which is held in use in order to keep the lock on the
-                // database active. However such a page may be rolled back as a result of an internal error resulting in an automatic call to
-                // sqlite3PagerRollback().
-                var pData = pPg.Data;
-                Buffer.BlockCopy(aData, 0, pData, 0, this.pageSize);
-                this.xReiniter(pPg);
-                if (isMainJrnl != 0 && (0 == isSavepnt || pOffset <= this.journalHdr))
-                {
-                    // If the contents of this page were just restored from the main journal file, then its content must be as they were when the
-                    // transaction was first opened. In this case we can mark the page as clean, since there will be no need to write it out to the
-                    // database.
-                    // There is one exception to this rule. If the page is being rolled back as part of a savepoint (or statement) rollback from an
-                    // unsynced portion of the main journal file, then it is not safe to mark the page as clean. This is because marking the page as
-                    // clean will clear the PGHDR_NEED_SYNC flag. Since the page is already in the journal file (recorded in Pager.pInJournal) and
-                    // the PGHDR_NEED_SYNC flag is cleared, if the page is written to again within this transaction, it will be marked as dirty but
-                    // the PGHDR_NEED_SYNC flag will not be set. It could then potentially be written out into the database file before its journal file
-                    // segment is synced. If a crash occurs during or following this, database corruption may ensue.
-                    Debug.Assert(!pagerUseWal());
-                    PCache.MakePageClean(pPg);
-                }
-                pager_set_pagehash(pPg);
-                // If this was page 1, then restore the value of Pager.dbFileVers. Do this before any decoding.
-                if (pgno == 1)
-                    Buffer.BlockCopy(pData, 24, this.dbFileVers, 0, this.dbFileVers.Length);
-                // Decode the page just read from disk
-                if (CODEC1(this, pData, pPg.ID, codec_ctx.DECRYPT))
-                    rc = RC.NOMEM;
-                PCache.ReleasePage(pPg);
-            }
-            return rc;
-        }
+//        private RC pager_playback_one_page(ref long pOffset, BitArray pDone, int isMainJrnl, int isSavepnt)
+//        {
+//            Debug.Assert((isMainJrnl & ~1) == 0);       // isMainJrnl is 0 or 1
+//            Debug.Assert((isSavepnt & ~1) == 0);        // isSavepnt is 0 or 1
+//            Debug.Assert(isMainJrnl != 0 || pDone != null);     // pDone always used on sub-journals
+//            Debug.Assert(isSavepnt != 0 || pDone == null);      // pDone never used on non-savepoint
+//            var aData = this.pTmpSpace;
+//            Debug.Assert(aData != null);         // Temp storage must have already been allocated
+//            Debug.Assert(!pagerUseWal() || (0 == isMainJrnl && isSavepnt != 0));
+//            // Either the state is greater than PAGER_WRITER_CACHEMOD (a transaction or savepoint rollback done at the request of the caller) or this is
+//            // a hot-journal rollback. If it is a hot-journal rollback, the pager is in state OPEN and holds an EXCLUSIVE lock. Hot-journal rollback
+//            // only reads from the main journal, not the sub-journal.
+//            Debug.Assert(this.eState >= PAGER.WRITER_CACHEMOD || (this.eState == PAGER.OPEN && this.eLock == VFSLOCK.EXCLUSIVE));
+//            Debug.Assert(this.eState >= PAGER.WRITER_CACHEMOD || isMainJrnl != 0);
+//            // Read the page number and page data from the journal or sub-journal file. Return an error code to the caller if an IO error occurs.
+//            var jfd = (isMainJrnl != 0 ? this.jfd : this.sjfd); // The file descriptor for the journal file
+//            Pgno pgno = 0;  // The page number of a page in journal
+//            var rc = jfd.ReadByte(pOffset, ref pgno);
+//            if (rc != RC.OK)
+//                return rc;
+//            rc = jfd.Read(aData, this.pageSize, pOffset + 4);
+//            if (rc != RC.OK)
+//                return rc;
+//            pOffset += this.pageSize + 4 + isMainJrnl * 4;
+//            // Sanity checking on the page.  This is more important that I originally thought.  If a power failure occurs while the journal is being written,
+//            // it could cause invalid data to be written into the journal.  We need to detect this invalid data (with high probability) and ignore it.
+//            if (pgno == 0 || pgno == PAGER_MJ_PGNO(this))
+//            {
+//                Debug.Assert(0 == isSavepnt);
+//                return RC.DONE;
+//            }
+//            if (pgno > this.dbSize || pDone.Get(pgno))
+//                return RC.OK;
+//            uint cksum = 0;         // Checksum used for sanity checking
+//            if (isMainJrnl != 0)
+//            {
+//                rc = jfd.ReadByte((pOffset) - 4, ref cksum);
+//                if (rc != RC.OK)
+//                    return rc;
+//                if (0 == isSavepnt && pager_cksum(aData) != cksum)
+//                    return RC.DONE;
+//            }
+//            // If this page has already been played by before during the current rollback, then don't bother to play it back again.
+//            if (pDone != null && (rc = pDone.Set(pgno)) != RC.OK)
+//                return rc;
+//            // When playing back page 1, restore the nReserve setting
+//            if (pgno == 1 && this.nReserve != aData[20])
+//            {
+//                this.nReserve = (aData)[20];
+//                pagerReportSize();
+//            }
+//            var pPg = (pagerUseWal() ? null : pager_lookup(pgno)); // An existing page in the cache
+//            Debug.Assert(pPg != null ||
+//#if SQLITE_OMIT_MEMORYDB
+//0==MEMDB
+//#else
+// this.memDb == 0
+//#endif
+//);
+//            Debug.Assert(this.eState != PAGER.OPEN || pPg == null);
+//            PAGERTRACE("PLAYBACK {0} page {1} hash({2,08:x}) {3}", PAGERID(this), pgno, pager_datahash(this.pageSize, aData), isMainJrnl != 0 ? "main-journal" : "sub-journal");
+//            bool isSynced; // True if journal page is synced
+//            if (isMainJrnl != 0)
+//                isSynced = this.noSync || (pOffset <= this.journalHdr);
+//            else
+//                isSynced = (pPg == null || 0 == (pPg.Flags & PgHdr.PGHDR.NEED_SYNC));
+//            if (this.fd.IsOpen && (this.eState >= PAGER.WRITER_DBMOD || this.eState == PAGER.OPEN) && isSynced)
+//            {
+//                long ofst = (pgno - 1) * this.pageSize;
+//                Debug.Assert(!pagerUseWal());
+//                rc = this.fd.Write(aData, this.pageSize, ofst);
+//                if (pgno > this.dbFileSize)
+//                    this.dbFileSize = pgno;
+//                if (this.pBackup != null)
+//                {
+//                    if (CODEC1(this, aData, pgno, codec_ctx.DECRYPT))
+//                        rc = RC.NOMEM;
+//                    this.pBackup.sqlite3BackupUpdate(pgno, aData);
+//                    if (CODEC2(this, aData, pgno, codec_ctx.ENCRYPT_READ_CTX, ref aData))
+//                        rc = RC.NOMEM;
+//                }
+//            }
+//            else if (0 == isMainJrnl && pPg == null)
+//            {
+//                // If this is a rollback of a savepoint and data was not written to the database and the page is not in-memory, there is a potential
+//                // problem. When the page is next fetched by the b-tree layer, it will be read from the database file, which may or may not be
+//                // current.
+//                // There are a couple of different ways this can happen. All are quite obscure. When running in synchronous mode, this can only happen
+//                // if the page is on the free-list at the start of the transaction, then populated, then moved using sqlite3PagerMovepage().
+//                // The solution is to add an in-memory page to the cache containing the data just read from the sub-journal. Mark the page as dirty
+//                // and if the pager requires a journal-sync, then mark the page as requiring a journal-sync before it is written.
+//                Debug.Assert(isSavepnt != 0);
+//                Debug.Assert(this.doNotSpill == 0);
+//                this.doNotSpill++;
+//                rc = this.Get(pgno, ref pPg, 1);
+//                Debug.Assert(this.doNotSpill == 1);
+//                this.doNotSpill--;
+//                if (rc != RC.OK)
+//                    return rc;
+//                pPg.Flags &= ~PgHdr.PGHDR.NEED_READ;
+//                PCache.MakePageDirty(pPg);
+//            }
+//            if (pPg != null)
+//            {
+//                // No page should ever be explicitly rolled back that is in use, except for page 1 which is held in use in order to keep the lock on the
+//                // database active. However such a page may be rolled back as a result of an internal error resulting in an automatic call to
+//                // sqlite3PagerRollback().
+//                var pData = pPg.Data;
+//                Buffer.BlockCopy(aData, 0, pData, 0, this.pageSize);
+//                this.xReiniter(pPg);
+//                if (isMainJrnl != 0 && (0 == isSavepnt || pOffset <= this.journalHdr))
+//                {
+//                    // If the contents of this page were just restored from the main journal file, then its content must be as they were when the
+//                    // transaction was first opened. In this case we can mark the page as clean, since there will be no need to write it out to the
+//                    // database.
+//                    // There is one exception to this rule. If the page is being rolled back as part of a savepoint (or statement) rollback from an
+//                    // unsynced portion of the main journal file, then it is not safe to mark the page as clean. This is because marking the page as
+//                    // clean will clear the PGHDR_NEED_SYNC flag. Since the page is already in the journal file (recorded in Pager.pInJournal) and
+//                    // the PGHDR_NEED_SYNC flag is cleared, if the page is written to again within this transaction, it will be marked as dirty but
+//                    // the PGHDR_NEED_SYNC flag will not be set. It could then potentially be written out into the database file before its journal file
+//                    // segment is synced. If a crash occurs during or following this, database corruption may ensue.
+//                    Debug.Assert(!pagerUseWal());
+//                    PCache.MakePageClean(pPg);
+//                }
+//                pager_set_pagehash(pPg);
+//                // If this was page 1, then restore the value of Pager.dbFileVers. Do this before any decoding.
+//                if (pgno == 1)
+//                    Buffer.BlockCopy(pData, 24, this.dbFileVers, 0, this.dbFileVers.Length);
+//                // Decode the page just read from disk
+//                if (CODEC1(this, pData, pPg.ID, codec_ctx.DECRYPT))
+//                    rc = RC.NOMEM;
+//                PCache.ReleasePage(pPg);
+//            }
+//            return rc;
+//        }
 
-        private RC pager_delmaster(string zMaster)
-        {
-            //string zMasterJournal = null; /* Contents of master journal file */
-            //long nMasterJournal;           /* Size of master journal file */
-            //string zJournal;              /* Pointer to one journal within MJ file */
-            //string zMasterPtr;            /* Space to hold MJ filename from a journal file */
-            //int nMasterPtr;               /* Amount of space allocated to zMasterPtr[] */
-            // Allocate space for both the pJournal and pMaster file descriptors. If successful, open the master journal file for reading.
-            var pMaster = new VirtualFile();// Malloc'd master-journal file descriptor
-            var pJournal = new VirtualFile();// Malloc'd child-journal file descriptor
-            var pVfs = this.pVfs;
-            VFSOPEN iDummy = 0;
-            var rc = FileEx.OsOpen(pVfs, zMaster, pMaster, VFSOPEN.READONLY | VFSOPEN.MASTER_JOURNAL, ref iDummy);
-            if (rc != RC.OK)
-                goto delmaster_out;
-            Debugger.Break();
-            //TODO --
-            // Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
-            // sufficient space (in zMasterPtr) to hold the names of master journal files extracted from regular rollback-journals.
-            //rc = sqlite3OsFileSize(pMaster, &nMasterJournal);
-            //if (rc != SQLITE.OK) goto delmaster_out;
-            //nMasterPtr = pVfs.mxPathname + 1;
-            //  zMasterJournal = sqlite3Malloc((int)nMasterJournal + nMasterPtr + 1);
-            //  if ( !zMasterJournal )
-            //  {
-            //    rc = SQLITE_NOMEM;
-            //    goto delmaster_out;
-            //  }
-            //  zMasterPtr = &zMasterJournal[nMasterJournal+1];
-            //  rc = sqlite3OsRead( pMaster, zMasterJournal, (int)nMasterJournal, 0 );
-            //  if ( rc != SQLITE.OK ) goto delmaster_out;
-            //  zMasterJournal[nMasterJournal] = 0;
-            //  zJournal = zMasterJournal;
-            //  while ( ( zJournal - zMasterJournal ) < nMasterJournal )
-            //  {
-            //    int exists;
-            //    rc = sqlite3OsAccess( pVfs, zJournal, SQLITE_ACCESS_EXISTS, &exists );
-            //    if ( rc != SQLITE.OK )
-            //      goto delmaster_out;
-            //    if ( exists )
-            //    {
-            //      // One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
-            //      // so, return without deleting the master journal file.
-            //      int c;
-            //      int flags = ( SQLITE_OPEN_READONLY | SQLITE_OPEN_MAIN_JOURNAL );
-            //      rc = sqlite3OsOpen( pVfs, zJournal, pJournal, flags, 0 );
-            //      if ( rc != SQLITE.OK )
-            //        goto delmaster_out;
-            //      rc = readMasterJournal( pJournal, zMasterPtr, nMasterPtr );
-            //      sqlite3OsClose( pJournal );
-            //      if ( rc != SQLITE.OK )
-            //        goto delmaster_out;
-            //      c = zMasterPtr[0] != 0 && strcmp( zMasterPtr, zMaster ) == 0;
-            //      if ( c )
-            //        // We have a match. Do not delete the master journal file.
-            //        goto delmaster_out;
-            //    }
-            //    zJournal += ( sqlite3Strlen30( zJournal ) + 1 );
-            //   }
-            //
-            //sqlite3OsClose(pMaster);
-            //rc = sqlite3OsDelete( pVfs, zMaster, 0 );
-            goto delmaster_out;
-        delmaster_out:
-            if (pMaster != null)
-            {
-                FileEx.OSClose(pMaster);
-                Debug.Assert(!pJournal.IsOpen);
-            }
-            return rc;
-        }
+//        private RC pager_delmaster(string zMaster)
+//        {
+//            //string zMasterJournal = null; /* Contents of master journal file */
+//            //long nMasterJournal;           /* Size of master journal file */
+//            //string zJournal;              /* Pointer to one journal within MJ file */
+//            //string zMasterPtr;            /* Space to hold MJ filename from a journal file */
+//            //int nMasterPtr;               /* Amount of space allocated to zMasterPtr[] */
+//            // Allocate space for both the pJournal and pMaster file descriptors. If successful, open the master journal file for reading.
+//            var pMaster = new VirtualFile();// Malloc'd master-journal file descriptor
+//            var pJournal = new VirtualFile();// Malloc'd child-journal file descriptor
+//            var pVfs = this.pVfs;
+//            VFSOPEN iDummy = 0;
+//            var rc = FileEx.OsOpen(pVfs, zMaster, pMaster, VFSOPEN.READONLY | VFSOPEN.MASTER_JOURNAL, ref iDummy);
+//            if (rc != RC.OK)
+//                goto delmaster_out;
+//            Debugger.Break();
+//            //TODO --
+//            // Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
+//            // sufficient space (in zMasterPtr) to hold the names of master journal files extracted from regular rollback-journals.
+//            //rc = sqlite3OsFileSize(pMaster, &nMasterJournal);
+//            //if (rc != SQLITE.OK) goto delmaster_out;
+//            //nMasterPtr = pVfs.mxPathname + 1;
+//            //  zMasterJournal = sqlite3Malloc((int)nMasterJournal + nMasterPtr + 1);
+//            //  if ( !zMasterJournal )
+//            //  {
+//            //    rc = SQLITE_NOMEM;
+//            //    goto delmaster_out;
+//            //  }
+//            //  zMasterPtr = &zMasterJournal[nMasterJournal+1];
+//            //  rc = sqlite3OsRead( pMaster, zMasterJournal, (int)nMasterJournal, 0 );
+//            //  if ( rc != SQLITE.OK ) goto delmaster_out;
+//            //  zMasterJournal[nMasterJournal] = 0;
+//            //  zJournal = zMasterJournal;
+//            //  while ( ( zJournal - zMasterJournal ) < nMasterJournal )
+//            //  {
+//            //    int exists;
+//            //    rc = sqlite3OsAccess( pVfs, zJournal, SQLITE_ACCESS_EXISTS, &exists );
+//            //    if ( rc != SQLITE.OK )
+//            //      goto delmaster_out;
+//            //    if ( exists )
+//            //    {
+//            //      // One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
+//            //      // so, return without deleting the master journal file.
+//            //      int c;
+//            //      int flags = ( SQLITE_OPEN_READONLY | SQLITE_OPEN_MAIN_JOURNAL );
+//            //      rc = sqlite3OsOpen( pVfs, zJournal, pJournal, flags, 0 );
+//            //      if ( rc != SQLITE.OK )
+//            //        goto delmaster_out;
+//            //      rc = readMasterJournal( pJournal, zMasterPtr, nMasterPtr );
+//            //      sqlite3OsClose( pJournal );
+//            //      if ( rc != SQLITE.OK )
+//            //        goto delmaster_out;
+//            //      c = zMasterPtr[0] != 0 && strcmp( zMasterPtr, zMaster ) == 0;
+//            //      if ( c )
+//            //        // We have a match. Do not delete the master journal file.
+//            //        goto delmaster_out;
+//            //    }
+//            //    zJournal += ( sqlite3Strlen30( zJournal ) + 1 );
+//            //   }
+//            //
+//            //sqlite3OsClose(pMaster);
+//            //rc = sqlite3OsDelete( pVfs, zMaster, 0 );
+//            goto delmaster_out;
+//        delmaster_out:
+//            if (pMaster != null)
+//            {
+//                FileEx.OSClose(pMaster);
+//                Debug.Assert(!pJournal.IsOpen);
+//            }
+//            return rc;
+//        }
 
-        private RC pager_truncate(Pgno nPage)
-        {
-            Debug.Assert(this.eState != PAGER.ERROR);
-            Debug.Assert(this.eState != PAGER.READER);
-            var rc = RC.OK;
-            if (this.fd.IsOpen && (this.eState >= PAGER.WRITER_DBMOD || this.eState == PAGER.OPEN))
-            {
-                var szPage = this.pageSize;
-                Debug.Assert(this.eLock == VFSLOCK.EXCLUSIVE);
-                // TODO: Is it safe to use Pager.dbFileSize here?
-                long currentSize = 0;
-                rc = this.fd.FileSize(ref currentSize);
-                var newSize = szPage * nPage;
-                if (rc == RC.OK && currentSize != newSize)
-                {
-                    if (currentSize > newSize)
-                        rc = this.fd.Truncate(newSize);
-                    else
-                    {
-                        var pTmp = this.pTmpSpace;
-                        Array.Clear(pTmp, 0, szPage);
-                        rc = this.fd.Write(pTmp, szPage, newSize - szPage);
-                    }
-                    if (rc == RC.OK)
-                        this.dbSize = nPage;
-                }
-            }
-            return rc;
-        }
+        //private RC pager_truncate(Pgno nPage)
+        //{
+        //    Debug.Assert(this.eState != PAGER.ERROR);
+        //    Debug.Assert(this.eState != PAGER.READER);
+        //    var rc = RC.OK;
+        //    if (this.fd.IsOpen && (this.eState >= PAGER.WRITER_DBMOD || this.eState == PAGER.OPEN))
+        //    {
+        //        var szPage = this.pageSize;
+        //        Debug.Assert(this.eLock == VFSLOCK.EXCLUSIVE);
+        //        // TODO: Is it safe to use Pager.dbFileSize here?
+        //        long currentSize = 0;
+        //        rc = this.fd.FileSize(ref currentSize);
+        //        var newSize = szPage * nPage;
+        //        if (rc == RC.OK && currentSize != newSize)
+        //        {
+        //            if (currentSize > newSize)
+        //                rc = this.fd.Truncate(newSize);
+        //            else
+        //            {
+        //                var pTmp = this.pTmpSpace;
+        //                Array.Clear(pTmp, 0, szPage);
+        //                rc = this.fd.Write(pTmp, szPage, newSize - szPage);
+        //            }
+        //            if (rc == RC.OK)
+        //                this.dbSize = nPage;
+        //        }
+        //    }
+        //    return rc;
+        //}
 
         private RC pager_playback(int isHot)
         {

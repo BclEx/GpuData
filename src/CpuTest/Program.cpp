@@ -1,5 +1,6 @@
 //#include "..\GpuData\Core\Core.cu.h"
 #include "..\GpuData\Core+Pager\Core+Pager.cu.h"
+using namespace Core;
 
 namespace Core
 {
@@ -8,6 +9,8 @@ namespace Core
 
 void main()
 {
-	int outA;
-	Core::Bitvec_BuiltinTest(16, &outA);
+	PCache::Initialize();
+	PCache::ReleaseMemory(5);
+	//int outA;
+	//Core::Bitvec_BuiltinTest(16, &outA);
 }

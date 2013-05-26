@@ -9,10 +9,10 @@ namespace Core
 	struct PGroup 
 	{
 		MutexEx Mutex;					// MUTEX_STATIC_LRU or NULL
-		uint MaxPages;			// Sum of nMax for purgeable caches
-		uint MinPages;			// Sum of nMin for purgeable caches
-		uint MaxPinned;         // nMaxpage + 10 - nMinPage
-		uint CurrentPages;		// Number of purgeable pages allocated
+		uint MaxPages;					// Sum of nMax for purgeable caches
+		uint MinPages;					// Sum of nMin for purgeable caches
+		uint MaxPinned;					// nMaxpage + 10 - nMinPage
+		uint CurrentPages;				// Number of purgeable pages allocated
 		PgHdr1 *LruHead, *LruTail;		// LRU list of unpinned pages
 	};
 
@@ -21,10 +21,10 @@ namespace Core
 	public:
 		// Cache configuration parameters. Page size (szPage) and the purgeable flag (bPurgeable) are set when the cache is created. nMax may be 
 		// modified at any time by a call to the pcache1Cachesize() method. The PGroup mutex must be held when accessing nMax.
-		PGroup *Group;					// PGroup this cache belongs to
-		int SizePage;                   // Size of allocated pages in bytes
-		int SizeExtra;                  // Size of extra space in bytes
-		bool Purgeable;					// True if cache is purgeable
+		PGroup *Group;			// PGroup this cache belongs to
+		int SizePage;           // Size of allocated pages in bytes
+		int SizeExtra;          // Size of extra space in bytes
+		bool Purgeable;			// True if cache is purgeable
 		uint Min;				// Minimum number of pages reserved
 		uint Max;				// Configured "cache_size" value
 		uint N90pct;			// nMax*9/10
@@ -43,7 +43,7 @@ namespace Core
 		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
 		virtual void Cachesize(uint max);
 		virtual void Shrink();
-		virtual int Pagecount();
+		virtual int get_Pages();
 		virtual IPage *Fetch(Pid key, int createFlag);
 		virtual void Unpin(IPage *pg, bool reuseUnlikely);
 		virtual void Rekey(IPage *pg, Pid old, Pid new_);
@@ -54,35 +54,35 @@ namespace Core
 	struct PgHdr1
 	{
 		IPage Page;
-		Pid Key;           // Key value (page number)
-		PgHdr1 *Next;       // Next in hash table chain
-		PCache1 *Cache;		// Cache that currently owns this page
-		PgHdr1 *LruNext;	// Next in LRU list of unpinned pages
-		PgHdr1 *LruPrev;	// Previous in LRU list of unpinned pages
+		Pid Key;				// Key value (page number)
+		PgHdr1 *Next;			// Next in hash table chain
+		PCache1 *Cache;			// Cache that currently owns this page
+		PgHdr1 *LruNext;		// Next in LRU list of unpinned pages
+		PgHdr1 *LruPrev;		// Previous in LRU list of unpinned pages
 	};
 
 	struct PgFreeslot
 	{
-		PgFreeslot *Next;  // Next free slot
+		PgFreeslot *Next;		// Next free slot
 	};
 
 	static struct PCacheGlobal
 	{
-		PGroup Group;					// The global PGroup for mode (2)
+		PGroup Group;			// The global PGroup for mode (2)
 		// Variables related to SQLITE_CONFIG_PAGECACHE settings.  The szSlot, nSlot, pStart, pEnd, nReserve, and isInit values are all
 		// fixed at sqlite3_initialize() time and do not require mutex protection. The nFreeSlot and pFree values do require mutex protection.
-		bool IsInit;					// True if initialized
-		int SizeSlot;					// Size of each free slot
-		int Slots;						// The number of pcache slots
-		int Reserves;					// Try to keep nFreeSlot above this
-		void *Start, *End;				// Bounds of pagecache malloc range
+		bool IsInit;			// True if initialized
+		int SizeSlot;			// Size of each free slot
+		int Slots;				// The number of pcache slots
+		int Reserves;			// Try to keep nFreeSlot above this
+		void *Start, *End;		// Bounds of pagecache malloc range
 		// Above requires no mutex.  Use mutex below for variable that follow.
-		MutexEx Mutex;					// Mutex for accessing the following:
-		PgFreeslot *Free;				// Free page blocks
-		int FreeSlots;					// Number of unused pcache slots
+		MutexEx Mutex;			// Mutex for accessing the following:
+		PgFreeslot *Free;		// Free page blocks
+		int FreeSlots;			// Number of unused pcache slots
 		// The following value requires a mutex to change.  We skip the mutex on reading because (1) most platforms read a 32-bit integer atomically and
 		// (2) even if an incorrect value is read, no great harm is done since this is really just an optimization.
-		bool UnderPressure;				// True if low on PAGECACHE memory
+		bool UnderPressure;		// True if low on PAGECACHE memory
 	} _pcache1;
 	static bool _config_coreMutex = false;
 
@@ -458,7 +458,7 @@ namespace Core
 		}
 	}
 
-	int PCache1::Pagecount()
+	int PCache1::get_Pages()
 	{
 		MutexEx::Enter(Group->Mutex);
 		int pages = Pages;
@@ -639,7 +639,7 @@ fetch_out:
 	}
 
 #ifdef ENABLE_MEMORY_MANAGEMENT
-	__device__ int ReleaseMemory(int required)
+	int PCache::ReleaseMemory(int required)
 	{
 		_assert(MutexEx::NotHeld(_pcache1.Group.Mutex));
 		_assert(MutexEx::NotHeld(_pcache1.Mutex));
@@ -669,7 +669,7 @@ fetch_out:
 #pragma	region Tests
 #ifdef TEST
 
-	__device__ void PCache1_BuiltinStats(uint *current, uint *max, uint *min, uint *recyclables)
+	__device__ void PCache1_testStats(uint *current, uint *max, uint *min, uint *recyclables)
 	{
 		uint recyclables2 = 0;
 		for (PgHdr1 *p = _pcache1.Group.LruHead; p; p = p->LruNext)

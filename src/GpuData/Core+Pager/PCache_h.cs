@@ -4,12 +4,6 @@ using System;
 
 namespace Core
 {
-    //public class IPage
-    //{
-    //    public object Buffer;	// The content of the page
-    //    public byte[] Extra;	// Extra information associated with the page
-    //}
-
     public partial class Pager { }
 
     public interface IPCache
@@ -19,7 +13,7 @@ namespace Core
         IPCache Create(int sizePage, int sizeExtra, bool purgeable);
         void Cachesize(uint max);
         void Shrink();
-        int Pagecount();
+        int get_Pages();
         IPage Fetch(Pid key, int createFlag);
         void Unpin(IPage pg, bool reuseUnlikely);
         void Rekey(IPage pg, Pid old, Pid new_);
@@ -79,6 +73,28 @@ namespace Core
         internal void memsetData(int sizePage)
         {
             Data = SysEx.Alloc(sizePage);
+        }
+    }
+
+    public partial class PCache
+    {
+        public PgHdr Dirty, DirtyTail;  // List of dirty pages in LRU order
+        public PgHdr Synced;        // Last synced page in dirty page list
+        public int Refs;            // Number of referenced pages
+        public int SizeCache;       // Configured cache size
+        public int SizePage;        // Size of every page in this cache
+        public int SizeExtra;       // Size of extra space for each page
+        public bool Purgeable;      // True if pages are on backing store
+        public Func<object, PgHdr, RC> Stress;   // Call to try make a page clean
+        public object StressArg;    // Argument to xStress
+        public IPCache Cache;       // Pluggable cache module
+        public PgHdr Page1;         // Reference to page 1
+
+        public void memset()
+        {
+            Dirty = DirtyTail = null;
+            Synced = null;
+            Refs = 0;
         }
     }
 }
