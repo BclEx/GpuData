@@ -45,83 +45,83 @@ namespace Core
             return RC.OK;
         }
 
-        private static RC readDbPage(PgHdr page)
-        {
-            var pPager = page.Pager;    // Pager object associated with page pPg
-            var pgno = page.ID;        // Page number to read
-            var rc = RC.OK;         // Return code
-            var isInWal = 0;            // True if page is in log file
-            var pgsz = pPager._pageSize; // Number of bytes to read
-            Debug.Assert(pPager._state >= PAGER.READER && !pPager._memoryDB);
-            Debug.Assert(pPager._file.Open);
-            if (SysEx.NEVER(!pPager._file.Open))
-            {
-                Debug.Assert(pPager._tempFile);
-                Array.Clear(page._Data, 0, pPager._pageSize);
-                return RC.OK;
-            }
-            if (pPager.pagerUseWal())
-                // Try to pull the page from the write-ahead log.
-                rc = pPager._wal.Read(pgno, ref isInWal, pgsz, page._Data);
-            if (rc == RC.OK && 0 == isInWal)
-            {
-                var iOffset = (pgno - 1) * (long)pPager._pageSize;
-                rc = pPager._file.Read(page._Data, pgsz, iOffset);
-                if (rc == RC.IOERR_SHORT_READ)
-                    rc = RC.OK;
-            }
-            if (pgno == 1)
-            {
-                if (rc != 0)
-                    // If the read is unsuccessful, set the dbFileVers[] to something that will never be a valid file version.  dbFileVers[] is a copy
-                    // of bytes 24..39 of the database.  Bytes 28..31 should always be zero or the size of the database in page. Bytes 32..35 and 35..39
-                    // should be page numbers which are never 0xffffffff.  So filling pPager.dbFileVers[] with all 0xff bytes should suffice.
-                    //
-                    // For an encrypted database, the situation is more complex:  bytes 24..39 of the database are white noise.  But the probability of
-                    // white noising equaling 16 bytes of 0xff is vanishingly small so we should still be ok.
-                    for (int i = 0; i < pPager._dbFileVers.Length; pPager._dbFileVers[i++] = 0xff) ; // memset(pPager.dbFileVers, 0xff, sizeof(pPager.dbFileVers));
-                else
-                    Buffer.BlockCopy(page._Data, 24, pPager._dbFileVers, 0, pPager._dbFileVers.Length);
-            }
-            if (CODEC1(pPager, page._Data, pgno, codec_ctx.DECRYPT))
-                rc = RC.NOMEM;
-            SysEx.IOTRACE("PGIN {0:x} {1}", pPager.GetHashCode(), pgno);
-            PAGERTRACE("FETCH {0} page {1}% hash({2,08:x})", PAGERID(pPager), pgno, pager_pagehash(page));
-            return rc;
-        }
+        //private static RC readDbPage(PgHdr page)
+        //{
+        //    var pPager = page.Pager;    // Pager object associated with page pPg
+        //    var pgno = page.ID;        // Page number to read
+        //    var rc = RC.OK;         // Return code
+        //    var isInWal = 0;            // True if page is in log file
+        //    var pgsz = pPager._pageSize; // Number of bytes to read
+        //    Debug.Assert(pPager._state >= PAGER.READER && !pPager._memoryDB);
+        //    Debug.Assert(pPager._file.Open);
+        //    if (SysEx.NEVER(!pPager._file.Open))
+        //    {
+        //        Debug.Assert(pPager._tempFile);
+        //        Array.Clear(page._Data, 0, pPager._pageSize);
+        //        return RC.OK;
+        //    }
+        //    if (pPager.pagerUseWal())
+        //        // Try to pull the page from the write-ahead log.
+        //        rc = pPager._wal.Read(pgno, ref isInWal, pgsz, page._Data);
+        //    if (rc == RC.OK && 0 == isInWal)
+        //    {
+        //        var iOffset = (pgno - 1) * (long)pPager._pageSize;
+        //        rc = pPager._file.Read(page._Data, pgsz, iOffset);
+        //        if (rc == RC.IOERR_SHORT_READ)
+        //            rc = RC.OK;
+        //    }
+        //    if (pgno == 1)
+        //    {
+        //        if (rc != 0)
+        //            // If the read is unsuccessful, set the dbFileVers[] to something that will never be a valid file version.  dbFileVers[] is a copy
+        //            // of bytes 24..39 of the database.  Bytes 28..31 should always be zero or the size of the database in page. Bytes 32..35 and 35..39
+        //            // should be page numbers which are never 0xffffffff.  So filling pPager.dbFileVers[] with all 0xff bytes should suffice.
+        //            //
+        //            // For an encrypted database, the situation is more complex:  bytes 24..39 of the database are white noise.  But the probability of
+        //            // white noising equaling 16 bytes of 0xff is vanishingly small so we should still be ok.
+        //            for (int i = 0; i < pPager._dbFileVers.Length; pPager._dbFileVers[i++] = 0xff) ; // memset(pPager.dbFileVers, 0xff, sizeof(pPager.dbFileVers));
+        //        else
+        //            Buffer.BlockCopy(page._Data, 24, pPager._dbFileVers, 0, pPager._dbFileVers.Length);
+        //    }
+        //    if (CODEC1(pPager, page._Data, pgno, codec_ctx.DECRYPT))
+        //        rc = RC.NOMEM;
+        //    SysEx.IOTRACE("PGIN {0:x} {1}", pPager.GetHashCode(), pgno);
+        //    PAGERTRACE("FETCH {0} page {1}% hash({2,08:x})", PAGERID(pPager), pgno, pager_pagehash(page));
+        //    return rc;
+        //}
 
-        private RC pagerPagecount(ref Pid pnPage)
-        {
-            // Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
-            // if the database size is not available. The database size is not available from the WAL sub-system if the log file is empty or
-            // contains no valid committed transactions.
-            Debug.Assert(_state == PAGER.OPEN);
-            Debug.Assert(this._lock >= VFSLOCK.SHARED || this._noReadlock != 0);
-            var nPage = this._wal.DBSize();
-            // If the database size was not available from the WAL sub-system, determine it based on the size of the database file. If the size
-            // of the database file is not an integer multiple of the page-size, round down to the nearest page. Except, any file larger than 0
-            // bytes in size is considered to contain at least one page.
-            if (nPage == 0)
-            {
-                var n = 0L; // Size of db file in bytes
-                Debug.Assert(_file.Open || _tempFile);
-                if (_file.Open)
-                {
-                    var rc = _file.get_FileSize(ref n);
-                    if (rc != RC.OK)
-                        return rc;
-                }
-                nPage = (Pid)(n / _pageSize);
-                if (nPage == 0 && n > 0)
-                    nPage = 1;
-            }
-            // If the current number of pages in the file is greater than the configured maximum pager number, increase the allowed limit so
-            // that the file can be read.
-            if (nPage > this._pids)
-                this._pids = (Pid)nPage;
-            pnPage = nPage;
-            return RC.OK;
-        }
+        //private RC pagerPagecount(ref Pid pnPage)
+        //{
+        //    // Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
+        //    // if the database size is not available. The database size is not available from the WAL sub-system if the log file is empty or
+        //    // contains no valid committed transactions.
+        //    Debug.Assert(_state == PAGER.OPEN);
+        //    Debug.Assert(this._lock >= VFSLOCK.SHARED || this._noReadlock != 0);
+        //    var nPage = this._wal.DBSize();
+        //    // If the database size was not available from the WAL sub-system, determine it based on the size of the database file. If the size
+        //    // of the database file is not an integer multiple of the page-size, round down to the nearest page. Except, any file larger than 0
+        //    // bytes in size is considered to contain at least one page.
+        //    if (nPage == 0)
+        //    {
+        //        var n = 0L; // Size of db file in bytes
+        //        Debug.Assert(_file.Open || _tempFile);
+        //        if (_file.Open)
+        //        {
+        //            var rc = _file.get_FileSize(ref n);
+        //            if (rc != RC.OK)
+        //                return rc;
+        //        }
+        //        nPage = (Pid)(n / _pageSize);
+        //        if (nPage == 0 && n > 0)
+        //            nPage = 1;
+        //    }
+        //    // If the current number of pages in the file is greater than the configured maximum pager number, increase the allowed limit so
+        //    // that the file can be read.
+        //    if (nPage > this._pids)
+        //        this._pids = (Pid)nPage;
+        //    pnPage = nPage;
+        //    return RC.OK;
+        //}
 
         private RC pagerOpentemp(ref VFile pFile, VFSOPEN vfsFlags)
         {

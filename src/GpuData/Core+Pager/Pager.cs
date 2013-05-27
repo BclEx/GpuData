@@ -38,7 +38,7 @@ namespace Core
             public long HdrOffset;          // See above
             public Bitvec InSavepoint;      // Set of pages in this savepoint
             public Pid Orig;                // Original number of pages in file
-            public Pid SubRec;              // Index of first record in sub-journal
+            public Pid SubRecords;              // Index of first record in sub-journal
 #if false && !OMIT_WAL
             public uint WalData[WAL_SAVEPOINT_NDATA];        // WAL savepoint context
 #else
@@ -526,7 +526,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             return rc;
         }
 
-        private RC readJournalHdr(int isHot, long journalSize, ref uint recordsOut, ref uint dbSizeOut)
+        private RC readJournalHdr(bool isHot, long journalSize, ref uint recordsOut, ref uint dbSizeOut)
         {
             Debug.Assert(JournalFile.Opened);
 
@@ -541,7 +541,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             // SQLITE_DONE. If an IO error occurs, return an error code. Otherwise, proceed.
             RC rc;
             var magic = new byte[8];
-            if (isHot != 0 || headerOffset != JournalHeader)
+            if (isHot || headerOffset != JournalHeader)
             {
                 rc = JournalFile.Read(magic, magic.Length, headerOffset);
                 if (rc != RC.OK)
@@ -1163,15 +1163,326 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         }
 
         void setSectorSize()
-		{
-			Debug.Assert(File.Opened || TempFile);
+        {
+            Debug.Assert(File.Opened || TempFile);
             if (TempFile || (File.get_DeviceCharacteristics() & VFile.IOCAP.POWERSAFE_OVERWRITE) != 0)
-				SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
-			else
-				SectorSize = File.SectorSize;
-		}
+                SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
+            else
+                SectorSize = File.SectorSize;
+        }
+
+        private RC pager_playback(bool isHot)
+        {
+            // Figure out how many records are in the journal.  Abort early if the journal is empty.
+            Debug.Assert(JournalFile.Opened);
+            long sizeJournal; // Size of the journal file in bytes
+            RC rc = JournalFile.get_FileSize(out sizeJournal);
+            if (rc != RC.OK)
+                goto end_playback;
+
+            // Read the master journal name from the journal, if it is present. If a master journal file name is specified, but the file is not
+            // present on disk, then the journal is not hot and does not need to be played back.
+            //
+            // TODO: Technically the following is an error because it assumes that buffer Pager.pTmpSpace is (mxPathname+1) bytes or larger. i.e. that
+            // (pPager->pageSize >= pPager->pVfs->mxPathname+1). Using os_unix.c, mxPathname is 512, which is the same as the minimum allowable value
+            // for pageSize.
+            var vfs = Vfs;
+            string master; // Name of master journal file if any
+            rc = readMasterJournal(JournalFile, out master, (uint)vfs.MaxPathname + 1);
+            var res = 1;
+            if (rc == RC.OK && master[0] != 0)
+                rc = vfs.Access(master, VFileSystem.ACCESS.EXISTS, out res);
+            master = null;
+            if (rc != RC.OK || res == 0)
+                goto end_playback;
+            JournalOffset = 0;
+            bool needPagerReset = isHot; // True to reset page prior to first page rollback
+
+            // This loop terminates either when a readJournalHdr() or pager_playback_one_page() call returns SQLITE_DONE or an IO error occurs.
+            while (true)
+            {
+                // Read the next journal header from the journal file.  If there are not enough bytes left in the journal file for a complete header, or
+                // it is corrupted, then a process must have failed while writing it. This indicates nothing more needs to be rolled back.
+                uint records; // Number of Records in the journal
+                Pid maxPage = 0; // Size of the original file in pages
+                rc = readJournalHdr(isHot, sizeJournal, ref records, ref maxPage);
+                if (rc != RC.OK)
+                {
+                    if (rc == RC.DONE)
+                        rc = RC.OK;
+                    goto end_playback;
+                }
+
+                // If nRec is 0xffffffff, then this journal was created by a process working in no-sync mode. This means that the rest of the journal
+                // file consists of pages, there are no more journal headers. Compute the value of nRec based on this assumption.
+                if (records == 0xffffffff)
+                {
+                    Debug.Assert(JournalOffset == JOURNAL_HDR_SZ(this));
+                    records = (uint)((sizeJournal - JOURNAL_HDR_SZ(this)) / JOURNAL_PG_SZ(this));
+                }
+
+                // If nRec is 0 and this rollback is of a transaction created by this process and if this is the final header in the journal, then it means
+                // that this part of the journal was being filled but has not yet been synced to disk.  Compute the number of pages based on the remaining
+                // size of the file.
+                //
+                // The third term of the test was added to fix ticket #2565. When rolling back a hot journal, nRec==0 always means that the next
+                // chunk of the journal contains zero pages to be rolled back.  But when doing a ROLLBACK and the nRec==0 chunk is the last chunk in
+                // the journal, it means that the journal might contain additional pages that need to be rolled back and that the number of pages 
+                // should be computed based on the journal file size.
+                if (records == 0 && !isHot && JournalHeader + JOURNAL_HDR_SZ(this) == JournalOffset)
+                    records = (uint)((sizeJournal - JournalOffset) / JOURNAL_PG_SZ(this));
+
+                // If this is the first header read from the journal, truncate the database file back to its original size.
+                if (JournalOffset == JOURNAL_HDR_SZ(this))
+                {
+                    rc = pager_truncate(maxPage);
+                    if (rc != RC.OK)
+                        goto end_playback;
+                    DBSize = maxPage;
+                }
+
+                // Copy original pages out of the journal and back into the database file and/or page cache.
+                for (var u = 0U; u < records; u++)
+                {
+                    if (needPagerReset)
+                    {
+                        pager_reset();
+                        needPagerReset = false;
+                    }
+                    rc = pager_playback_one_page(ref JournalOffset, null, true, false);
+                    if (rc != RC.OK)
+                        if (rc == RC.DONE)
+                        {
+                            JournalOffset = sizeJournal;
+                            break;
+                        }
+                        else if (rc == RC.IOERR_SHORT_READ)
+                        {
+                            // If the journal has been truncated, simply stop reading and processing the journal. This might happen if the journal was
+                            // not completely written and synced prior to a crash.  In that case, the database should have never been written in the
+                            // first place so it is OK to simply abandon the rollback.
+                            rc = RC.OK;
+                            goto end_playback;
+                        }
+                        else
+                        {
+                            // If we are unable to rollback, quit and return the error code.  This will cause the pager to enter the error state
+                            // so that no further harm will be done.  Perhaps the next process to come along will be able to rollback the database.
+                            goto end_playback;
+                        }
+                }
+            }
+            Debug.Assert(false);
+
+        end_playback:
+            // Following a rollback, the database file should be back in its original state prior to the start of the transaction, so invoke the
+            // SQLITE_FCNTL_DB_UNCHANGED file-control method to disable the assertion that the transaction counter was modified.
+#if DEBUG
+            long dummy = 0;
+            File.FileControl(VFile.FCNTL.DB_UNCHANGED, ref dummy);
+            // TODO: verfiy this, because its different then the c# version
+#endif
+
+            // If this playback is happening automatically as a result of an IO or malloc error that occurred after the change-counter was updated but 
+            // before the transaction was committed, then the change-counter modification may just have been reverted. If this happens in exclusive 
+            // mode, then subsequent transactions performed by the connection will not update the change-counter at all. This may lead to cache inconsistency
+            // problems for other processes at some point in the future. So, just in case this has happened, clear the changeCountDone flag now.
+            ChangeCountDone = TempFile;
+
+            if (rc == RC.OK)
+                rc = readMasterJournal(JournalFile, out master, (uint)Vfs.MaxPathname + 1);
+            if (rc == RC.OK && (State >= PAGER.WRITER_DBMOD || State == PAGER.OPEN))
+                rc = Sync();
+            if (rc == RC.OK)
+                rc = pager_end_transaction(master[0] != '\0', false);
+            if (rc == RC.OK && master[0] != '\0' && res != 0)
+                // If there was a master journal and this routine will return success, see if it is possible to delete the master journal.
+                rc = pager_delmaster(master);
+
+            // The Pager.sectorSize variable may have been updated while rolling back a journal created by a process with a different sector size
+            // value. Reset it to the correct value for this process.
+            setSectorSize();
+            return rc;
+        }
+
+        private static RC readDbPage(PgHdr page)
+        {
+            var pager = page.Pager; // Pager object associated with page pPg
+
+            Debug.Assert(pager.State >= PAGER.READER && !pager.MemoryDB);
+            Debug.Assert(pager.File.Opened);
+
+            if (SysEx.NEVER(!pager.File.Opened))
+            {
+                Debug.Assert(pager.TempFile);
+                Array.Clear(page.Data, 0, pager.PageSize);
+                return RC.OK;
+            }
+
+            var rc = RC.OK;
+            var id = page.ID; // Page number to read
+            var isInWal = 0; // True if page is in log file
+            var pageSize = pager.PageSize; // Number of bytes to read
+            if (pager.UseWal()) // Try to pull the page from the write-ahead log.
+                rc = pager.Wal.Read(id, ref isInWal, pageSize, page.Data);
+            if (rc == RC.OK && isInWal == 0)
+            {
+                var offset = (id - 1) * (long)pager.PageSize;
+                rc = pager.File.Read(page.Data, pageSize, offset);
+                if (rc == RC.IOERR_SHORT_READ)
+                    rc = RC.OK;
+            }
+
+            if (id == 1)
+            {
+                // If the read is unsuccessful, set the dbFileVers[] to something that will never be a valid file version.  dbFileVers[] is a copy
+                // of bytes 24..39 of the database.  Bytes 28..31 should always be zero or the size of the database in page. Bytes 32..35 and 35..39
+                // should be page numbers which are never 0xffffffff.  So filling pPager->dbFileVers[] with all 0xff bytes should suffice.
+                //
+                // For an encrypted database, the situation is more complex:  bytes 24..39 of the database are white noise.  But the probability of
+                // white noising equaling 16 bytes of 0xff is vanishingly small so we should still be ok.
+                if (rc != 0)
+                    for (int i = 0; i < pager.DBFileVersion.Length; pager.DBFileVersion[i++] = 0xff) ; //_memset(pager->DBFileVersion, 0xff, sizeof(pager->DBFileVersion));
+                else
+                    Buffer.BlockCopy(page.Data, 24, pager.DBFileVersion, 0, pager.DBFileVersion.Length);
+            }
+            if (CODEC1(pager, page.Data, id, codec_ctx.DECRYPT))
+                rc = RC.NOMEM;
+
+            PAGER_INCR(sqlite3_pager_readdb_count);
+            PAGER_INCR(pager.Reads);
+            SysEx.IOTRACE("PGIN {0:x} {1}", pager.GetHashCode(), id);
+            PAGERTRACE("FETCH {0} page {1}% hash({2,08:x})", PAGERID(pager), id, pager_pagehash(page));
+
+            return rc;
+        }
+
+        private static void pager_write_changecounter(PgHdr pg)
+        {
+            // Increment the value just read and write it back to byte 24.
+            uint change_counter = ConvertEx.Get4(pg.Pager.DBFileVersion, 0) + 1;
+            ConvertEx.Put4(pg.Data, 24, change_counter);
+
+            // Also store the SQLite version number in bytes 96..99 and in bytes 92..95 store the change counter for which the version number is valid.
+            ConvertEx.Put4(pg.Data, 92, change_counter);
+            ConvertEx.Put4(pg.Data, 96, SysEx.VERSION_NUMBER);
+        }
+
+        private RC pagerPagecount(out Pid pagesOut)
+        {
+            // Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
+            // if the database size is not available. The database size is not available from the WAL sub-system if the log file is empty or
+            // contains no valid committed transactions.
+            Debug.Assert(State == PAGER.OPEN);
+            Debug.Assert(Lock >= VFile.LOCK.SHARED);
+            var pages = Wal.DBSize();
+
+            // If the database size was not available from the WAL sub-system, determine it based on the size of the database file. If the size
+            // of the database file is not an integer multiple of the page-size, round down to the nearest page. Except, any file larger than 0
+            // bytes in size is considered to contain at least one page.
+            if (pages == 0)
+            {
+                Debug.Assert(File.Opened || TempFile);
+                var n = 0L; // Size of db file in bytes
+                if (File.Opened)
+                {
+                    var rc = File.get_FileSize(out n);
+                    if (rc != RC.OK)
+                        return rc;
+                }
+                pages = (Pid)((n + PageSize - 1) / PageSize);
+            }
+
+            // If the current number of pages in the file is greater than the configured maximum pager number, increase the allowed limit so
+            // that the file can be read.
+            if (pages > MaxPid)
+                MaxPid = (Pid)pages;
+
+            pagesOut = pages;
+            return RC.OK;
+        }
+
+        private RC pagerPlaybackSavepoint(PagerSavepoint savepoint)
+        {
+            Debug.Assert(State != PAGER.ERROR);
+            Debug.Assert(State >= PAGER.WRITER_LOCKED);
+
+            // Allocate a bitvec to use to store the set of pages rolled back
+            Bitvec done = null; // Bitvec to ensure pages played back only once
+            if (savepoint != null)
+                done = new Bitvec(savepoint.Orig);
+
+            // Set the database size back to the value it was before the savepoint being reverted was opened.
+            DBSize = (savepoint != null ? savepoint.Orig : DBOrigSize);
+            ChangeCountDone = TempFile;
+
+            if (savepoint != null && UseWal())
+                return pagerRollbackWal();
+
+            // Use pPager->journalOff as the effective size of the main rollback journal.  The actual file might be larger than this in
+            // PAGER_JOURNALMODE_TRUNCATE or PAGER_JOURNALMODE_PERSIST.  But anything past pPager->journalOff is off-limits to us.
+            var sizeJournal = JournalOffset; // Effective size of the main journal
+            Debug.Assert(!UseWal() || sizeJournal == 0);
+
+            // Begin by rolling back records from the main journal starting at PagerSavepoint.iOffset and continuing to the next journal header.
+            // There might be records in the main journal that have a page number greater than the current database size (pPager->dbSize) but those
+            // will be skipped automatically.  Pages are added to pDone as they are played back.
+
+            var rc = RC.OK;
+            if (savepoint != null && !UseWal())
+            {
+                long hdrOffset = (savepoint.HdrOffset != 0 ? savepoint.HdrOffset : sizeJournal); // End of first segment of main-journal records
+                JournalOffset = savepoint.Offset;
+                while (rc == RC.OK && JournalOffset < hdrOffset)
+                    rc = pager_playback_one_page(ref JournalOffset, done, true, true);
+                Debug.Assert(rc != RC.DONE);
+            }
+            else
+                JournalOffset = 0;
+
+            // Continue rolling back records out of the main journal starting at the first journal header seen and continuing until the effective end
+            // of the main journal file.  Continue to skip out-of-range pages and continue adding pages rolled back to pDone.
+            while (rc == RC.OK && JournalOffset < sizeJournal)
+            {
+                uint records; // Number of Journal Records
+                uint dummy;
+                rc = readJournalHdr(false, sizeJournal, ref records, ref dummy);
+                Debug.Assert(rc != RC.DONE);
+
+                // The "pPager.journalHdr+JOURNAL_HDR_SZ(pPager)==pPager.journalOff" test is related to ticket #2565.  See the discussion in the
+                // pager_playback() function for additional information.
+                if (records == 0 && JournalHeader + JOURNAL_HDR_SZ(this) >= JournalOffset)
+                    records = (uint)((sizeJournal - JournalOffset) / JOURNAL_PG_SZ(this));
+                for (var ii = 0U; rc == RC.OK && ii < records && JournalOffset < sizeJournal; ii++)
+                    rc = pager_playback_one_page(ref JournalOffset, done, true, true);
+                Debug.Assert(rc != RC.DONE);
+            }
+            Debug.Assert(rc != RC.OK || JournalOffset >= sizeJournal);
+
+            // Finally,  rollback pages from the sub-journal.  Page that were previously rolled back out of the main journal (and are hence in pDone)
+            // will be skipped.  Out-of-range pages are also skipped.
+            if (savepoint != null)
+            {
+                long offset = savepoint.SubRecords * (4 + PageSize);
+                if (UseWal())
+                    rc = Wal.SavepointUndo(savepoint.WalData);
+                for (var ii = savepoint.SubRecords; rc == RC.OK && ii < SubRecords; ii++)
+                {
+                    Debug.Assert(offset == ii * (4 + PageSize));
+                    rc = pager_playback_one_page(ref offset, done, false, true);
+                }
+                Debug.Assert(rc != RC.DONE);
+            }
+
+            Bitvec.Destroy(ref done);
+            if (rc == RC.OK)
+                JournalOffset = (int)sizeJournal;
+
+            return rc;
+        }
 
         #endregion
+
         #region X
 
 

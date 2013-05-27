@@ -27,33 +27,43 @@ namespace Core
 		// sqlite3.h
 		enum FCNTL : uint
 		{
-			LOCKSTATE = 1,
-			GET_LOCKPROXYFILE = 2,
-			SET_LOCKPROXYFILE = 3,
-			LAST_ERRNO = 4,
-			SIZE_HINT = 5,
-			CHUNK_SIZE = 6,
-			FILE_POINTER = 7,
-			SYNC_OMITTED = 8,
-			DB_UNCHANGED = 0xca093fa0,
+            LOCKSTATE = 1,
+            GET_LOCKPROXYFILE = 2,
+            SET_LOCKPROXYFILE = 3,
+            LAST_ERRNO = 4,
+            SIZE_HINT = 5,
+            CHUNK_SIZE = 6,
+            FILE_POINTER = 7,
+            SYNC_OMITTED = 8,
+            WIN32_AV_RETRY = 9,
+            PERSIST_WAL = 10,
+            OVERWRITE = 11,
+            VFSNAME = 12,
+            POWERSAFE_OVERWRITE = 13,
+            PRAGMA = 14,
+            BUSYHANDLER = 15,
+            TEMPFILENAME = 16,
+            MMAP_SIZE = 18,
+            // os.h
+            DB_UNCHANGED = 0xca093fa0,
 		};
 
 		// sqlite3.h
 		enum IOCAP : uint
 		{
-            ATOMIC = 0x00000001,
-            ATOMIC512 = 0x00000002,
-            ATOMIC1K = 0x00000004,
-            ATOMIC2K = 0x00000008,
-            ATOMIC4K = 0x00000010,
-            ATOMIC8K = 0x00000020,
-            ATOMIC16K = 0x00000040,
-            ATOMIC32K = 0x00000080,
-            ATOMIC64K = 0x00000100,
-            SAFE_APPEND = 0x00000200,
-            SEQUENTIAL = 0x00000400,
-            UNDELETABLE_WHEN_OPEN = 0x00000800,
-            POWERSAFE_OVERWRITE = 0x00001000,
+			ATOMIC = 0x00000001,
+			ATOMIC512 = 0x00000002,
+			ATOMIC1K = 0x00000004,
+			ATOMIC2K = 0x00000008,
+			ATOMIC4K = 0x00000010,
+			ATOMIC8K = 0x00000020,
+			ATOMIC16K = 0x00000040,
+			ATOMIC32K = 0x00000080,
+			ATOMIC64K = 0x00000100,
+			SAFE_APPEND = 0x00000200,
+			SEQUENTIAL = 0x00000400,
+			UNDELETABLE_WHEN_OPEN = 0x00000800,
+			POWERSAFE_OVERWRITE = 0x00001000,
 		};
 
 		bool Opened;

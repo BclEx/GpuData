@@ -14,74 +14,74 @@ namespace Core
             ROLLBACK = 2,
         }
 
-        private RC pagerPlaybackSavepoint(PagerSavepoint pSavepoint)
-        {
-            Debug.Assert(this._state != PAGER.ERROR);
-            Debug.Assert(this._state >= PAGER.WRITER_LOCKED);
-            // Allocate a bitvec to use to store the set of pages rolled back
-            Bitvec pDone = null;     // Bitvec to ensure pages played back only once
-            if (pSavepoint != null)
-                pDone = new Bitvec(pSavepoint.nOrig);
-            // Set the database size back to the value it was before the savepoint being reverted was opened.
-            this._dbSize = pSavepoint != null ? pSavepoint.nOrig : this._dbOrigSize;
-            this._changeCountDone = this._tempFile;
-            if (!pSavepoint && this.pagerUseWal())
-                return this.pagerRollbackWal();
-            // Use pPager.journalOff as the effective size of the main rollback journal.  The actual file might be larger than this in
-            // PAGER_JOURNALMODE_TRUNCATE or PAGER_JOURNALMODE_PERSIST.  But anything past pPager.journalOff is off-limits to us.
-            var szJ = this._journalOff; // Effective size of the main journal
-            Debug.Assert(!this.pagerUseWal() || szJ == 0);
-            // Begin by rolling back records from the main journal starting at PagerSavepoint.iOffset and continuing to the next journal header.
-            // There might be records in the main journal that have a page number greater than the current database size (pPager.dbSize) but those
-            // will be skipped automatically.  Pages are added to pDone as they are played back.
-            long iHdrOff;             // End of first segment of main-journal records
-            var rc = RC.OK;      // Return code
-            if (pSavepoint != null && !this.pagerUseWal())
-            {
-                iHdrOff = (pSavepoint.iHdrOffset != 0 ? pSavepoint.iHdrOffset : szJ);
-                this._journalOff = pSavepoint.iOffset;
-                while (rc == RC.OK && this._journalOff < iHdrOff)
-                    rc = pager_playback_one_page(ref this._journalOff, pDone, 1, 1);
-                Debug.Assert(rc != RC.DONE);
-            }
-            else
-                this._journalOff = 0;
-            // Continue rolling back records out of the main journal starting at the first journal header seen and continuing until the effective end
-            // of the main journal file.  Continue to skip out-of-range pages and continue adding pages rolled back to pDone.
-            while (rc == RC.OK && this._journalOff < szJ)
-            {
-                uint nJRec;         // Number of Journal Records
-                uint dummy;
-                rc = readJournalHdr(0, szJ, out nJRec, out dummy);
-                Debug.Assert(rc != RC.DONE);
-                // The "pPager.journalHdr+JOURNAL_HDR_SZ(pPager)==pPager.journalOff" test is related to ticket #2565.  See the discussion in the
-                // pager_playback() function for additional information.
-                if (nJRec == 0 && this._journalHdr + JOURNAL_HDR_SZ(this) >= this._journalOff)
-                    nJRec = (uint)((szJ - this._journalOff) / JOURNAL_PG_SZ(this));
-                for (uint ii = 0; rc == RC.OK && ii < nJRec && this._journalOff < szJ; ii++)
-                    rc = pager_playback_one_page(ref this._journalOff, pDone, 1, 1);
-                Debug.Assert(rc != RC.DONE);
-            }
-            Debug.Assert(rc != RC.OK || this._journalOff >= szJ);
-            // Finally,  rollback pages from the sub-journal.  Page that were previously rolled back out of the main journal (and are hence in pDone)
-            // will be skipped.  Out-of-range pages are also skipped.
-            if (pSavepoint != null)
-            {
-                long offset = pSavepoint.iSubRec * (4 + this._pageSize);
-                if (this.pagerUseWal())
-                    rc = this._wal.SavepointUndo(pSavepoint.aWalData);
-                for (var ii = pSavepoint.iSubRec; rc == RC.OK && ii < this._nSubRec; ii++)
-                {
-                    Debug.Assert(offset == ii * (4 + this._pageSize));
-                    rc = pager_playback_one_page(ref offset, pDone, 0, 1);
-                }
-                Debug.Assert(rc != RC.DONE);
-            }
-            Bitvec.Destroy(ref pDone);
-            if (rc == RC.OK)
-                this._journalOff = (int)szJ;
-            return rc;
-        }
+        //private RC pagerPlaybackSavepoint(PagerSavepoint pSavepoint)
+        //{
+        //    Debug.Assert(this._state != PAGER.ERROR);
+        //    Debug.Assert(this._state >= PAGER.WRITER_LOCKED);
+        //    // Allocate a bitvec to use to store the set of pages rolled back
+        //    Bitvec pDone = null;     // Bitvec to ensure pages played back only once
+        //    if (pSavepoint != null)
+        //        pDone = new Bitvec(pSavepoint.nOrig);
+        //    // Set the database size back to the value it was before the savepoint being reverted was opened.
+        //    this._dbSize = pSavepoint != null ? pSavepoint.nOrig : this._dbOrigSize;
+        //    this._changeCountDone = this._tempFile;
+        //    if (!pSavepoint && this.pagerUseWal())
+        //        return this.pagerRollbackWal();
+        //    // Use pPager.journalOff as the effective size of the main rollback journal.  The actual file might be larger than this in
+        //    // PAGER_JOURNALMODE_TRUNCATE or PAGER_JOURNALMODE_PERSIST.  But anything past pPager.journalOff is off-limits to us.
+        //    var szJ = this._journalOff; // Effective size of the main journal
+        //    Debug.Assert(!this.pagerUseWal() || szJ == 0);
+        //    // Begin by rolling back records from the main journal starting at PagerSavepoint.iOffset and continuing to the next journal header.
+        //    // There might be records in the main journal that have a page number greater than the current database size (pPager.dbSize) but those
+        //    // will be skipped automatically.  Pages are added to pDone as they are played back.
+        //    long iHdrOff;             // End of first segment of main-journal records
+        //    var rc = RC.OK;      // Return code
+        //    if (pSavepoint != null && !this.pagerUseWal())
+        //    {
+        //        iHdrOff = (pSavepoint.iHdrOffset != 0 ? pSavepoint.iHdrOffset : szJ);
+        //        this._journalOff = pSavepoint.iOffset;
+        //        while (rc == RC.OK && this._journalOff < iHdrOff)
+        //            rc = pager_playback_one_page(ref this._journalOff, pDone, 1, 1);
+        //        Debug.Assert(rc != RC.DONE);
+        //    }
+        //    else
+        //        this._journalOff = 0;
+        //    // Continue rolling back records out of the main journal starting at the first journal header seen and continuing until the effective end
+        //    // of the main journal file.  Continue to skip out-of-range pages and continue adding pages rolled back to pDone.
+        //    while (rc == RC.OK && this._journalOff < szJ)
+        //    {
+        //        uint nJRec;         // Number of Journal Records
+        //        uint dummy;
+        //        rc = readJournalHdr(0, szJ, out nJRec, out dummy);
+        //        Debug.Assert(rc != RC.DONE);
+        //        // The "pPager.journalHdr+JOURNAL_HDR_SZ(pPager)==pPager.journalOff" test is related to ticket #2565.  See the discussion in the
+        //        // pager_playback() function for additional information.
+        //        if (nJRec == 0 && this._journalHdr + JOURNAL_HDR_SZ(this) >= this._journalOff)
+        //            nJRec = (uint)((szJ - this._journalOff) / JOURNAL_PG_SZ(this));
+        //        for (uint ii = 0; rc == RC.OK && ii < nJRec && this._journalOff < szJ; ii++)
+        //            rc = pager_playback_one_page(ref this._journalOff, pDone, 1, 1);
+        //        Debug.Assert(rc != RC.DONE);
+        //    }
+        //    Debug.Assert(rc != RC.OK || this._journalOff >= szJ);
+        //    // Finally,  rollback pages from the sub-journal.  Page that were previously rolled back out of the main journal (and are hence in pDone)
+        //    // will be skipped.  Out-of-range pages are also skipped.
+        //    if (pSavepoint != null)
+        //    {
+        //        long offset = pSavepoint.iSubRec * (4 + this._pageSize);
+        //        if (this.pagerUseWal())
+        //            rc = this._wal.SavepointUndo(pSavepoint.aWalData);
+        //        for (var ii = pSavepoint.iSubRec; rc == RC.OK && ii < this._nSubRec; ii++)
+        //        {
+        //            Debug.Assert(offset == ii * (4 + this._pageSize));
+        //            rc = pager_playback_one_page(ref offset, pDone, 0, 1);
+        //        }
+        //        Debug.Assert(rc != RC.DONE);
+        //    }
+        //    Bitvec.Destroy(ref pDone);
+        //    if (rc == RC.OK)
+        //        this._journalOff = (int)szJ;
+        //    return rc;
+        //}
 
         //private void releaseAllSavepoints()
         //{

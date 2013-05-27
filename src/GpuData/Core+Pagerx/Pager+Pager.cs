@@ -486,138 +486,138 @@ namespace Contoso.Core
         //    return rc;
         //}
 
-        private RC pager_playback(int isHot)
-        {
-            var pVfs = this.pVfs;
-            // Figure out how many records are in the journal.  Abort early if the journal is empty.
-            Debug.Assert(this.jfd.IsOpen);
-            long szJ = 0;            // Size of the journal file in bytes
-            var res = 1;             // Value returned by sqlite3OsAccess()
-            var zMaster = new byte[this.pVfs.mxPathname + 1]; // Name of master journal file if any
-            var rc = this.jfd.FileSize(ref szJ);
-            if (rc != RC.OK)
-                goto end_playback;
-            // Read the master journal name from the journal, if it is present. If a master journal file name is specified, but the file is not
-            // present on disk, then the journal is not hot and does not need to be played back.
-            // TODO: Technically the following is an error because it assumes that buffer Pager.pTmpSpace is (mxPathname+1) bytes or larger. i.e. that
-            // (pPager.pageSize >= pPager.pVfs.mxPathname+1). Using os_unix.c, mxPathname is 512, which is the same as the minimum allowable value
-            // for pageSize.
-            rc = readMasterJournal(this.jfd, zMaster, (uint)this.pVfs.mxPathname + 1);
-            if (rc == RC.OK && zMaster[0] != 0)
-                rc = pVfs.xAccess(Encoding.UTF8.GetString(zMaster, 0, zMaster.Length), VirtualFileSystem.ACCESS.EXISTS, out res);
-            zMaster = null;
-            if (rc != RC.OK || res == 0)
-                goto end_playback;
-            this.journalOff = 0;
-            // This loop terminates either when a readJournalHdr() or pager_playback_one_page() call returns SQLITE_DONE or an IO error occurs.
-            var needPagerReset = isHot; // True to reset page prior to first page rollback
-            Pgno mxPg = 0;            // Size of the original file in pages
-            uint nRec = 0;            // Number of Records in the journal
-            while (true)
-            {
-                // Read the next journal header from the journal file.  If there are not enough bytes left in the journal file for a complete header, or
-                // it is corrupted, then a process must have failed while writing it. This indicates nothing more needs to be rolled back.
-                rc = readJournalHdr(isHot, szJ, out nRec, out mxPg);
-                if (rc != RC.OK)
-                {
-                    if (rc == RC.DONE)
-                        rc = RC.OK;
-                    goto end_playback;
-                }
-                // If nRec is 0xffffffff, then this journal was created by a process working in no-sync mode. This means that the rest of the journal
-                // file consists of pages, there are no more journal headers. Compute the value of nRec based on this assumption.
-                if (nRec == 0xffffffff)
-                {
-                    Debug.Assert(this.journalOff == JOURNAL_HDR_SZ(this));
-                    nRec = (uint)((szJ - JOURNAL_HDR_SZ(this)) / JOURNAL_PG_SZ(this));
-                }
-                // If nRec is 0 and this rollback is of a transaction created by this process and if this is the final header in the journal, then it means
-                // that this part of the journal was being filled but has not yet been synced to disk.  Compute the number of pages based on the remaining
-                // size of the file.
-                // The third term of the test was added to fix ticket #2565. When rolling back a hot journal, nRec==0 always means that the next
-                // chunk of the journal contains zero pages to be rolled back.  But when doing a ROLLBACK and the nRec==0 chunk is the last chunk in
-                // the journal, it means that the journal might contain additional pages that need to be rolled back and that the number of pages
-                // should be computed based on the journal file size.
-                if (nRec == 0 && 0 == isHot && this.journalHdr + JOURNAL_HDR_SZ(this) == this.journalOff)
-                    nRec = (uint)((szJ - this.journalOff) / JOURNAL_PG_SZ(this));
-                // If this is the first header read from the journal, truncate the database file back to its original size.
-                if (this.journalOff == JOURNAL_HDR_SZ(this))
-                {
-                    rc = pager_truncate(mxPg);
-                    if (rc != RC.OK)
-                        goto end_playback;
-                    this.dbSize = mxPg;
-                }
-                // Copy original pages out of the journal and back into the database file and/or page cache.
-                for (var u = 0; u < nRec; u++)
-                {
-                    if (needPagerReset != 0)
-                    {
-                        pager_reset();
-                        needPagerReset = 0;
-                    }
-                    rc = pager_playback_one_page(ref this.journalOff, null, 1, 0);
-                    if (rc != RC.OK)
-                    {
-                        if (rc == RC.DONE)
-                        {
-                            rc = RC.OK;
-                            this.journalOff = szJ;
-                            break;
-                        }
-                        else if (rc == RC.IOERR_SHORT_READ)
-                        {
-                            // If the journal has been truncated, simply stop reading and processing the journal. This might happen if the journal was
-                            // not completely written and synced prior to a crash.  In that case, the database should have never been written in the
-                            // first place so it is OK to simply abandon the rollback.
-                            rc = RC.OK;
-                            goto end_playback;
-                        }
-                        else
-                            // If we are unable to rollback, quit and return the error code.  This will cause the pager to enter the error state
-                            // so that no further harm will be done.  Perhaps the next process to come along will be able to rollback the database.
-                            goto end_playback;
-                    }
-                }
-            }
-        end_playback:
-            // Following a rollback, the database file should be back in its original state prior to the start of the transaction, so invoke the
-            // SQLITE_FCNTL_DB_UNCHANGED file-control method to disable the assertion that the transaction counter was modified.
-            long iDummy = 0;
-            Debug.Assert(!this.fd.IsOpen || this.fd.SetFileControl(VirtualFile.FCNTL.DB_UNCHANGED, ref iDummy) >= RC.OK);
-            // If this playback is happening automatically as a result of an IO or malloc error that occurred after the change-counter was updated but
-            // before the transaction was committed, then the change-counter modification may just have been reverted. If this happens in exclusive
-            // mode, then subsequent transactions performed by the connection will not update the change-counter at all. This may lead to cache inconsistency
-            // problems for other processes at some point in the future. So, just in case this has happened, clear the changeCountDone flag now.
-            this.changeCountDone = this.tempFile;
-            if (rc == RC.OK)
-            {
-                zMaster = new byte[this.pVfs.mxPathname + 1];
-                rc = readMasterJournal(this.jfd, zMaster, (uint)this.pVfs.mxPathname + 1);
-            }
-            if (rc == RC.OK && (this.eState >= PAGER.WRITER_DBMOD || this.eState == PAGER.OPEN))
-                rc = Sync();
-            if (rc == RC.OK)
-                rc = pager_end_transaction(zMaster[0] != '\0' ? 1 : 0);
-            if (rc == RC.OK && zMaster[0] != '\0' && res != 0)
-                // If there was a master journal and this routine will return success, see if it is possible to delete the master journal.
-                rc = pager_delmaster(Encoding.UTF8.GetString(zMaster, 0, zMaster.Length));
-            // The Pager.sectorSize variable may have been updated while rolling back a journal created by a process with a different sector size
-            // value. Reset it to the correct value for this process.
-            setSectorSize();
-            return rc;
-        }
+        //private RC pager_playback(int isHot)
+        //{
+        //    var pVfs = this.pVfs;
+        //    // Figure out how many records are in the journal.  Abort early if the journal is empty.
+        //    Debug.Assert(this.jfd.IsOpen);
+        //    long szJ = 0;            // Size of the journal file in bytes
+        //    var res = 1;             // Value returned by sqlite3OsAccess()
+        //    var zMaster = new byte[this.pVfs.mxPathname + 1]; // Name of master journal file if any
+        //    var rc = this.jfd.FileSize(ref szJ);
+        //    if (rc != RC.OK)
+        //        goto end_playback;
+        //    // Read the master journal name from the journal, if it is present. If a master journal file name is specified, but the file is not
+        //    // present on disk, then the journal is not hot and does not need to be played back.
+        //    // TODO: Technically the following is an error because it assumes that buffer Pager.pTmpSpace is (mxPathname+1) bytes or larger. i.e. that
+        //    // (pPager.pageSize >= pPager.pVfs.mxPathname+1). Using os_unix.c, mxPathname is 512, which is the same as the minimum allowable value
+        //    // for pageSize.
+        //    rc = readMasterJournal(this.jfd, zMaster, (uint)this.pVfs.mxPathname + 1);
+        //    if (rc == RC.OK && zMaster[0] != 0)
+        //        rc = pVfs.xAccess(Encoding.UTF8.GetString(zMaster, 0, zMaster.Length), VirtualFileSystem.ACCESS.EXISTS, out res);
+        //    zMaster = null;
+        //    if (rc != RC.OK || res == 0)
+        //        goto end_playback;
+        //    this.journalOff = 0;
+        //    // This loop terminates either when a readJournalHdr() or pager_playback_one_page() call returns SQLITE_DONE or an IO error occurs.
+        //    var needPagerReset = isHot; // True to reset page prior to first page rollback
+        //    Pgno mxPg = 0;            // Size of the original file in pages
+        //    uint nRec = 0;            // Number of Records in the journal
+        //    while (true)
+        //    {
+        //        // Read the next journal header from the journal file.  If there are not enough bytes left in the journal file for a complete header, or
+        //        // it is corrupted, then a process must have failed while writing it. This indicates nothing more needs to be rolled back.
+        //        rc = readJournalHdr(isHot, szJ, out nRec, out mxPg);
+        //        if (rc != RC.OK)
+        //        {
+        //            if (rc == RC.DONE)
+        //                rc = RC.OK;
+        //            goto end_playback;
+        //        }
+        //        // If nRec is 0xffffffff, then this journal was created by a process working in no-sync mode. This means that the rest of the journal
+        //        // file consists of pages, there are no more journal headers. Compute the value of nRec based on this assumption.
+        //        if (nRec == 0xffffffff)
+        //        {
+        //            Debug.Assert(this.journalOff == JOURNAL_HDR_SZ(this));
+        //            nRec = (uint)((szJ - JOURNAL_HDR_SZ(this)) / JOURNAL_PG_SZ(this));
+        //        }
+        //        // If nRec is 0 and this rollback is of a transaction created by this process and if this is the final header in the journal, then it means
+        //        // that this part of the journal was being filled but has not yet been synced to disk.  Compute the number of pages based on the remaining
+        //        // size of the file.
+        //        // The third term of the test was added to fix ticket #2565. When rolling back a hot journal, nRec==0 always means that the next
+        //        // chunk of the journal contains zero pages to be rolled back.  But when doing a ROLLBACK and the nRec==0 chunk is the last chunk in
+        //        // the journal, it means that the journal might contain additional pages that need to be rolled back and that the number of pages
+        //        // should be computed based on the journal file size.
+        //        if (nRec == 0 && 0 == isHot && this.journalHdr + JOURNAL_HDR_SZ(this) == this.journalOff)
+        //            nRec = (uint)((szJ - this.journalOff) / JOURNAL_PG_SZ(this));
+        //        // If this is the first header read from the journal, truncate the database file back to its original size.
+        //        if (this.journalOff == JOURNAL_HDR_SZ(this))
+        //        {
+        //            rc = pager_truncate(mxPg);
+        //            if (rc != RC.OK)
+        //                goto end_playback;
+        //            this.dbSize = mxPg;
+        //        }
+        //        // Copy original pages out of the journal and back into the database file and/or page cache.
+        //        for (var u = 0; u < nRec; u++)
+        //        {
+        //            if (needPagerReset != 0)
+        //            {
+        //                pager_reset();
+        //                needPagerReset = 0;
+        //            }
+        //            rc = pager_playback_one_page(ref this.journalOff, null, 1, 0);
+        //            if (rc != RC.OK)
+        //            {
+        //                if (rc == RC.DONE)
+        //                {
+        //                    rc = RC.OK;
+        //                    this.journalOff = szJ;
+        //                    break;
+        //                }
+        //                else if (rc == RC.IOERR_SHORT_READ)
+        //                {
+        //                    // If the journal has been truncated, simply stop reading and processing the journal. This might happen if the journal was
+        //                    // not completely written and synced prior to a crash.  In that case, the database should have never been written in the
+        //                    // first place so it is OK to simply abandon the rollback.
+        //                    rc = RC.OK;
+        //                    goto end_playback;
+        //                }
+        //                else
+        //                    // If we are unable to rollback, quit and return the error code.  This will cause the pager to enter the error state
+        //                    // so that no further harm will be done.  Perhaps the next process to come along will be able to rollback the database.
+        //                    goto end_playback;
+        //            }
+        //        }
+        //    }
+        //end_playback:
+        //    // Following a rollback, the database file should be back in its original state prior to the start of the transaction, so invoke the
+        //    // SQLITE_FCNTL_DB_UNCHANGED file-control method to disable the assertion that the transaction counter was modified.
+        //    long iDummy = 0;
+        //    Debug.Assert(!this.fd.IsOpen || this.fd.SetFileControl(VirtualFile.FCNTL.DB_UNCHANGED, ref iDummy) >= RC.OK);
+        //    // If this playback is happening automatically as a result of an IO or malloc error that occurred after the change-counter was updated but
+        //    // before the transaction was committed, then the change-counter modification may just have been reverted. If this happens in exclusive
+        //    // mode, then subsequent transactions performed by the connection will not update the change-counter at all. This may lead to cache inconsistency
+        //    // problems for other processes at some point in the future. So, just in case this has happened, clear the changeCountDone flag now.
+        //    this.changeCountDone = this.tempFile;
+        //    if (rc == RC.OK)
+        //    {
+        //        zMaster = new byte[this.pVfs.mxPathname + 1];
+        //        rc = readMasterJournal(this.jfd, zMaster, (uint)this.pVfs.mxPathname + 1);
+        //    }
+        //    if (rc == RC.OK && (this.eState >= PAGER.WRITER_DBMOD || this.eState == PAGER.OPEN))
+        //        rc = Sync();
+        //    if (rc == RC.OK)
+        //        rc = pager_end_transaction(zMaster[0] != '\0' ? 1 : 0);
+        //    if (rc == RC.OK && zMaster[0] != '\0' && res != 0)
+        //        // If there was a master journal and this routine will return success, see if it is possible to delete the master journal.
+        //        rc = pager_delmaster(Encoding.UTF8.GetString(zMaster, 0, zMaster.Length));
+        //    // The Pager.sectorSize variable may have been updated while rolling back a journal created by a process with a different sector size
+        //    // value. Reset it to the correct value for this process.
+        //    setSectorSize();
+        //    return rc;
+        //}
 
-        private static void pager_write_changecounter(PgHdr pPg)
-        {
-            // Increment the value just read and write it back to byte 24.
-            uint change_counter = ConvertEx.Get4(pPg.Pager.dbFileVers, 0) + 1;
-            ConvertEx.Put4(pPg.Data, 24, change_counter);
-            // Also store the SQLite version number in bytes 96..99 and in bytes 92..95 store the change counter for which the version number
-            // is valid.
-            ConvertEx.Put4(pPg.Data, 92, change_counter);
-            ConvertEx.Put4(pPg.Data, 96, SysEx.SQLITE_VERSION_NUMBER);
-        }
+        //private static void pager_write_changecounter(PgHdr pPg)
+        //{
+        //    // Increment the value just read and write it back to byte 24.
+        //    uint change_counter = ConvertEx.Get4(pPg.Pager.dbFileVers, 0) + 1;
+        //    ConvertEx.Put4(pPg.Data, 24, change_counter);
+        //    // Also store the SQLite version number in bytes 96..99 and in bytes 92..95 store the change counter for which the version number
+        //    // is valid.
+        //    ConvertEx.Put4(pPg.Data, 92, change_counter);
+        //    ConvertEx.Put4(pPg.Data, 96, SysEx.SQLITE_VERSION_NUMBER);
+        //}
 
         private RC pager_wait_on_lock(VFSLOCK locktype)
         {

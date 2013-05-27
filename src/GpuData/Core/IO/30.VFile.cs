@@ -16,6 +16,7 @@ namespace Core.IO
             UNKNOWN = 5,
         }
 
+        // sqlite3.h
         [Flags]
         public enum SYNC : byte
         {
@@ -24,6 +25,7 @@ namespace Core.IO
             DATAONLY = 0x00010,
         }
 
+        // sqlite3.h
         public enum FCNTL : uint
         {
             LOCKSTATE = 1,
@@ -34,9 +36,20 @@ namespace Core.IO
             CHUNK_SIZE = 6,
             FILE_POINTER = 7,
             SYNC_OMITTED = 8,
+            WIN32_AV_RETRY = 9,
+            PERSIST_WAL = 10,
+            OVERWRITE = 11,
+            VFSNAME = 12,
+            POWERSAFE_OVERWRITE = 13,
+            PRAGMA = 14,
+            BUSYHANDLER = 15,
+            TEMPFILENAME = 16,
+            MMAP_SIZE = 18,
+            // os.h
             DB_UNCHANGED = 0xca093fa0,
         }
 
+        // sqlite3.h
         [Flags]
         public enum IOCAP : uint
         {
