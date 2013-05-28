@@ -619,225 +619,225 @@ namespace Contoso.Core
         //    ConvertEx.Put4(pPg.Data, 96, SysEx.SQLITE_VERSION_NUMBER);
         //}
 
-        private RC pager_wait_on_lock(VFSLOCK locktype)
-        {
-            // Check that this is either a no-op (because the requested lock is already held, or one of the transistions that the busy-handler
-            // may be invoked during, according to the comment above sqlite3PagerSetBusyhandler().
-            Debug.Assert((this.eLock >= locktype) || (this.eLock == VFSLOCK.NO && locktype == VFSLOCK.SHARED) || (this.eLock == VFSLOCK.RESERVED && locktype == VFSLOCK.EXCLUSIVE));
-            RC rc;
-            do
-                rc = pagerLockDb(locktype);
-            while (rc == RC.BUSY && this.xBusyHandler(this.pBusyHandlerArg) != 0);
-            return rc;
-        }
+        //private RC pager_wait_on_lock(VFSLOCK locktype)
+        //{
+        //    // Check that this is either a no-op (because the requested lock is already held, or one of the transistions that the busy-handler
+        //    // may be invoked during, according to the comment above sqlite3PagerSetBusyhandler().
+        //    Debug.Assert((this.eLock >= locktype) || (this.eLock == VFSLOCK.NO && locktype == VFSLOCK.SHARED) || (this.eLock == VFSLOCK.RESERVED && locktype == VFSLOCK.EXCLUSIVE));
+        //    RC rc;
+        //    do
+        //        rc = pagerLockDb(locktype);
+        //    while (rc == RC.BUSY && this.xBusyHandler(this.pBusyHandlerArg) != 0);
+        //    return rc;
+        //}
 
-        private RC pager_write_pagelist(PgHdr pList)
-        {
-            var rc = RC.OK;
-            // This function is only called for rollback pagers in WRITER_DBMOD state. 
-            Debug.Assert(!pagerUseWal());
-            Debug.Assert(this.eState == PAGER.WRITER_DBMOD);
-            Debug.Assert(this.eLock == VFSLOCK.EXCLUSIVE);
-            // If the file is a temp-file has not yet been opened, open it now. It is not possible for rc to be other than SQLITE.OK if this branch
-            // is taken, as pager_wait_on_lock() is a no-op for temp-files.
-            if (!this.fd.IsOpen)
-            {
-                Debug.Assert(this.tempFile && rc == RC.OK);
-                rc = pagerOpentemp(ref this.fd, this.vfsFlags);
-            }
-            // Before the first write, give the VFS a hint of what the final file size will be.
-            Debug.Assert(rc != RC.OK || this.fd.IsOpen);
-            if (rc == RC.OK && this.dbSize > this.dbHintSize)
-            {
-                long szFile = this.pageSize * (long)this.dbSize;
-                this.fd.SetFileControl(VirtualFile.FCNTL.SIZE_HINT, ref szFile);
-                this.dbHintSize = this.dbSize;
-            }
-            while (rc == RC.OK && pList)
-            {
-                var pgno = pList.ID;
-                // If there are dirty pages in the page cache with page numbers greater than Pager.dbSize, this means sqlite3PagerTruncateImage() was called to
-                // make the file smaller (presumably by auto-vacuum code). Do not write any such pages to the file.
-                // Also, do not write out any page that has the PGHDR_DONT_WRITE flag set (set by sqlite3PagerDontWrite()).
-                if (pList.ID <= this.dbSize && 0 == (pList.Flags & PgHdr.PGHDR.DONT_WRITE))
-                {
-                    Debug.Assert((pList.Flags & PgHdr.PGHDR.NEED_SYNC) == 0);
-                    if (pList.ID == 1)
-                        pager_write_changecounter(pList);
-                    // Encode the database
-                    byte[] pData = null; // Data to write
-                    if (CODEC2(this, pList.Data, pgno, codec_ctx.ENCRYPT_WRITE_CTX, ref pData))
-                        return RC.NOMEM;
-                    // Write out the page data.
-                    long offset = (pList.ID - 1) * (long)this.pageSize;   // Offset to write
-                    rc = this.fd.Write(pData, this.pageSize, offset);
-                    // If page 1 was just written, update Pager.dbFileVers to match the value now stored in the database file. If writing this
-                    // page caused the database file to grow, update dbFileSize.
-                    if (pgno == 1)
-                        Buffer.BlockCopy(pData, 24, this.dbFileVers, 0, this.dbFileVers.Length);
-                    if (pgno > this.dbFileSize)
-                        this.dbFileSize = pgno;
-                    // Update any backup objects copying the contents of this pager.
-                    if (this.pBackup != null)
-                        this.pBackup.sqlite3BackupUpdate(pgno, pList.Data);
-                    PAGERTRACE("STORE {0} page {1} hash({2,08:x})", PAGERID(this), pgno, pager_pagehash(pList));
-                    SysEx.IOTRACE("PGOUT {0:x} {1}", this.GetHashCode(), pgno);
-                }
-                else
-                    PAGERTRACE("NOSTORE {0} page {1}", PAGERID(this), pgno);
-                pager_set_pagehash(pList);
-                pList = pList.Dirtys;
-            }
-            return rc;
-        }
+        //private RC pager_write_pagelist(PgHdr pList)
+        //{
+        //    var rc = RC.OK;
+        //    // This function is only called for rollback pagers in WRITER_DBMOD state. 
+        //    Debug.Assert(!pagerUseWal());
+        //    Debug.Assert(this.eState == PAGER.WRITER_DBMOD);
+        //    Debug.Assert(this.eLock == VFSLOCK.EXCLUSIVE);
+        //    // If the file is a temp-file has not yet been opened, open it now. It is not possible for rc to be other than SQLITE.OK if this branch
+        //    // is taken, as pager_wait_on_lock() is a no-op for temp-files.
+        //    if (!this.fd.IsOpen)
+        //    {
+        //        Debug.Assert(this.tempFile && rc == RC.OK);
+        //        rc = pagerOpentemp(ref this.fd, this.vfsFlags);
+        //    }
+        //    // Before the first write, give the VFS a hint of what the final file size will be.
+        //    Debug.Assert(rc != RC.OK || this.fd.IsOpen);
+        //    if (rc == RC.OK && this.dbSize > this.dbHintSize)
+        //    {
+        //        long szFile = this.pageSize * (long)this.dbSize;
+        //        this.fd.SetFileControl(VirtualFile.FCNTL.SIZE_HINT, ref szFile);
+        //        this.dbHintSize = this.dbSize;
+        //    }
+        //    while (rc == RC.OK && pList)
+        //    {
+        //        var pgno = pList.ID;
+        //        // If there are dirty pages in the page cache with page numbers greater than Pager.dbSize, this means sqlite3PagerTruncateImage() was called to
+        //        // make the file smaller (presumably by auto-vacuum code). Do not write any such pages to the file.
+        //        // Also, do not write out any page that has the PGHDR_DONT_WRITE flag set (set by sqlite3PagerDontWrite()).
+        //        if (pList.ID <= this.dbSize && 0 == (pList.Flags & PgHdr.PGHDR.DONT_WRITE))
+        //        {
+        //            Debug.Assert((pList.Flags & PgHdr.PGHDR.NEED_SYNC) == 0);
+        //            if (pList.ID == 1)
+        //                pager_write_changecounter(pList);
+        //            // Encode the database
+        //            byte[] pData = null; // Data to write
+        //            if (CODEC2(this, pList.Data, pgno, codec_ctx.ENCRYPT_WRITE_CTX, ref pData))
+        //                return RC.NOMEM;
+        //            // Write out the page data.
+        //            long offset = (pList.ID - 1) * (long)this.pageSize;   // Offset to write
+        //            rc = this.fd.Write(pData, this.pageSize, offset);
+        //            // If page 1 was just written, update Pager.dbFileVers to match the value now stored in the database file. If writing this
+        //            // page caused the database file to grow, update dbFileSize.
+        //            if (pgno == 1)
+        //                Buffer.BlockCopy(pData, 24, this.dbFileVers, 0, this.dbFileVers.Length);
+        //            if (pgno > this.dbFileSize)
+        //                this.dbFileSize = pgno;
+        //            // Update any backup objects copying the contents of this pager.
+        //            if (this.pBackup != null)
+        //                this.pBackup.sqlite3BackupUpdate(pgno, pList.Data);
+        //            PAGERTRACE("STORE {0} page {1} hash({2,08:x})", PAGERID(this), pgno, pager_pagehash(pList));
+        //            SysEx.IOTRACE("PGOUT {0:x} {1}", this.GetHashCode(), pgno);
+        //        }
+        //        else
+        //            PAGERTRACE("NOSTORE {0} page {1}", PAGERID(this), pgno);
+        //        pager_set_pagehash(pList);
+        //        pList = pList.Dirtys;
+        //    }
+        //    return rc;
+        //}
 
-        private static RC pager_write(PgHdr pPg)
-        {
-            var pData = pPg.Data;
-            var pPager = pPg.Pager;
-            var rc = RC.OK;
-            // This routine is not called unless a write-transaction has already been started. The journal file may or may not be open at this point.
-            // It is never called in the ERROR state.
-            Debug.Assert(pPager.eState == PAGER.WRITER_LOCKED || pPager.eState == PAGER.WRITER_CACHEMOD || pPager.eState == PAGER.WRITER_DBMOD);
-            Debug.Assert(pPager.assert_pager_state());
-            // If an error has been previously detected, report the same error again. This should not happen, but the check provides robustness. 
-            if (Check.NEVER(pPager.errCode) != RC.OK)
-                return pPager.errCode;
-            // Higher-level routines never call this function if database is not writable.  But check anyway, just for robustness.
-            if (Check.NEVER(pPager.readOnly))
-                return RC.PERM;
-#if SQLITE_CHECK_PAGES
-CHECK_PAGE(pPg);
-#endif
-            // The journal file needs to be opened. Higher level routines have already obtained the necessary locks to begin the write-transaction, but the
-            // rollback journal might not yet be open. Open it now if this is the case.
-            //
-            // This is done before calling sqlite3PcacheMakeDirty() on the page. Otherwise, if it were done after calling sqlite3PcacheMakeDirty(), then
-            // an error might occur and the pager would end up in WRITER_LOCKED state with pages marked as dirty in the cache.
-            if (pPager.eState == PAGER.WRITER_LOCKED)
-            {
-                rc = pPager.pager_open_journal();
-                if (rc != RC.OK)
-                    return rc;
-            }
-            Debug.Assert(pPager.eState >= PAGER.WRITER_CACHEMOD);
-            Debug.Assert(pPager.assert_pager_state());
-            // Mark the page as dirty.  If the page has already been written to the journal then we can return right away.
-            PCache.MakePageDirty(pPg);
-            if (pageInJournal(pPg) && !subjRequiresPage(pPg))
-                Debug.Assert(!pPager.pagerUseWal());
-            else
-            {
-                // The transaction journal now exists and we have a RESERVED or an EXCLUSIVE lock on the main database file.  Write the current page to
-                // the transaction journal if it is not there already.
-                if (!pageInJournal(pPg) && !pPager.pagerUseWal())
-                {
-                    Debug.Assert(!pPager.pagerUseWal());
-                    if (pPg.ID <= pPager.dbOrigSize && pPager.jfd.IsOpen)
-                    {
-                        var iOff = pPager.journalOff;
-                        // We should never write to the journal file the page that contains the database locks.  The following Debug.Assert verifies that we do not.
-                        Debug.Assert(pPg.ID != ((VirtualFile.PENDING_BYTE / (pPager.pageSize)) + 1));
-                        Debug.Assert(pPager.journalHdr <= pPager.journalOff);
-                        byte[] pData2 = null;
-                        if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
-                            return RC.NOMEM;
-                        var cksum = pPager.pager_cksum(pData2);
-                        // Even if an IO or diskfull error occurred while journalling the page in the block above, set the need-sync flag for the page.
-                        // Otherwise, when the transaction is rolled back, the logic in playback_one_page() will think that the page needs to be restored
-                        // in the database file. And if an IO error occurs while doing so, then corruption may follow.
-                        pPg.Flags |= PgHdr.PGHDR.NEED_SYNC;
-                        rc = pPager.jfd.WriteByte(iOff, pPg.ID);
-                        if (rc != RC.OK)
-                            return rc;
-                        rc = pPager.jfd.Write(pData2, pPager.pageSize, iOff + 4);
-                        if (rc != RC.OK)
-                            return rc;
-                        rc = pPager.jfd.WriteByte(iOff + pPager.pageSize + 4, cksum);
-                        if (rc != RC.OK)
-                            return rc;
-                        SysEx.IOTRACE("JOUT {0:x} {1} {2,11} {3}", pPager.GetHashCode(), pPg.ID, pPager.journalOff, pPager.pageSize);
-                        PAGERTRACE("JOURNAL {0} page {1} needSync={2} hash({3,08:x})", PAGERID(pPager), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0, pager_pagehash(pPg));
-                        pPager.journalOff += 8 + pPager.pageSize;
-                        pPager.nRec++;
-                        Debug.Assert(pPager.pInJournal != null);
-                        rc = pPager.pInJournal.Set(pPg.ID);
-                        Debug.Assert(rc == RC.OK || rc == RC.NOMEM);
-                        rc |= pPager.addToSavepointBitvecs(pPg.ID);
-                        if (rc != RC.OK)
-                        {
-                            Debug.Assert(rc == RC.NOMEM);
-                            return rc;
-                        }
-                    }
-                    else
-                    {
-                        if (pPager.eState != PAGER.WRITER_DBMOD)
-                            pPg.Flags |= PgHdr.PGHDR.NEED_SYNC;
-                        PAGERTRACE("APPEND {0} page {1} needSync={2}", PAGERID(pPager), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0);
-                    }
-                }
-                // If the statement journal is open and the page is not in it, then write the current page to the statement journal.  Note that
-                // the statement journal format differs from the standard journal format in that it omits the checksums and the header.
-                if (subjRequiresPage(pPg))
-                    rc = subjournalPage(pPg);
-            }
-            // Update the database size and return.
-            if (pPager.dbSize < pPg.ID)
-                pPager.dbSize = pPg.ID;
-            return rc;
-        }
+//        private static RC pager_write(PgHdr pPg)
+//        {
+//            var pData = pPg.Data;
+//            var pPager = pPg.Pager;
+//            var rc = RC.OK;
+//            // This routine is not called unless a write-transaction has already been started. The journal file may or may not be open at this point.
+//            // It is never called in the ERROR state.
+//            Debug.Assert(pPager.eState == PAGER.WRITER_LOCKED || pPager.eState == PAGER.WRITER_CACHEMOD || pPager.eState == PAGER.WRITER_DBMOD);
+//            Debug.Assert(pPager.assert_pager_state());
+//            // If an error has been previously detected, report the same error again. This should not happen, but the check provides robustness. 
+//            if (Check.NEVER(pPager.errCode) != RC.OK)
+//                return pPager.errCode;
+//            // Higher-level routines never call this function if database is not writable.  But check anyway, just for robustness.
+//            if (Check.NEVER(pPager.readOnly))
+//                return RC.PERM;
+//#if SQLITE_CHECK_PAGES
+//CHECK_PAGE(pPg);
+//#endif
+//            // The journal file needs to be opened. Higher level routines have already obtained the necessary locks to begin the write-transaction, but the
+//            // rollback journal might not yet be open. Open it now if this is the case.
+//            //
+//            // This is done before calling sqlite3PcacheMakeDirty() on the page. Otherwise, if it were done after calling sqlite3PcacheMakeDirty(), then
+//            // an error might occur and the pager would end up in WRITER_LOCKED state with pages marked as dirty in the cache.
+//            if (pPager.eState == PAGER.WRITER_LOCKED)
+//            {
+//                rc = pPager.pager_open_journal();
+//                if (rc != RC.OK)
+//                    return rc;
+//            }
+//            Debug.Assert(pPager.eState >= PAGER.WRITER_CACHEMOD);
+//            Debug.Assert(pPager.assert_pager_state());
+//            // Mark the page as dirty.  If the page has already been written to the journal then we can return right away.
+//            PCache.MakePageDirty(pPg);
+//            if (pageInJournal(pPg) && !subjRequiresPage(pPg))
+//                Debug.Assert(!pPager.pagerUseWal());
+//            else
+//            {
+//                // The transaction journal now exists and we have a RESERVED or an EXCLUSIVE lock on the main database file.  Write the current page to
+//                // the transaction journal if it is not there already.
+//                if (!pageInJournal(pPg) && !pPager.pagerUseWal())
+//                {
+//                    Debug.Assert(!pPager.pagerUseWal());
+//                    if (pPg.ID <= pPager.dbOrigSize && pPager.jfd.IsOpen)
+//                    {
+//                        var iOff = pPager.journalOff;
+//                        // We should never write to the journal file the page that contains the database locks.  The following Debug.Assert verifies that we do not.
+//                        Debug.Assert(pPg.ID != ((VirtualFile.PENDING_BYTE / (pPager.pageSize)) + 1));
+//                        Debug.Assert(pPager.journalHdr <= pPager.journalOff);
+//                        byte[] pData2 = null;
+//                        if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
+//                            return RC.NOMEM;
+//                        var cksum = pPager.pager_cksum(pData2);
+//                        // Even if an IO or diskfull error occurred while journalling the page in the block above, set the need-sync flag for the page.
+//                        // Otherwise, when the transaction is rolled back, the logic in playback_one_page() will think that the page needs to be restored
+//                        // in the database file. And if an IO error occurs while doing so, then corruption may follow.
+//                        pPg.Flags |= PgHdr.PGHDR.NEED_SYNC;
+//                        rc = pPager.jfd.WriteByte(iOff, pPg.ID);
+//                        if (rc != RC.OK)
+//                            return rc;
+//                        rc = pPager.jfd.Write(pData2, pPager.pageSize, iOff + 4);
+//                        if (rc != RC.OK)
+//                            return rc;
+//                        rc = pPager.jfd.WriteByte(iOff + pPager.pageSize + 4, cksum);
+//                        if (rc != RC.OK)
+//                            return rc;
+//                        SysEx.IOTRACE("JOUT {0:x} {1} {2,11} {3}", pPager.GetHashCode(), pPg.ID, pPager.journalOff, pPager.pageSize);
+//                        PAGERTRACE("JOURNAL {0} page {1} needSync={2} hash({3,08:x})", PAGERID(pPager), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0, pager_pagehash(pPg));
+//                        pPager.journalOff += 8 + pPager.pageSize;
+//                        pPager.nRec++;
+//                        Debug.Assert(pPager.pInJournal != null);
+//                        rc = pPager.pInJournal.Set(pPg.ID);
+//                        Debug.Assert(rc == RC.OK || rc == RC.NOMEM);
+//                        rc |= pPager.addToSavepointBitvecs(pPg.ID);
+//                        if (rc != RC.OK)
+//                        {
+//                            Debug.Assert(rc == RC.NOMEM);
+//                            return rc;
+//                        }
+//                    }
+//                    else
+//                    {
+//                        if (pPager.eState != PAGER.WRITER_DBMOD)
+//                            pPg.Flags |= PgHdr.PGHDR.NEED_SYNC;
+//                        PAGERTRACE("APPEND {0} page {1} needSync={2}", PAGERID(pPager), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0);
+//                    }
+//                }
+//                // If the statement journal is open and the page is not in it, then write the current page to the statement journal.  Note that
+//                // the statement journal format differs from the standard journal format in that it omits the checksums and the header.
+//                if (subjRequiresPage(pPg))
+//                    rc = subjournalPage(pPg);
+//            }
+//            // Update the database size and return.
+//            if (pPager.dbSize < pPg.ID)
+//                pPager.dbSize = pPg.ID;
+//            return rc;
+//        }
 
-        private RC pager_incr_changecounter(bool isDirectMode)
-        {
-            var rc = RC.OK;
-            Debug.Assert(this.eState == PAGER.WRITER_CACHEMOD || this.eState == PAGER.WRITER_DBMOD);
-            Debug.Assert(assert_pager_state());
-            // Declare and initialize constant integer 'isDirect'. If the atomic-write optimization is enabled in this build, then isDirect
-            // is initialized to the value passed as the isDirectMode parameter to this function. Otherwise, it is always set to zero.
-            // The idea is that if the atomic-write optimization is not enabled at compile time, the compiler can omit the tests of
-            // 'isDirect' below, as well as the block enclosed in the "if( isDirect )" condition.
-#if !SQLITE_ENABLE_ATOMIC_WRITE
-            var DIRECT_MODE = false;
-            Debug.Assert(!isDirectMode);
-            SysEx.UNUSED_PARAMETER(isDirectMode);
-#else
-            var DIRECT_MODE = isDirectMode;
-#endif
-            if (!this.changeCountDone && this.dbSize > 0)
-            {
-                PgHdr pPgHdr = null; // Reference to page 1
-                Debug.Assert(!this.tempFile && this.fd.IsOpen);
-                // Open page 1 of the file for writing.
-                rc = Get(1, ref pPgHdr);
-                Debug.Assert(pPgHdr == null || rc == RC.OK);
-                // If page one was fetched successfully, and this function is not operating in direct-mode, make page 1 writable.  When not in 
-                // direct mode, page 1 is always held in cache and hence the PagerGet() above is always successful - hence the ALWAYS on rc==SQLITE.OK.
-                if (!DIRECT_MODE && Check.ALWAYS(rc == RC.OK))
-                    rc = Write(pPgHdr);
-                if (rc == RC.OK)
-                {
-                    // Actually do the update of the change counter
-                    pager_write_changecounter(pPgHdr);
-                    // If running in direct mode, write the contents of page 1 to the file.
-                    if (DIRECT_MODE)
-                    {
-                        byte[] zBuf = null;
-                        Debug.Assert(this.dbFileSize > 0);
-                        if (CODEC2(this, pPgHdr.Data, 1, codec_ctx.ENCRYPT_WRITE_CTX, ref zBuf))
-                            return rc = RC.NOMEM;
-                        if (rc == RC.OK)
-                            rc = this.fd.Write(zBuf, this.pageSize, 0);
-                        if (rc == RC.OK)
-                            this.changeCountDone = true;
-                    }
-                    else
-                        this.changeCountDone = true;
-                }
-                // Release the page reference.
-                Unref(pPgHdr);
-            }
-            return rc;
-        }
+//        private RC pager_incr_changecounter(bool isDirectMode)
+//        {
+//            var rc = RC.OK;
+//            Debug.Assert(this.eState == PAGER.WRITER_CACHEMOD || this.eState == PAGER.WRITER_DBMOD);
+//            Debug.Assert(assert_pager_state());
+//            // Declare and initialize constant integer 'isDirect'. If the atomic-write optimization is enabled in this build, then isDirect
+//            // is initialized to the value passed as the isDirectMode parameter to this function. Otherwise, it is always set to zero.
+//            // The idea is that if the atomic-write optimization is not enabled at compile time, the compiler can omit the tests of
+//            // 'isDirect' below, as well as the block enclosed in the "if( isDirect )" condition.
+//#if !SQLITE_ENABLE_ATOMIC_WRITE
+//            var DIRECT_MODE = false;
+//            Debug.Assert(!isDirectMode);
+//            SysEx.UNUSED_PARAMETER(isDirectMode);
+//#else
+//            var DIRECT_MODE = isDirectMode;
+//#endif
+//            if (!this.changeCountDone && this.dbSize > 0)
+//            {
+//                PgHdr pPgHdr = null; // Reference to page 1
+//                Debug.Assert(!this.tempFile && this.fd.IsOpen);
+//                // Open page 1 of the file for writing.
+//                rc = Get(1, ref pPgHdr);
+//                Debug.Assert(pPgHdr == null || rc == RC.OK);
+//                // If page one was fetched successfully, and this function is not operating in direct-mode, make page 1 writable.  When not in 
+//                // direct mode, page 1 is always held in cache and hence the PagerGet() above is always successful - hence the ALWAYS on rc==SQLITE.OK.
+//                if (!DIRECT_MODE && Check.ALWAYS(rc == RC.OK))
+//                    rc = Write(pPgHdr);
+//                if (rc == RC.OK)
+//                {
+//                    // Actually do the update of the change counter
+//                    pager_write_changecounter(pPgHdr);
+//                    // If running in direct mode, write the contents of page 1 to the file.
+//                    if (DIRECT_MODE)
+//                    {
+//                        byte[] zBuf = null;
+//                        Debug.Assert(this.dbFileSize > 0);
+//                        if (CODEC2(this, pPgHdr.Data, 1, codec_ctx.ENCRYPT_WRITE_CTX, ref zBuf))
+//                            return rc = RC.NOMEM;
+//                        if (rc == RC.OK)
+//                            rc = this.fd.Write(zBuf, this.pageSize, 0);
+//                        if (rc == RC.OK)
+//                            this.changeCountDone = true;
+//                    }
+//                    else
+//                        this.changeCountDone = true;
+//                }
+//                // Release the page reference.
+//                Unref(pPgHdr);
+//            }
+//            return rc;
+//        }
     }
 }

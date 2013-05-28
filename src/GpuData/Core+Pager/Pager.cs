@@ -16,8 +16,8 @@ namespace Core
         const int DEFAULT_PAGE_SIZE = 1024;
         const int MAX_DEFAULT_PAGE_SIZE = 8192;
         const int MAX_PAGE_COUNT = 1073741823;
-
-        //const int DEFAULT_JOURNAL_SIZE_LIMIT = -1;
+        // pager.h
+        const int DEFAULT_JOURNAL_SIZE_LIMIT = -1;
 
         public enum PAGER : byte
         {
@@ -39,7 +39,7 @@ namespace Core
             public Bitvec InSavepoint;      // Set of pages in this savepoint
             public Pid Orig;                // Original number of pages in file
             public Pid SubRecords;              // Index of first record in sub-journal
-#if false && !OMIT_WAL
+#if !OMIT_WAL
             public uint WalData[WAL_SAVEPOINT_NDATA];        // WAL savepoint context
 #else
             // For C#
@@ -52,7 +52,7 @@ namespace Core
         public VFileSystem Vfs;             // OS functions to use for IO
         public bool ExclusiveMode;          // Boolean. True if locking_mode==EXCLUSIVE
         public IPager.JOURNALMODE JournalMode;     // One of the PAGER_JOURNALMODE_* values
-        public byte UseJournal;             // Use a rollback journal on this file
+        public bool UseJournal;             // Use a rollback journal on this file
         public bool NoSync;                 // Do not sync the journal if true
         public bool FullSync;               // Do extra syncs of the journal for robustness
         public VFile.SYNC CheckpointSyncFlags;    // SYNC_NORMAL or SYNC_FULL for checkpoint
@@ -68,9 +68,9 @@ namespace Core
         public VFile.LOCK Lock;             // Current lock held on database file 
         public bool ChangeCountDone;        // Set after incrementing the change-counter 
         public bool SetMaster;              // True if a m-j name has been written to jrnl 
-        public byte DoNotSpill;             // Do not spill the cache when non-zero 
-        public byte DoNotSyncSpill;         // Do not do a spill that requires jrnl sync 
-        public byte SubjInMemory;           // True to use in-memory sub-journals 
+        public bool DoNotSpill;             // Do not spill the cache when non-zero 
+        public bool DoNotSyncSpill;         // Do not do a spill that requires jrnl sync 
+        public bool SubjInMemory;           // True to use in-memory sub-journals 
         public Pid DBSize;                  // Number of pages in the database 
         public Pid DBOrigSize;              // dbSize before the current transaction 
         public Pid DBFileSize;              // Number of pages in the database file 
@@ -113,7 +113,7 @@ namespace Core
 #endif
         public byte[] TmpSpace;				// Pager.pageSize bytes of space for tmp use
         public PCache PCache;				// Pointer to page cache object
-#if false && !OMIT_WAL
+#if !OMIT_WAL
         public Wal Wal;					    // Write-ahead log used by "journal_mode=wal"
         public char WalName;                // File name for write-ahead log
 #else
@@ -133,7 +133,7 @@ namespace Core
 
         const int MAX_PID = 2147483647;
 
-#if false && !OMIT_WAL
+#if !OMIT_WAL
         internal static bool UseWal(Pager pager) { return (pPager.pWal != 0); }
 #else
         internal bool UseWal() { return false; }
@@ -142,6 +142,10 @@ namespace Core
         internal RC OpenWalIfPresent() { return RC.OK; }
         internal RC BeginReadTransaction() { return RC.OK; }
 #endif
+
+        static void PAGERTRACE(string x, params object[] args) { Console.WriteLine("p:" + string.Format(x, args)); }
+        static int PAGERID(Pager p) { return p.GetHashCode(); }
+        static int FILEHANDLEID(VFile fd) { return fd.GetHashCode(); }
     }
 
     public partial class Pager
@@ -1368,6 +1372,141 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             ConvertEx.Put4(pg.Data, 96, SysEx.VERSION_NUMBER);
         }
 
+#if !OMIT_WAL
+        static int pagerUndoCallback(Pager pCtx, Pgno iPg)
+        {
+            var rc = RC.OK;
+            Pager pPager = (Pager)pCtx;
+            PgHdr pPg;
+
+            pPg = sqlite3PagerLookup(pPager, iPg);
+            if (pPg)
+            {
+                if (sqlite3PcachePageRefcount(pPg) == 1)
+                {
+                    sqlite3PcacheDrop(pPg);
+                }
+                else
+                {
+                    rc = readDbPage(pPg);
+                    if (rc == SQLITE.OK)
+                    {
+                        pPager._reiniter(pPg);
+                    }
+                    sqlite3PagerUnref(pPg);
+                }
+            }
+            // Normally, if a transaction is rolled back, any backup processes are updated as data is copied out of the rollback journal and into the
+            // database. This is not generally possible with a WAL database, as rollback involves simply truncating the log file. Therefore, if one
+            // or more frames have already been written to the log (and therefore also copied into the backup databases) as part of this transaction,
+            // the backups must be restarted.
+            sqlite3BackupRestart(pPager.pBackup);
+            return rc;
+        }
+
+        static int pagerRollbackWal(Pager pPager)
+        {
+            int rc;                         /* Return Code */
+            PgHdr pList;                   /* List of dirty pages to revert */
+
+            /* For all pages in the cache that are currently dirty or have already been written (but not committed) to the log file, do one of the 
+            ** following:
+            **   + Discard the cached page (if refcount==0), or
+            **   + Reload page content from the database (if refcount>0).
+            */
+            pPager._dbSize = pPager._dbOrigSize;
+            rc = sqlite3WalUndo(pPager._wal, pagerUndoCallback, pPager);
+            pList = sqlite3PcacheDirtyList(pPager._pcache);
+            while (pList && rc == SQLITE.OK)
+            {
+                PgHdr pNext = pList.pDirty;
+                rc = pagerUndoCallback(pPager, pList.pgno);
+                pList = pNext;
+            }
+
+            return rc;
+        }
+
+
+        static int pagerWalFrames(Pager pPager, PgHdr pList, Pgno nTruncate, int isCommit, int syncFlags)
+        {
+            int rc;                         /* Return code */
+#if DEBUG || CHECK_PAGES
+            PgHdr p;                       /* For looping over pages */
+#endif
+
+            Debug.Assert(pPager._wal);
+#if DEBUG
+/* Verify that the page list is in accending order */
+for(p=pList; p && p->pDirty; p=p->pDirty){
+assert( p->pgno < p->pDirty->pgno );
+}
+#endif
+
+            if (isCommit)
+            {
+                /* If a WAL transaction is being committed, there is no point in writing
+                ** any pages with page numbers greater than nTruncate into the WAL file.
+                ** They will never be read by any client. So remove them from the pDirty
+                ** list here. */
+                PgHdr* p;
+                PgHdr** ppNext = &pList;
+                for (p = pList; (*ppNext = p); p = p->pDirty)
+                {
+                    if (p->pgno <= nTruncate) ppNext = &p->pDirty;
+                }
+                assert(pList);
+            }
+
+
+            if (pList->pgno == 1) pager_write_changecounter(pList);
+            rc = sqlite3WalFrames(pPager._wal,
+            pPager._pageSize, pList, nTruncate, isCommit, syncFlags
+            );
+            if (rc == SQLITE.OK && pPager.pBackup)
+            {
+                PgHdr* p;
+                for (p = pList; p; p = p->pDirty)
+                {
+                    sqlite3BackupUpdate(pPager.pBackup, p->pgno, (u8*)p->pData);
+                }
+            }
+
+#if CHECK_PAGES
+pList = sqlite3PcacheDirtyList(pPager.pPCache);
+for(p=pList; p; p=p->pDirty){
+pager_set_pagehash(p);
+}
+#endif
+
+            return rc;
+        }
+
+        static int pagerBeginReadTransaction(Pager* pPager)
+        {
+            int rc;                         /* Return code */
+            int changed = 0;                /* True if cache must be reset */
+
+            assert(_pagerUseWal(pPager));
+            assert(pPager.eState == PAGER_OPEN || pPager.eState == PAGER_READER);
+
+            /* sqlite3WalEndReadTransaction() was not called for the previous
+            ** transaction in locking_mode=EXCLUSIVE.  So call it now.  If we
+            ** are in locking_mode=NORMAL and EndRead() was previously called,
+            ** the duplicate call is harmless.
+            */
+            sqlite3WalEndReadTransaction(pPager.pWal);
+
+            rc = sqlite3WalBeginReadTransaction(pPager.pWal, &changed);
+            if (rc != SQLITE.OK || changed)
+            {
+                pager_reset(pPager);
+            }
+
+            return rc;
+        }
+#endif
+
         private RC pagerPagecount(out Pid pagesOut)
         {
             // Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
@@ -1401,6 +1540,48 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             pagesOut = pages;
             return RC.OK;
         }
+
+#if !OMIT_WAL
+        static int pagerOpenWalIfPresent(Pager* pPager)
+        {
+            int rc = SQLITE.OK;
+            Debug.Assert(pPager.eState == PAGER_OPEN);
+            Debug.Assert(pPager.eLock >= SHARED_LOCK || pPager.noReadlock);
+
+            if (!pPager.tempFile)
+            {
+                int isWal;                    /* True if WAL file exists */
+                Pgno nPage;                   /* Size of the database file */
+
+                rc = pagerPagecount(pPager, &nPage);
+                if (rc) return rc;
+                if (nPage == 0)
+                {
+                    rc = sqlite3OsDelete(pPager.pVfs, pPager.zWal, 0);
+                    isWal = 0;
+                }
+                else
+                {
+                    rc = sqlite3OsAccess(
+                    pPager.pVfs, pPager.zWal, SQLITE_ACCESS_EXISTS, &isWal
+                    );
+                }
+                if (rc == SQLITE.OK)
+                {
+                    if (isWal)
+                    {
+                        testcase(sqlite3PcachePagecount(pPager.pPCache) == 0);
+                        rc = sqlite3PagerOpenWal(pPager, 0);
+                    }
+                    else if (pPager.journalMode == PAGER_JOURNALMODE_WAL)
+                    {
+                        pPager.journalMode = PAGER_JOURNALMODE_DELETE;
+                    }
+                }
+            }
+            return rc;
+        }
+#endif
 
         private RC pagerPlaybackSavepoint(PagerSavepoint savepoint)
         {
@@ -1483,17 +1664,1441 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         #endregion
 
-        #region X
+        #region Name3
 
+        // was:sqlite3PagerSetCachesize
+        public void SetCacheSize(int maxPage)
+        {
+            PCache.SetCachesize(maxPage);
+        }
 
+        void sqlite3PagerShrink(Pager pager)
+        {
+            PCache.Shrink();
+        }
+
+#if !OMIT_PAGER_PRAGMAS
+        // was:sqlite3PagerSetSafetyLevel
+        public void SetSafetyLevel(int level, bool fullFsync, bool checkpointFullFsync)
+        {
+            Debug.Assert(level >= 1 && level <= 3);
+            NoSync = (level == 1 || TempFile);
+            FullSync = (level == 3 && !TempFile);
+            if (NoSync)
+            {
+                SyncFlags = 0;
+                CheckpointSyncFlags = 0;
+            }
+            else if (fullFsync)
+            {
+                SyncFlags = VFile.SYNC.FULL;
+                CheckpointSyncFlags = VFile.SYNC.FULL;
+            }
+            else if (checkpointFullFsync)
+            {
+                SyncFlags = VFile.SYNC.NORMAL;
+                CheckpointSyncFlags = VFile.SYNC.FULL;
+            }
+            else
+            {
+                SyncFlags = VFile.SYNC.NORMAL;
+                CheckpointSyncFlags = VFile.SYNC.NORMAL;
+            }
+            WalSyncFlags = SyncFlags;
+            if (FullSync)
+                WalSyncFlags |= VFile.SYNC.WAL_TRANSACTIONS;
+        }
+#endif
+
+#if TEST
+        // The following global variable is incremented whenever the library attempts to open a temporary file.  This information is used for testing and analysis only.  
+        int sqlite3_opentemp_count = 0;
+#endif
+
+        private RC pagerOpentemp(ref VFile file, VFileSystem.OPEN vfsFlags)
+        {
+#if TEST
+            sqlite3_opentemp_count++; // Used for testing and analysis only
+#endif
+            vfsFlags |= VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.EXCLUSIVE | VFileSystem.OPEN.DELETEONCLOSE;
+            VFileSystem.OPEN dummy = 0;
+            var rc = Vfs.Open(null, file, vfsFlags, out dummy);
+            Debug.Assert(rc != RC.OK || file.Opened);
+            return rc;
+        }
+
+        // was:sqlite3PagerSetBusyhandler
+        public void SetBusyHandler(Func<object, int> busyHandler, object busyHandlerArg)
+        {
+            BusyHandler = busyHandler;
+            BusyHandlerArg = busyHandlerArg;
+
+            if (File.Opened)
+            {
+                //object ap = BusyHandler;
+                //Debug.Assert(ap[0] == busyHandler);
+                //Debug.Assert(ap[1] == busyHandlerArg);
+                // TODO: This
+                //File.FileControl(VFile.FCNTL.BUSYHANDLER, (void *)ap);
+            }
+        }
+
+        // was:sqlite3PagerSetPagesize
+        public RC SetPageSize(ref uint pageSizeRef, int reserveBytes)
+        {
+            // It is not possible to do a full assert_pager_state() here, as this function may be called from within PagerOpen(), before the state
+            // of the Pager object is internally consistent.
+            //
+            // At one point this function returned an error if the pager was in PAGER_ERROR state. But since PAGER_ERROR state guarantees that
+            // there is at least one outstanding page reference, this function is a no-op for that case anyhow.
+            var pageSize = pageSizeRef;
+            Debug.Assert(pageSize == 0 || (pageSize >= 512 && pageSize <= MAX_PAGE_SIZE));
+            var rc = RC.OK;
+            if ((!MemoryDB || DBSize == 0) &&
+                PCache.get_Refs() == 0 &&
+                pageSize != 0 && pageSize != (uint)PageSize)
+            {
+                long bytes = 0;
+                if (State > PAGER.OPEN && File.Opened)
+                    rc = File.get_FileSize(out bytes);
+                byte[] tempSpace = null; // New temp space
+                if (rc == RC.OK)
+                {
+                    tempSpace = sqlite3PageMalloc(pageSize); //MallocEx.sqlite3Malloc((int)pageSize)
+                }
+                if (rc == RC.OK)
+                {
+                    pager_reset();
+                    DBSize = (Pid)((bytes + pageSize - 1) / pageSize);
+                    PageSize = (int)pageSize;
+                    sqlite3PageFree(ref TmpSpace);
+                    TmpSpace = tempSpace;
+                    PCache.SetPageSize((int)pageSize);
+                }
+            }
+            pageSizeRef = (uint)PageSize;
+            if (rc == RC.OK)
+            {
+                if (reserveBytes < 0) reserveBytes = ReserveBytes;
+                Debug.Assert(reserveBytes >= 0 && reserveBytes < 1000);
+                ReserveBytes = (short)reserveBytes;
+                pagerReportSize();
+            }
+            return rc;
+        }
+
+        public byte[] sqlite3PagerTempSpace()
+        {
+            return TmpSpace;
+        }
+
+        // was:sqlite3PagerMaxPageCount
+        public Pid SetMaxPageCount(int maxPage)
+        {
+            if (maxPage > 0)
+                MaxPid = (Pid)maxPage;
+            Debug.Assert(State != PAGER.OPEN);  // Called only by OP_MaxPgcnt
+            Debug.Assert(MaxPid >= DBSize);     // OP_MaxPgcnt enforces this
+            return MaxPid;
+        }
+
+#if TEST
+        //extern int sqlite3_io_error_pending;
+        //extern int sqlite3_io_error_hit;
+        static int saved_cnt;
+
+        void disable_simulated_io_errors()
+        {
+            saved_cnt = sqlite3_io_error_pending;
+            sqlite3_io_error_pending = -1;
+        }
+
+        void enable_simulated_io_errors()
+        {
+            sqlite3_io_error_pending = saved_cnt;
+        }
+#else
+        void disable_simulated_io_errors() {}
+        void enable_simulated_io_errors() {}
+#endif
+
+        public RC ReadFileHeader(int n, byte[] dest)
+        {
+            Array.Clear(dest, 0, n);
+            Debug.Assert(File.Opened || TempFile);
+
+            // This routine is only called by btree immediately after creating the Pager object.  There has not been an opportunity to transition to WAL mode yet.
+            Debug.Assert(!UseWal());
+
+            var rc = RC.OK;
+            if (File.Opened)
+            {
+                SysEx.IOTRACE("DBHDR {0} 0 {1}", GetHashCode(), n);
+                rc = File.Read(dest, n, 0);
+                if (rc == RC.IOERR_SHORT_READ)
+                    rc = RC.OK;
+            }
+            return rc;
+        }
+
+        // was:sqlite3PagerPagecount
+        public void GetPageCount(out Pid pagesOut)
+        {
+            Debug.Assert(State >= PAGER.READER);
+            Debug.Assert(State != PAGER.WRITER_FINISHED);
+            pagesOut = DBSize;
+        }
+
+        private RC pager_wait_on_lock(VFile.LOCK locktype)
+        {
+            // Check that this is either a no-op (because the requested lock is already held, or one of the transistions that the busy-handler
+            // may be invoked during, according to the comment above sqlite3PagerSetBusyhandler().
+            Debug.Assert((Lock >= locktype) ||
+                (Lock == VFile.LOCK.NO && locktype == VFile.LOCK.SHARED) ||
+                (Lock == VFile.LOCK.RESERVED && locktype == VFile.LOCK.EXCLUSIVE));
+
+            RC rc;
+            do
+                rc = pagerLockDb(locktype);
+            while (rc == RC.BUSY && BusyHandler(BusyHandlerArg) != 0);
+            return rc;
+        }
+
+#if DEBUG
+        static void assertTruncateConstraintCb(PgHdr page)
+        {
+            Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0);
+            Debug.Assert(!subjRequiresPage(page) || page.ID <= page.Pager.DBSize);
+        }
+        void assertTruncateConstraint()
+        {
+            PCache.IterateDirty(assertTruncateConstraintCb);
+        }
+#else
+        void assertTruncateConstraint() { }
+#endif
+
+        // was:sqlite3PagerTruncateImage
+        public void TruncateImage(Pid pages)
+        {
+            Debug.Assert(DBSize >= pages);
+            Debug.Assert(State >= PAGER.WRITER_CACHEMOD);
+            DBSize = pages;
+
+            // At one point the code here called assertTruncateConstraint() to ensure that all pages being truncated away by this operation are,
+            // if one or more savepoints are open, present in the savepoint journal so that they can be restored if the savepoint is rolled
+            // back. This is no longer necessary as this function is now only called right before committing a transaction. So although the 
+            // Pager object may still have open savepoints (Pager.nSavepoint!=0), they cannot be rolled back. So the assertTruncateConstraint() call
+            // is no longer correct.
+        }
+
+        private RC pagerSyncHotJournal()
+        {
+            var rc = RC.OK;
+            if (!NoSync)
+                rc = JournalFile.Sync(VFile.SYNC.NORMAL);
+            if (rc == RC.OK)
+                rc = JournalFile.get_FileSize(out JournalHeader);
+            return rc;
+        }
+
+        public RC Close()
+        {
+            Debug.Assert(assert_pager_state());
+            disable_simulated_io_errors();
+            SysEx.BeginBenignAlloc();
+            ExclusiveMode = false;
+            var tmp = TmpSpace;
+#if !OMIT_WAL
+            Wal.sqlite3WalClose(CheckpointSyncFlags, PageSize, tmp);
+            Wal = null;
+#endif
+            pager_reset();
+            if (MemoryDB)
+                pager_unlock();
+            else
+            {
+                // If it is open, sync the journal file before calling UnlockAndRollback. If this is not done, then an unsynced portion of the open journal 
+                // file may be played back into the database. If a power failure occurs while this is happening, the database could become corrupt.
+                //
+                // If an error occurs while trying to sync the journal, shift the pager into the ERROR state. This causes UnlockAndRollback to unlock the
+                // database and close the journal file without attempting to roll it back or finalize it. The next database user will have to do hot-journal
+                // rollback before accessing the database file.
+                if (JournalFile.Opened)
+                    pager_error(pagerSyncHotJournal());
+                pagerUnlockAndRollback();
+            }
+            SysEx.EndBenignAlloc();
+            PAGERTRACE("CLOSE {0}", PAGERID(this));
+            SysEx.IOTRACE("CLOSE {0:x}", GetHashCode());
+            JournalFile.Close();
+            File.Close();
+            sqlite3PageFree(tmp);
+            PCache.Close();
+
+#if HAS_CODEC
+			if (CodecFree) CodecFree(Codec);
+#endif
+
+            Debug.Assert(Savepoints == null && !InJournal);
+            Debug.Assert(!JournalFile.Opened && !SubJournalFile.Opened);
+
+            //this = null;
+            return RC.OK;
+        }
+
+#if !DEBUG || TEST
+        // was:sqlite3PagerPagenumber
+        public static Pid GetPageID(IPage pg)
+        {
+            return pg.ID;
+        }
+#endif
+
+        // was:sqlite3PagerRef
+        public static void AddPageRef(IPage pg)
+        {
+            PCache.Ref(pg);
+        }
 
         #endregion
-        #region X
+
+        #region Main
+
+        private RC syncJournal(bool newHeader)
+        {
+
+            Debug.Assert(State == PAGER.WRITER_CACHEMOD || State == PAGER.WRITER_DBMOD);
+            Debug.Assert(assert_pager_state());
+            Debug.Assert(!UseWal());
+
+            var rc = sqlite3PagerExclusiveLock();
+            if (rc != RC.OK) return rc;
+
+            if (!NoSync)
+            {
+                Debug.Assert(!TempFile);
+                if (JournalFile.Opened && JournalMode != IPager.JOURNALMODE.JMEMORY)
+                {
+                    var dc = File.get_DeviceCharacteristics();
+                    Debug.Assert(JournalFile.Opened);
+
+                    if ((dc & VFile.IOCAP.SAFE_APPEND) == 0)
+                    {
+                        // This block deals with an obscure problem. If the last connection that wrote to this database was operating in persistent-journal
+                        // mode, then the journal file may at this point actually be larger than Pager.journalOff bytes. If the next thing in the journal
+                        // file happens to be a journal-header (written as part of the previous connection's transaction), and a crash or power-failure 
+                        // occurs after nRec is updated but before this connection writes anything else to the journal file (or commits/rolls back its 
+                        // transaction), then SQLite may become confused when doing the hot-journal rollback following recovery. It may roll back all
+                        // of this connections data, then proceed to rolling back the old, out-of-date data that follows it. Database corruption.
+                        //
+                        // To work around this, if the journal file does appear to contain a valid header following Pager.journalOff, then write a 0x00
+                        // byte to the start of it to prevent it from being recognized.
+                        //
+                        // Variable iNextHdrOffset is set to the offset at which this problematic header will occur, if it exists. aMagic is used 
+                        // as a temporary buffer to inspect the first couple of bytes of the potential journal header.
+                        var header = new byte[_journalMagic.Length + 4];
+                        _journalMagic.CopyTo(header, 0);
+                        ConvertEx.Put4(header, _journalMagic.Length, Records);
+
+                        var magic = new byte[8];
+                        var nextHdrOffset = journalHdrOffset();
+                        rc = JournalFile.Read(magic, 8, nextHdrOffset);
+
+                        if (rc == RC.OK && Enumerable.SequenceEqual(magic, _journalMagic))
+                        {
+                            var zerobyte = new byte[1];
+                            rc = JournalFile.Write(zerobyte, 1, nextHdrOffset);
+                        }
+                        if (rc != RC.OK && rc != RC.IOERR_SHORT_READ)
+                            return rc;
+
+                        // Write the nRec value into the journal file header. If in full-synchronous mode, sync the journal first. This ensures that
+                        // all data has really hit the disk before nRec is updated to mark it as a candidate for rollback.
+                        //
+                        // This is not required if the persistent media supports the SAFE_APPEND property. Because in this case it is not possible 
+                        // for garbage data to be appended to the file, the nRec field is populated with 0xFFFFFFFF when the journal header is written
+                        // and never needs to be updated.
+                        if (FullSync && (dc & VFile.IOCAP.SEQUENTIAL) == 0)
+                        {
+                            PAGERTRACE("SYNC journal of {0}", PAGERID(this));
+                            SysEx.IOTRACE("JSYNC {0:x}", GetHashCode());
+                            rc = JournalFile.Sync(SyncFlags);
+                            if (rc != RC.OK) return rc;
+                        }
+                        SysEx.IOTRACE("JHDR {0:x} {1,11}", GetHashCode(), JournalHeader);
+                        rc = JournalFile.Write(header, header.Length, JournalHeader);
+                        if (rc != RC.OK) return rc;
+                    }
+                    if ((dc & VFile.IOCAP.SEQUENTIAL) == 0)
+                    {
+                        PAGERTRACE("SYNC journal of {0}", PAGERID(this));
+                        SysEx.IOTRACE("JSYNC {0:x}", GetHashCode());
+                        rc = JournalFile.Sync(SyncFlags | (SyncFlags == VFile.SYNC.FULL ? VFile.SYNC.DATAONLY : 0));
+                        if (rc != RC.OK) return rc;
+                    }
+
+                    JournalHeader = JournalOffset;
+                    if (newHeader && (dc & VFile.IOCAP.SAFE_APPEND) == 0)
+                    {
+                        Records = 0;
+                        rc = writeJournalHdr();
+                        if (rc != RC.OK) return rc;
+                    }
+                }
+                else
+                    JournalHeader = JournalOffset;
+            }
+
+            // Unless the pager is in noSync mode, the journal file was just successfully synced. Either way, clear the PGHDR_NEED_SYNC flag on all pages.
+            PCache.ClearSyncFlags();
+            State = PAGER.WRITER_DBMOD;
+            Debug.Assert(assert_pager_state());
+            return RC.OK;
+        }
+
+        private RC pager_write_pagelist(PgHdr list)
+        {
+            // This function is only called for rollback pagers in WRITER_DBMOD state.
+            Debug.Assert(!UseWal());
+            Debug.Assert(State == PAGER.WRITER_DBMOD);
+            Debug.Assert(Lock == VFile.LOCK.EXCLUSIVE);
+
+            // If the file is a temp-file has not yet been opened, open it now. It is not possible for rc to be other than SQLITE_OK if this branch
+            // is taken, as pager_wait_on_lock() is a no-op for temp-files.
+            var rc = RC.OK;
+            if (!File.Opened)
+            {
+                Debug.Assert(TempFile && rc == RC.OK);
+                rc = pagerOpentemp(ref File, VfsFlags);
+            }
+
+            // Before the first write, give the VFS a hint of what the final file size will be.
+            Debug.Assert(rc != RC.OK || File.Opened);
+            if (rc == RC.OK && DBSize > DBHintSize)
+            {
+                long sizeFile = PageSize * (long)DBSize;
+                File.FileControl(VFile.FCNTL.SIZE_HINT, ref sizeFile);
+                DBHintSize = DBSize;
+            }
+
+            while (rc == RC.OK && list != null)
+            {
+                var id = list.ID;
+
+                // If there are dirty pages in the page cache with page numbers greater than Pager.dbSize, this means sqlite3PagerTruncateImage() was called to
+                // make the file smaller (presumably by auto-vacuum code). Do not write any such pages to the file.
+                //
+                // Also, do not write out any page that has the PGHDR_DONT_WRITE flag set (set by sqlite3PagerDontWrite()).
+                if (id <= DBSize && (list.Flags & PgHdr.PGHDR.DONT_WRITE) == 0)
+                {
+                    Debug.Assert((list.Flags & PgHdr.PGHDR.NEED_SYNC) == 0);
+                    if (id == 1) pager_write_changecounter(list);
+
+                    // Encode the database
+                    byte[] data = null; // Data to write
+                    if (CODEC2(this, list.Data, id, codec_ctx.ENCRYPT_WRITE_CTX, ref data)) return RC.NOMEM;
+
+                    // Write out the page data.
+                    long offset = (id - 1) * (long)PageSize; // Offset to write
+                    rc = File.Write(data, PageSize, offset);
+
+                    // If page 1 was just written, update Pager.dbFileVers to match the value now stored in the database file. If writing this 
+                    // page caused the database file to grow, update dbFileSize. 
+                    if (id == 1)
+                        Buffer.BlockCopy(data, 24, DBFileVersion, 0, DBFileVersion.Length);
+                    if (id > DBFileSize)
+                        DBFileSize = id;
+                    Stats[(int)STAT.WRITE]++;
+
+                    // Update any backup objects copying the contents of this pager.
+                    if (Backup != null) Backup.Update(id, list.Data);
+
+                    PAGERTRACE("STORE {0} page {1} hash({2,08:x})", PAGERID(this), id, pager_pagehash(list));
+                    SysEx.IOTRACE("PGOUT {0:x} {1}", GetHashCode(), id);
+                    PAGER_INCR(sqlite3_pager_writedb_count);
+                }
+                else
+                    PAGERTRACE("NOSTORE {0} page {1}", PAGERID(this), id);
+                pager_set_pagehash(list);
+                list = list.Dirty;
+            }
+
+            return rc;
+        }
+
+        private RC openSubJournal()
+        {
+            var rc = RC.OK;
+            if (!SubJournalFile.Opened)
+            {
+                if (JournalMode == IPager.JOURNALMODE.JMEMORY || SubjInMemory)
+                    sqlite3MemJournalOpen(SubJournalFile); //SubJournalFile = new MemoryVFile();
+                else
+                    rc = pagerOpentemp(ref SubJournalFile, VFileSystem.OPEN.SUBJOURNAL);
+            }
+            return rc;
+        }
+
+        private static RC subjournalPage(PgHdr pg)
+        {
+            var rc = RC.OK;
+            var pager = pg.Pager;
+            if (pager.JournalMode != IPager.JOURNALMODE.OFF)
+            {
+                // Open the sub-journal, if it has not already been opened
+                Debug.Assert(pager.UseJournal != 0);
+                Debug.Assert(pager.JournalFile.Opened || pager.UseWal());
+                Debug.Assert(pager.SubJournalFile.Opened || pager.SubRecords == 0);
+                Debug.Assert(pager.UseWal() || pageInJournal(pg) || pg.ID > pager.DBOrigSize);
+                rc = pager.openSubJournal();
+                // If the sub-journal was opened successfully (or was already open), write the journal record into the file. 
+                if (rc == RC.OK)
+                {
+                    var data = pg.Data;
+                    long offset = pager.SubRecords * (4 + pager.PageSize);
+                    byte[] pData2 = null;
+                    if (CODEC2(pager, data, pg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2)) return RC.NOMEM;
+                    PAGERTRACE("STMT-JOURNAL {0} page {1}", PAGERID(pager), pg.ID);
+                    rc = pager.SubJournalFile.Write4(offset, pg.ID);
+                    if (rc == RC.OK)
+                        rc = pager.SubJournalFile.Write(pData2, pager.PageSize, offset + 4);
+                }
+            }
+            if (rc == RC.OK)
+            {
+                pager.SubRecords++;
+                Debug.Assert(pager.Savepoints.Length > 0);
+                rc = pager.addToSavepointBitvecs(pg.ID);
+            }
+            return rc;
+        }
+
+        private static RC pagerStress(object p, IPage pg)
+        {
+            var pager = (Pager)p;
+            Debug.Assert(pg.Pager == pager);
+            Debug.Assert((pg.Flags & PgHdr.PGHDR.DIRTY) != 0);
+
+            // The doNotSyncSpill flag is set during times when doing a sync of journal (and adding a new header) is not allowed. This occurs
+            // during calls to sqlite3PagerWrite() while trying to journal multiple pages belonging to the same sector.
+            //
+            // The doNotSpill flag inhibits all cache spilling regardless of whether or not a sync is required.  This is set during a rollback.
+            //
+            // Spilling is also prohibited when in an error state since that could lead to database corruption.   In the current implementaton it 
+            // is impossible for sqlite3PcacheFetch() to be called with createFlag==1 while in the error state, hence it is impossible for this routine to
+            // be called in the error state.  Nevertheless, we include a NEVER() test for the error state as a safeguard against future changes.
+
+            if (SysEx.NEVER(pager.ErrorCode != 0)) return RC.OK;
+            if (pager.DoNotSpill) return RC.OK;
+            if (pager.DoNotSyncSpill && (pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) return RC.OK;
+
+            pg.Dirty = null;
+            var rc = RC.OK;
+            if (pager.UseWal())
+            {
+                // Write a single frame for this page to the log.
+                if (subjRequiresPage(pg))
+                    rc = subjournalPage(pg);
+                if (rc == RC.OK)
+                    rc = pager.pagerWalFrames(pg, 0, 0);
+            }
+            else
+            {
+                // Sync the journal file if required. 
+                if ((pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 || pager.State == PAGER.WRITER_CACHEMOD)
+                    rc = pager.syncJournal(true);
+
+                // If the page number of this page is larger than the current size of the database image, it may need to be written to the sub-journal.
+                // This is because the call to pager_write_pagelist() below will not actually write data to the file in this case.
+                //
+                // Consider the following sequence of events:
+                //
+                //   BEGIN;
+                //     <journal page X>
+                //     <modify page X>
+                //     SAVEPOINT sp;
+                //       <shrink database file to Y pages>
+                //       pagerStress(page X)
+                //     ROLLBACK TO sp;
+                //
+                // If (X>Y), then when pagerStress is called page X will not be written out to the database file, but will be dropped from the cache. Then,
+                // following the "ROLLBACK TO sp" statement, reading page X will read data from the database file. This will be the copy of page X as it
+                // was when the transaction started, not as it was when "SAVEPOINT sp" was executed.
+                //
+                // The solution is to write the current data for page X into the sub-journal file now (if it is not already there), so that it will
+                // be restored to its current value when the "ROLLBACK TO sp" is executed.
+                if (SysEx.NEVER(rc == RC.OK && pg.ID > pager.DBSize && subjRequiresPage(pg)))
+                    rc = subjournalPage(pg);
+
+                // Write the contents of the page out to the database file.
+                if (rc == RC.OK)
+                {
+                    Debug.Assert((pg.Flags & PgHdr.PGHDR.NEED_SYNC) == 0);
+                    rc = pager.pager_write_pagelist(pg);
+                }
+            }
+
+            // Mark the page as clean.
+            if (rc == RC.OK)
+            {
+                PAGERTRACE("STRESS {0} page {1}", PAGERID(pager), pg.ID);
+                PCache.MakeClean(pg);
+            }
+
+            return pager.pager_error(rc);
+        }
+
+        // was:sqlite3PagerOpen
+        public static RC Open(VFileSystem vfs, out Pager pagerOut, string filename, int extraBytes, IPager.PAGEROPEN flags, VFileSystem.OPEN vfsFlags, Action<PgHdr> reinit, Func<object> memPageBuilder)
+        {
+            // Figure out how much space is required for each journal file-handle (there are two of them, the main journal and the sub-journal). This
+            // is the maximum space required for an in-memory journal file handle and a regular journal file-handle. Note that a "regular journal-handle"
+            // may be a wrapper capable of caching the first portion of the journal file in memory to implement the atomic-write optimization (see 
+            // source file journal.c).
+            int journalFileSize = SysEx.ROUND8(sqlite3JournalSize(vfs) > MemoryVFile.sqlite3MemJournalSize() ? sqlite3JournalSize(vfs) : MemoryVFile.sqlite3MemJournalSize()); // Bytes to allocate for each journal fd
+
+            // Set the output variable to NULL in case an error occurs.
+            pagerOut = null;
+
+            bool memoryDB = false;      // True if this is an in-memory file
+            string pathname = null;     // Full path to database file
+            string uri = null;          // URI args to copy
+#if !OMIT_MEMORYDB
+            if ((flags & IPager.PAGEROPEN.MEMORY) != 0)
+            {
+                memoryDB = true;
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    pathname = filename;
+                    filename = null;
+                }
+            }
+#endif
+
+            // Compute and store the full pathname in an allocated buffer pointed to by zPathname, length nPathname. Or, if this is a temporary file,
+            // leave both nPathname and zPathname set to 0.
+            var rc = RC.OK;
+            if (!string.IsNullOrEmpty(filename))
+            {
+                rc = vfs.FullPathname(filename, out pathname);
+                var z = uri = filename;
+                Debug.Assert(uri.Length >= 0);
+                if (rc == RC.OK && pathname.Length + 8 > vfs.MaxPathname)
+                {
+                    // This branch is taken when the journal path required by the database being opened will be more than pVfs->mxPathname
+                    // bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
+                    // check for a hot-journal before reading.
+                    rc = SysEx.CANTOPEN_BKPT();
+                }
+                if (rc != RC.OK)
+                    return rc;
+            }
+
+            // Allocate memory for the Pager structure, PCache object, the three file descriptors, the database file name and the journal file name.
+            var pager = new Pager(memPageBuilder);
+            pager.PCache = new PCache();
+            pager.File = new MemoryVFile();
+            pager.SubJournalFile = new MemoryVFile();
+            pager.JournalFile = new MemoryVFile();
+
+            // Fill in the Pager.zFilename and Pager.zJournal buffers, if required.
+            if (pathname != null)
+            {
+                Debug.Assert(pathname.Length > 0);
+                pager.Filename = pathname;
+                if (string.IsNullOrEmpty(uri)) pager.Filename += uri;
+                pager.Journal = pager.Filename + "-journal";
+#if !OMIT_WAL
+                pager.WalName = pager.Filename + "-wal";
+#endif
+            }
+            else
+                pager.Filename = string.Empty;
+            pager.Vfs = vfs;
+            pager.VfsFlags = vfsFlags;
+
+            // Open the pager file.
+            var tempFile = false; // True for temp files (incl. in-memory files)
+            var readOnly = false; // True if this is a read-only file
+            uint sizePage = DEFAULT_PAGE_SIZE;  // Default page size
+            if (!string.IsNullOrEmpty(filename))
+            {
+                VFileSystem.OPEN fout = 0; // VFS flags returned by xOpen()
+                rc = vfs.Open(filename, pager.File, vfsFlags, out fout);
+                Debug.Assert(memoryDB);
+                readOnly = ((fout & VFileSystem.OPEN.READONLY) != 0);
+
+                // If the file was successfully opened for read/write access, choose a default page size in case we have to create the
+                // database file. The default page size is the maximum of:
+                //
+                //    + SQLITE_DEFAULT_PAGE_SIZE,
+                //    + The value returned by sqlite3OsSectorSize()
+                //    + The largest page size that can be written atomically.
+                if (rc == RC.OK && !readOnly)
+                {
+                    pager.setSectorSize();
+                    Debug.Assert(DEFAULT_PAGE_SIZE <= MAX_DEFAULT_PAGE_SIZE);
+                    if (sizePage < pager.SectorSize)
+                        sizePage = (pager.SectorSize > MAX_DEFAULT_PAGE_SIZE ? MAX_DEFAULT_PAGE_SIZE : (uint)pager.SectorSize);
+#if ENABLE_ATOMIC_WRITE
+                    Debug.Assert((int)VFile.IOCAP.ATOMIC512 == (512 >> 8));
+                    Debug.Assert((int)VFile.IOCAP.ATOMIC64K == (65536 >> 8));
+                    Debug.Assert(MAX_DEFAULT_PAGE_SIZE <= 65536);
+                    var dc = (uint)pager.File.get_DeviceCharacteristics();
+                    for (var ii = sizePage; ii <= MAX_DEFAULT_PAGE_SIZE; ii = ii * 2)
+                        if ((dc & ((uint)VFile.IOCAP.ATOMIC | (ii >> 8))) != 0)
+                            sizePage = ii;
+#endif
+                }
+            }
+            else
+            {
+                // If a temporary file is requested, it is not opened immediately. In this case we accept the default page size and delay actually
+                // opening the file until the first call to OsWrite().
+                //
+                // This branch is also run for an in-memory database. An in-memory database is the same as a temp-file that is never written out to
+                // disk and uses an in-memory rollback journal.
+                tempFile = true;
+                pager.State = PAGER.READER;
+                pager.Lock = VFile.LOCK.EXCLUSIVE;
+                readOnly = (vfsFlags & VFileSystem.OPEN.READONLY) != 0;
+            }
+
+            // The following call to PagerSetPagesize() serves to set the value of Pager.pageSize and to allocate the Pager.pTmpSpace buffer.
+            if (rc == RC.OK)
+            {
+                Debug.Assert(!pager.MemoryDB);
+                rc = pager.SetPageSize(ref sizePage, -1);
+            }
+
+            // If an error occurred in either of the blocks above, free the Pager structure and close the file.
+            if (rc != RC.OK)
+            {
+                Debug.Assert(pager.TmpSpace == null);
+                pager.File.Close();
+                return rc;
+            }
+            // Initialize the PCache object.
+            Debug.Assert(extraBytes < 1000);
+            extraBytes = SysEx.ROUND8(extraBytes);
+            PCache.Open((int)sizePage, extraBytes, !memoryDB, (!memoryDB ? (Func<object, IPage, RC>)pagerStress : null), pager, pager.PCache);
+
+            PAGERTRACE("OPEN {0} {1}", FILEHANDLEID(pager.File), pager.Filename);
+            SysEx.IOTRACE("OPEN {0:x} {1}", pager.GetHashCode(), pager.Filename);
+
+            bool useJournal = (flags & IPager.PAGEROPEN.OMIT_JOURNAL) == 0; // False to omit journal
+            pager.UseJournal = useJournal;
+            pager.MaxPid = MAX_PAGE_COUNT;
+            pager.TempFile = tempFile;
+            //Debug.Assert(tempFile == IPager.LOCKINGMODE.NORMAL || tempFile == IPager.LOCKINGMODE.EXCLUSIVE);
+            //Debug.Assert(IPager.LOCKINGMODE.EXCLUSIVE == 1);
+            pager.ExclusiveMode = tempFile;
+            pager.ChangeCountDone = tempFile;
+            pager.MemoryDB = memoryDB;
+            pager.ReadOnly = readOnly;
+            Debug.Assert(useJournal || tempFile);
+            pager.NoSync = tempFile;
+            if (pager.NoSync)
+            {
+                Debug.Assert(!pager.FullSync);
+                Debug.Assert(pager.SyncFlags == 0);
+                Debug.Assert(pager.WalSyncFlags == 0);
+                Debug.Assert(pager.CheckpointSyncFlags == 0);
+            }
+            else
+            {
+                pager.FullSync = true;
+                pager.SyncFlags = VFile.SYNC.NORMAL;
+                pager.WalSyncFlags = VFile.SYNC.NORMAL | VFile.SYNC.WAL_TRANSACTIONS;
+                pager.CheckpointSyncFlags = VFile.SYNC.NORMAL;
+            }
+            pager.ExtraBytes = (ushort)extraBytes;
+            pager.JournalSizeLimit = DEFAULT_JOURNAL_SIZE_LIMIT;
+            Debug.Assert(pager.File.Opened || tempFile);
+            pager.setSectorSize();
+            if (!useJournal)
+                pager.JournalMode = IPager.JOURNALMODE.OFF;
+            else if (memoryDB)
+                pager.JournalMode = IPager.JOURNALMODE.JMEMORY;
+            pager.Reiniter = reinit;
+
+            pagerOut = pager;
+            return RC.OK;
+        }
+
+        private RC hasHotJournal(out bool existsOut)
+        {
+            Debug.Assert(UseJournal);
+            Debug.Assert(File.Opened);
+            Debug.Assert(State == PAGER.OPEN);
+            var journalOpened = JournalFile.Opened;
+            Debug.Assert(journalOpened || (JournalFile.get_DeviceCharacteristics() & VFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
+
+            existsOut = false;
+            var vfs = Vfs;
+            var rc = RC.OK;
+            var exists = 1; // True if a journal file is present
+            if (!journalOpened)
+                rc = vfs.Access(Journal, VFileSystem.ACCESS.EXISTS, out exists);
+            if (rc == RC.OK && exists != 0)
+            {
+                // Race condition here:  Another process might have been holding the the RESERVED lock and have a journal open at the sqlite3OsAccess() 
+                // call above, but then delete the journal and drop the lock before we get to the following sqlite3OsCheckReservedLock() call.  If that
+                // is the case, this routine might think there is a hot journal when in fact there is none.  This results in a false-positive which will
+                // be dealt with by the playback routine.  Ticket #3883.
+                var locked = 0; // True if some process holds a RESERVED lock
+                rc = File.CheckReservedLock(ref locked);
+                if (rc == RC.OK && locked == 0)
+                {
+                    // Check the size of the database file. If it consists of 0 pages, then delete the journal file. See the header comment above for 
+                    // the reasoning here.  Delete the obsolete journal file under a RESERVED lock to avoid race conditions and to avoid violating [H33020].
+                    Pid pages = 0; // Number of pages in database file
+                    rc = pagerPagecount(out pages);
+                    if (rc == RC.OK)
+                        if (pages == 0)
+                        {
+                            SysEx.BeginBenignAlloc();
+                            if (pagerLockDb(VFile.LOCK.RESERVED) == RC.OK)
+                            {
+                                vfs.Delete(Journal, false);
+                                if (!ExclusiveMode) pagerUnlockDb(VFile.LOCK.SHARED);
+                            }
+                            SysEx.EndBenignAlloc();
+                        }
+                        else
+                        {
+                            // The journal file exists and no other connection has a reserved or greater lock on the database file. Now check that there is
+                            // at least one non-zero bytes at the start of the journal file. If there is, then we consider this journal to be hot. If not, 
+                            // it can be ignored.
+                            if (journalOpened)
+                            {
+                                var f = VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MAIN_JOURNAL;
+                                rc = vfs.Open(Journal, JournalFile, f, out f);
+                            }
+                            if (rc == RC.OK)
+                            {
+                                var first = new byte[1];
+                                rc = JournalFile.Read(first, 1, 0);
+                                if (rc == RC.IOERR_SHORT_READ)
+                                    rc = RC.OK;
+                                if (!journalOpened)
+                                    JournalFile.Close();
+                                existsOut = (first[0] != 0);
+                            }
+                            else if (rc == RC.CANTOPEN)
+                            {
+                                // If we cannot open the rollback journal file in order to see if its has a zero header, that might be due to an I/O error, or
+                                // it might be due to the race condition described above and in ticket #3883.  Either way, assume that the journal is hot.
+                                // This might be a false positive.  But if it is, then the automatic journal playback and recovery mechanism will deal
+                                // with it under an EXCLUSIVE lock where we do not need to worry so much with race conditions.
+                                existsOut = true;
+                                rc = RC.OK;
+                            }
+                        }
+                }
+            }
+
+            return rc;
+        }
+
+        public RC SharedLock()
+        {
+            // This routine is only called from b-tree and only when there are no outstanding pages. This implies that the pager state should either
+            // be OPEN or READER. READER is only possible if the pager is or was in exclusive access mode.
+            Debug.Assert(PCache.get_Refs() == 0);
+            Debug.Assert(assert_pager_state());
+            Debug.Assert(State == PAGER.OPEN || State == PAGER.READER);
+            if (SysEx.NEVER(MemoryDB && ErrorCode != 0)) return ErrorCode;
+
+            var rc = RC.OK;
+            if (!UseWal() && State == PAGER.OPEN)
+            {
+                Debug.Assert(MemoryDB);
+
+                rc = pager_wait_on_lock(VFile.LOCK.SHARED);
+                if (rc != RC.OK)
+                {
+                    Debug.Assert(Lock == VFile.LOCK.NO || Lock == VFile.LOCK.UNKNOWN);
+                    goto failed;
+                }
+
+                // If a journal file exists, and there is no RESERVED lock on the database file, then it either needs to be played back or deleted.
+                var hotJournal = true; // True if there exists a hot journal-file
+                if (Lock <= VFile.LOCK.SHARED)
+                    rc = hasHotJournal(out hotJournal);
+                if (rc != RC.OK)
+                    goto failed;
+                if (hotJournal)
+                {
+                    if (ReadOnly)
+                    {
+                        rc = RC.READONLY;
+                        goto failed;
+                    }
+
+                    // Get an EXCLUSIVE lock on the database file. At this point it is important that a RESERVED lock is not obtained on the way to the
+                    // EXCLUSIVE lock. If it were, another process might open the database file, detect the RESERVED lock, and conclude that the
+                    // database is safe to read while this process is still rolling the hot-journal back.
+                    // 
+                    // Because the intermediate RESERVED lock is not requested, any other process attempting to access the database file will get to 
+                    // this point in the code and fail to obtain its own EXCLUSIVE lock on the database file.
+                    //
+                    // Unless the pager is in locking_mode=exclusive mode, the lock is downgraded to SHARED_LOCK before this function returns.
+                    rc = pagerLockDb(VFile.LOCK.EXCLUSIVE);
+                    if (rc != RC.OK)
+                        goto failed;
+
+                    // If it is not already open and the file exists on disk, open the journal for read/write access. Write access is required because 
+                    // in exclusive-access mode the file descriptor will be kept open and possibly used for a transaction later on. Also, write-access 
+                    // is usually required to finalize the journal in journal_mode=persist mode (and also for journal_mode=truncate on some systems).
+                    //
+                    // If the journal does not exist, it usually means that some other connection managed to get in and roll it back before 
+                    // this connection obtained the exclusive lock above. Or, it may mean that the pager was in the error-state when this
+                    // function was called and the journal file does not exist.
+                    if (!JournalFile.Opened)
+                    {
+                        var vfs = Vfs;
+                        int exists; // True if journal file exists
+                        rc = vfs.Access(Journal, VFileSystem.ACCESS.EXISTS, out exists);
+                        if (rc == RC.OK && exists != 0)
+                        {
+                            Debug.Assert(!TempFile);
+                            VFileSystem.OPEN fout = 0;
+                            rc = vfs.Open(Journal, JournalFile, VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.MAIN_JOURNAL, out fout);
+                            Debug.Assert(rc != RC.OK || JournalFile.Opened);
+                            if (rc == RC.OK && (fout & VFileSystem.OPEN.READONLY) != 0)
+                            {
+                                rc = SysEx.CANTOPEN_BKPT();
+                                JournalFile.Close();
+                            }
+                        }
+                    }
+
+                    // Playback and delete the journal.  Drop the database write lock and reacquire the read lock. Purge the cache before
+                    // playing back the hot-journal so that we don't end up with an inconsistent cache.  Sync the hot journal before playing
+                    // it back since the process that crashed and left the hot journal probably did not sync it and we are required to always sync
+                    // the journal before playing it back.
+                    if (JournalFile.Opened)
+                    {
+                        Debug.Assert(rc == RC.OK);
+                        rc = pagerSyncHotJournal();
+                        if (rc == RC.OK)
+                        {
+                            rc = pager_playback(true);
+                            State = PAGER.OPEN;
+                        }
+                    }
+                    else if (!ExclusiveMode)
+                        pagerUnlockDb(VFileSystem.LOCK.SHARED);
+
+                    if (rc != RC.OK)
+                    {
+                        // This branch is taken if an error occurs while trying to open or roll back a hot-journal while holding an EXCLUSIVE lock. The
+                        // pager_unlock() routine will be called before returning to unlock the file. If the unlock attempt fails, then Pager.eLock must be
+                        // set to UNKNOWN_LOCK (see the comment above the #define for UNKNOWN_LOCK above for an explanation). 
+                        //
+                        // In order to get pager_unlock() to do this, set Pager.eState to PAGER_ERROR now. This is not actually counted as a transition
+                        // to ERROR state in the state diagram at the top of this file, since we know that the same call to pager_unlock() will very
+                        // shortly transition the pager object to the OPEN state. Calling assert_pager_state() would fail now, as it should not be possible
+                        // to be in ERROR state when there are zero outstanding page references.
+                        pager_error(rc);
+                        goto failed;
+                    }
+
+                    Debug.Assert(State == PAGER.OPEN);
+                    Debug.Assert((Lock == VFile.LOCK.SHARED) || (ExclusiveMode && Lock > VFile.LOCK.SHARED));
+                }
+
+                if (!TempFile && (Backup != null || PCache.get_Pages() > 0))
+                {
+                    // The shared-lock has just been acquired on the database file and there are already pages in the cache (from a previous
+                    // read or write transaction).  Check to see if the database has been modified.  If the database has changed, flush the cache.
+                    //
+                    // Database changes is detected by looking at 15 bytes beginning at offset 24 into the file.  The first 4 of these 16 bytes are
+                    // a 32-bit counter that is incremented with each change.  The other bytes change randomly with each file change when
+                    // a codec is in use.
+                    // 
+                    // There is a vanishingly small chance that a change will not be detected.  The chance of an undetected change is so small that
+                    // it can be neglected.
+                    Pid pages = 0;
+                    var dbFileVersions = new byte[DBFileVersions.Length];
+
+                    rc = pagerPagecount(out pages);
+                    if (rc != RC.OK)
+                        goto failed;
+
+                    if (pages > 0)
+                    {
+                        SysEx.IOTRACE("CKVERS {0} {1}\n", this, dbFileVersions.Length);
+                        rc = File.Read(dbFileVersions, dbFileVersions.Length, 24);
+                        if (rc != RC.OK)
+                            goto failed;
+                    }
+                    else
+                        Array.Clear(dbFileVersions, 0, dbFileVersions.Length);
+
+                    if (Enumerable.SequenceEqual(DBFileVersions, dbFileVersions) != 0)
+                        pager_reset();
+                }
+
+                // If there is a WAL file in the file-system, open this database in WAL mode. Otherwise, the following function call is a no-op.
+                rc = pagerOpenWalIfPresent();
+#if !OMIT_WAL
+                Debug.Assert(pager.Wal == null || rc == RC.OK);
+#endif
+            }
+
+            if (UseWal())
+            {
+                Debug.Assert(rc == RC.OK);
+                rc = pagerBeginReadTransaction();
+            }
+
+            if (State == PAGER.OPEN && rc == RC.OK)
+                rc = pagerPagecount(out DBSize);
+
+        failed:
+            if (rc != RC.OK)
+            {
+                Debug.Assert(MemoryDB);
+                pager_unlock();
+                Debug.Assert(State == PAGER.OPEN);
+            }
+            else
+                State = PAGER.READER;
+            return rc;
+        }
+
+        private void UnlockIfUnused()
+        {
+            if (PCache.get_Refs() == 0)
+                pagerUnlockAndRollback();
+        }
+
+        public RC Acquire(Pid pid, ref PgHdr page, bool noContent = false)
+        {
+            Debug.Assert(State >= PAGER.READER);
+            Debug.Assert(assert_pager_state());
+            if (pid == 0)
+                return SysEx.CORRUPT_BKPT();
+            // If the pager is in the error state, return an error immediately.  Otherwise, request the page from the PCache layer.
+            var rc = (ErrorCode != RC.OK ? ErrorCode : PCache.Fetch(pid, 1, out page));
+            if (rc != RC.OK)
+            {
+                page = null;
+                goto pager_get_err;
+            }
+            Debug.Assert(page.ID == pid);
+            Debug.Assert(page.Pager == this || page.Pager == null);
+            if (page.Pager != null && !noContent)
+            {
+                // In this case the pcache already contains an initialized copy of the page. Return without further ado.
+                Debug.Assert(pid <= MAX_PID && pid != MJ_PID(this));
+                return RC.OK;
+            }
+            // The pager cache has created a new page. Its content needs to be initialized.
+            page.Pager = this;
+            page.Extra = _memPageBuilder;
+            // The maximum page number is 2^31. Return CORRUPT if a page number greater than this, or the unused locking-page, is requested.
+            if (pid > MAX_PID || pid == MJ_PID(this))
+            {
+                rc = SysEx.CORRUPT_BKPT();
+                goto pager_get_err;
+            }
+            if (_memoryDB || _dbSize < pid || noContent || !_file.Open)
+            {
+                if (pid > _pids)
+                {
+                    rc = RC.FULL;
+                    goto pager_get_err;
+                }
+                if (noContent)
+                {
+                    if (pid <= _dbOrigSize)
+                        _inJournal.Set(pid);
+                    addToSavepointBitvecs(pid);
+                }
+                Array.Clear(page._Data, 0, _pageSize);
+                SysEx.IOTRACE("ZERO {0:x} {1}\n", GetHashCode(), pid);
+            }
+            else
+            {
+                Debug.Assert(page.Pager == this);
+                rc = readDbPage(page);
+                if (rc != RC.OK)
+                    goto pager_get_err;
+            }
+            pager_set_pagehash(page);
+            return RC.OK;
+        pager_get_err:
+            Debug.Assert(rc != RC.OK);
+            if (page != null)
+                PCache.DropPage(page);
+            UnlockIfUnused();
+            page = null;
+            return rc;
+        }
+
+        public PgHdr Lookup(Pid pid)
+        {
+            Debug.Assert(pid != 0);
+            Debug.Assert(_pcache != null);
+            Debug.Assert(_state >= PAGER.READER && _state != PAGER.ERROR);
+            PgHdr page;
+            _pcache.Fetch(pid, 0, out page);
+            return page;
+        }
+
+        // was:sqlite3PagerBegin
+        public RC Begin(bool exFlag, bool subjInMemory)
+        {
+            if (_errorCode != 0)
+                return _errorCode;
+            Debug.Assert(_state >= PAGER.READER && _state < PAGER.ERROR);
+            var rc = RC.OK;
+            if (Check.ALWAYS(_state == PAGER.READER))
+            {
+                Debug.Assert(_inJournal == null);
+                if (pagerUseWal())
+                {
+                    // If the pager is configured to use locking_mode=exclusive, and an exclusive lock on the database is not already held, obtain it now.
+                    if (_exclusiveMode && _wal.ExclusiveMode(-1))
+                    {
+                        rc = pagerLockDb(VFSLOCK.EXCLUSIVE);
+                        if (rc != RC.OK)
+                            return rc;
+                        _wal.ExclusiveMode(1);
+                    }
+                    // Grab the write lock on the log file. If successful, upgrade to PAGER_RESERVED state. Otherwise, return an error code to the caller.
+                    // The busy-handler is not invoked if another connection already holds the write-lock. If possible, the upper layer will call it.
+                    rc = _wal.BeginWriteTransaction();
+                }
+                else
+                {
+                    // Obtain a RESERVED lock on the database file. If the exFlag parameter is true, then immediately upgrade this to an EXCLUSIVE lock. The
+                    // busy-handler callback can be used when upgrading to the EXCLUSIVE lock, but not when obtaining the RESERVED lock.
+                    rc = pagerLockDb(VFSLOCK.RESERVED);
+                    if (rc == RC.OK && exFlag)
+                        rc = pager_wait_on_lock(VFSLOCK.EXCLUSIVE);
+                }
+                if (rc == RC.OK)
+                {
+                    // Change to WRITER_LOCKED state.
+                    // WAL mode sets Pager.eState to PAGER_WRITER_LOCKED or CACHEMOD when it has an open transaction, but never to DBMOD or FINISHED.
+                    // This is because in those states the code to roll back savepoint transactions may copy data from the sub-journal into the database 
+                    // file as well as into the page cache. Which would be incorrect in WAL mode.
+                    _state = PAGER.WRITER_LOCKED;
+                    _dbHintSize = _dbSize;
+                    _dbFileSize = _dbSize;
+                    _dbOrigSize = _dbSize;
+                    _journalOff = 0;
+                }
+                Debug.Assert(rc == RC.OK || _state == PAGER.READER);
+                Debug.Assert(rc != RC.OK || _state == PAGER.WRITER_LOCKED);
+                Debug.Assert(assert_pager_state());
+            }
+            PAGERTRACE("TRANSACTION {0}", PAGERID(this));
+            return rc;
+        }
 
 
+        private static RC pager_write(PgHdr pPg)
+        {
+            var pData = pPg.Data;
+            var pPager = pPg.Pager;
+            var rc = RC.OK;
+            // This routine is not called unless a write-transaction has already been started. The journal file may or may not be open at this point.
+            // It is never called in the ERROR state.
+            Debug.Assert(pPager.eState == PAGER.WRITER_LOCKED || pPager.eState == PAGER.WRITER_CACHEMOD || pPager.eState == PAGER.WRITER_DBMOD);
+            Debug.Assert(pPager.assert_pager_state());
+            // If an error has been previously detected, report the same error again. This should not happen, but the check provides robustness. 
+            if (Check.NEVER(pPager.errCode) != RC.OK)
+                return pPager.errCode;
+            // Higher-level routines never call this function if database is not writable.  But check anyway, just for robustness.
+            if (Check.NEVER(pPager.readOnly))
+                return RC.PERM;
+#if SQLITE_CHECK_PAGES
+CHECK_PAGE(pPg);
+#endif
+            // The journal file needs to be opened. Higher level routines have already obtained the necessary locks to begin the write-transaction, but the
+            // rollback journal might not yet be open. Open it now if this is the case.
+            //
+            // This is done before calling sqlite3PcacheMakeDirty() on the page. Otherwise, if it were done after calling sqlite3PcacheMakeDirty(), then
+            // an error might occur and the pager would end up in WRITER_LOCKED state with pages marked as dirty in the cache.
+            if (pPager.eState == PAGER.WRITER_LOCKED)
+            {
+                rc = pPager.pager_open_journal();
+                if (rc != RC.OK)
+                    return rc;
+            }
+            Debug.Assert(pPager.eState >= PAGER.WRITER_CACHEMOD);
+            Debug.Assert(pPager.assert_pager_state());
+            // Mark the page as dirty.  If the page has already been written to the journal then we can return right away.
+            PCache.MakePageDirty(pPg);
+            if (pageInJournal(pPg) && !subjRequiresPage(pPg))
+                Debug.Assert(!pPager.pagerUseWal());
+            else
+            {
+                // The transaction journal now exists and we have a RESERVED or an EXCLUSIVE lock on the main database file.  Write the current page to
+                // the transaction journal if it is not there already.
+                if (!pageInJournal(pPg) && !pPager.pagerUseWal())
+                {
+                    Debug.Assert(!pPager.pagerUseWal());
+                    if (pPg.ID <= pPager.dbOrigSize && pPager.jfd.IsOpen)
+                    {
+                        var iOff = pPager.journalOff;
+                        // We should never write to the journal file the page that contains the database locks.  The following Debug.Assert verifies that we do not.
+                        Debug.Assert(pPg.ID != ((VirtualFile.PENDING_BYTE / (pPager.pageSize)) + 1));
+                        Debug.Assert(pPager.journalHdr <= pPager.journalOff);
+                        byte[] pData2 = null;
+                        if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
+                            return RC.NOMEM;
+                        var cksum = pPager.pager_cksum(pData2);
+                        // Even if an IO or diskfull error occurred while journalling the page in the block above, set the need-sync flag for the page.
+                        // Otherwise, when the transaction is rolled back, the logic in playback_one_page() will think that the page needs to be restored
+                        // in the database file. And if an IO error occurs while doing so, then corruption may follow.
+                        pPg.Flags |= PgHdr.PGHDR.NEED_SYNC;
+                        rc = pPager.jfd.WriteByte(iOff, pPg.ID);
+                        if (rc != RC.OK)
+                            return rc;
+                        rc = pPager.jfd.Write(pData2, pPager.pageSize, iOff + 4);
+                        if (rc != RC.OK)
+                            return rc;
+                        rc = pPager.jfd.WriteByte(iOff + pPager.pageSize + 4, cksum);
+                        if (rc != RC.OK)
+                            return rc;
+                        SysEx.IOTRACE("JOUT {0:x} {1} {2,11} {3}", pPager.GetHashCode(), pPg.ID, pPager.journalOff, pPager.pageSize);
+                        PAGERTRACE("JOURNAL {0} page {1} needSync={2} hash({3,08:x})", PAGERID(pPager), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0, pager_pagehash(pPg));
+                        pPager.journalOff += 8 + pPager.pageSize;
+                        pPager.nRec++;
+                        Debug.Assert(pPager.pInJournal != null);
+                        rc = pPager.pInJournal.Set(pPg.ID);
+                        Debug.Assert(rc == RC.OK || rc == RC.NOMEM);
+                        rc |= pPager.addToSavepointBitvecs(pPg.ID);
+                        if (rc != RC.OK)
+                        {
+                            Debug.Assert(rc == RC.NOMEM);
+                            return rc;
+                        }
+                    }
+                    else
+                    {
+                        if (pPager.eState != PAGER.WRITER_DBMOD)
+                            pPg.Flags |= PgHdr.PGHDR.NEED_SYNC;
+                        PAGERTRACE("APPEND {0} page {1} needSync={2}", PAGERID(pPager), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0);
+                    }
+                }
+                // If the statement journal is open and the page is not in it, then write the current page to the statement journal.  Note that
+                // the statement journal format differs from the standard journal format in that it omits the checksums and the header.
+                if (subjRequiresPage(pPg))
+                    rc = subjournalPage(pPg);
+            }
+            // Update the database size and return.
+            if (pPager.dbSize < pPg.ID)
+                pPager.dbSize = pPg.ID;
+            return rc;
+        }
+
+        // was:sqlite3PagerWrite
+        public static RC Write(DbPage pDbPage)
+        {
+            var rc = RC.OK;
+            var pPg = pDbPage;
+            var pPager = pPg.Pager;
+            var nPagePerSector = (uint)(pPager._sectorSize / pPager._pageSize);
+            Debug.Assert(pPager._state >= PAGER.WRITER_LOCKED);
+            Debug.Assert(pPager._state != PAGER.ERROR);
+            Debug.Assert(pPager.assert_pager_state());
+            if (nPagePerSector > 1)
+            {
+                Pgno nPageCount = 0;     // Total number of pages in database file
+                Pgno pg1;                // First page of the sector pPg is located on.
+                Pgno nPage = 0;          // Number of pages starting at pg1 to journal
+                bool needSync = false;   // True if any page has PGHDR_NEED_SYNC
+
+                // Set the doNotSyncSpill flag to 1. This is because we cannot allow a journal header to be written between the pages journaled by
+                // this function.
+                Debug.Assert(
+#if SQLITE_OMIT_MEMORYDB
+0==MEMDB
+#else
+0 == pPager._memoryDB
+#endif
+);
+                Debug.Assert(pPager._doNotSyncSpill == 0);
+                pPager._doNotSyncSpill++;
+                // This trick assumes that both the page-size and sector-size are an integer power of 2. It sets variable pg1 to the identifier
+                // of the first page of the sector pPg is located on.
+                pg1 = (Pgno)((pPg.ID - 1) & ~(nPagePerSector - 1)) + 1;
+                nPageCount = pPager._dbSize;
+                if (pPg.ID > nPageCount)
+                    nPage = (pPg.ID - pg1) + 1;
+                else if ((pg1 + nPagePerSector - 1) > nPageCount)
+                    nPage = nPageCount + 1 - pg1;
+                else
+                    nPage = nPagePerSector;
+                Debug.Assert(nPage > 0);
+                Debug.Assert(pg1 <= pPg.ID);
+                Debug.Assert((pg1 + nPage) > pPg.ID);
+                for (var ii = 0; ii < nPage && rc == RC.OK; ii++)
+                {
+                    var pg = (Pgno)(pg1 + ii);
+                    var pPage = new PgHdr();
+                    if (pg == pPg.ID || !pPager._inJournal.Get(pg))
+                    {
+                        if (pg != ((VirtualFile.PENDING_BYTE / (pPager._pageSize)) + 1))
+                        {
+                            rc = pPager.Get(pg, ref pPage);
+                            if (rc == RC.OK)
+                            {
+                                rc = pager_write(pPage);
+                                if ((pPage.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
+                                    needSync = true;
+                                Unref(pPage);
+                            }
+                        }
+                    }
+                    else if ((pPage = pPager.pager_lookup(pg)) != null)
+                    {
+                        if ((pPage.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
+                            needSync = true;
+                        Unref(pPage);
+                    }
+                }
+                // If the PGHDR_NEED_SYNC flag is set for any of the nPage pages starting at pg1, then it needs to be set for all of them. Because
+                // writing to any of these nPage pages may damage the others, the journal file must contain sync()ed copies of all of them
+                // before any of them can be written out to the database file.
+                if (rc == RC.OK && needSync)
+                {
+                    Debug.Assert(
+#if SQLITE_OMIT_MEMORYDB
+0==MEMDB
+#else
+0 == pPager._memoryDB
+#endif
+);
+                    for (var ii = 0; ii < nPage; ii++)
+                    {
+                        var pPage = pPager.pager_lookup((Pgno)(pg1 + ii));
+                        if (pPage != null)
+                        {
+                            pPage.Flags |= PgHdr.PGHDR.NEED_SYNC;
+                            Unref(pPage);
+                        }
+                    }
+                }
+                Debug.Assert(pPager._doNotSyncSpill == 1);
+                pPager._doNotSyncSpill--;
+            }
+            else
+                rc = pager_write(pDbPage);
+            return rc;
+        }
+
+#if DEBUG
+        // was:sqlite3PagerIswriteable
+        public static bool IsPageWriteable(DbPage pPg) { return true; }
+#endif
+
+        // was:sqlite3PagerDontWrite
+        public static void DontWrite(PgHdr pPg)
+        {
+            var pPager = pPg.Pager;
+            if ((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0 && pPager.nSavepoint == 0)
+            {
+                PAGERTRACE("DONT_WRITE page {0} of {1}", pPg.ID, PAGERID(pPager));
+                SysEx.IOTRACE("CLEAN {0:x} {1}", pPager.GetHashCode(), pPg.ID);
+                pPg.Flags |= PgHdr.PGHDR.DONT_WRITE;
+                pager_set_pagehash(pPg);
+            }
+        }
+
+        private RC pager_incr_changecounter(bool isDirectMode)
+        {
+            var rc = RC.OK;
+            Debug.Assert(this.eState == PAGER.WRITER_CACHEMOD || this.eState == PAGER.WRITER_DBMOD);
+            Debug.Assert(assert_pager_state());
+            // Declare and initialize constant integer 'isDirect'. If the atomic-write optimization is enabled in this build, then isDirect
+            // is initialized to the value passed as the isDirectMode parameter to this function. Otherwise, it is always set to zero.
+            // The idea is that if the atomic-write optimization is not enabled at compile time, the compiler can omit the tests of
+            // 'isDirect' below, as well as the block enclosed in the "if( isDirect )" condition.
+#if !SQLITE_ENABLE_ATOMIC_WRITE
+            var DIRECT_MODE = false;
+            Debug.Assert(!isDirectMode);
+            SysEx.UNUSED_PARAMETER(isDirectMode);
+#else
+            var DIRECT_MODE = isDirectMode;
+#endif
+            if (!this.changeCountDone && this.dbSize > 0)
+            {
+                PgHdr pPgHdr = null; // Reference to page 1
+                Debug.Assert(!this.tempFile && this.fd.IsOpen);
+                // Open page 1 of the file for writing.
+                rc = Get(1, ref pPgHdr);
+                Debug.Assert(pPgHdr == null || rc == RC.OK);
+                // If page one was fetched successfully, and this function is not operating in direct-mode, make page 1 writable.  When not in 
+                // direct mode, page 1 is always held in cache and hence the PagerGet() above is always successful - hence the ALWAYS on rc==SQLITE.OK.
+                if (!DIRECT_MODE && Check.ALWAYS(rc == RC.OK))
+                    rc = Write(pPgHdr);
+                if (rc == RC.OK)
+                {
+                    // Actually do the update of the change counter
+                    pager_write_changecounter(pPgHdr);
+                    // If running in direct mode, write the contents of page 1 to the file.
+                    if (DIRECT_MODE)
+                    {
+                        byte[] zBuf = null;
+                        Debug.Assert(this.dbFileSize > 0);
+                        if (CODEC2(this, pPgHdr.Data, 1, codec_ctx.ENCRYPT_WRITE_CTX, ref zBuf))
+                            return rc = RC.NOMEM;
+                        if (rc == RC.OK)
+                            rc = this.fd.Write(zBuf, this.pageSize, 0);
+                        if (rc == RC.OK)
+                            this.changeCountDone = true;
+                    }
+                    else
+                        this.changeCountDone = true;
+                }
+                // Release the page reference.
+                Unref(pPgHdr);
+            }
+            return rc;
+        }
+
+        public RC Sync()
+        {
+            var rc = RC.OK;
+            if (!this._noSync)
+            {
+                Debug.Assert(
+#if SQLITE_OMIT_MEMORYDB
+0 == MEMDB
+#else
+0 == this._memoryDB
+#endif
+);
+                rc = this._file.Sync(this._syncFlags);
+            }
+            else if (this._file.IsOpen)
+            {
+                Debug.Assert(
+#if SQLITE_OMIT_MEMORYDB
+0 == MEMDB
+#else
+0 == this._memoryDB
+#endif
+);
+                var refArg = 0L;
+                this._file.SetFileControl(VirtualFile.FCNTL.SYNC_OMITTED, ref refArg);
+                rc = (RC)refArg;
+            }
+            return rc;
+        }
 
         #endregion
-        #region X
+
+        #region Commit
 
 
 

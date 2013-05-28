@@ -4,11 +4,11 @@ namespace Core
 {
     public partial class Pager
     {
-        private void UnlockIfUnused()
-        {
-            if (this._pcache.RefCount() == 0)
-                pagerUnlockAndRollback();
-        }
+        //private void UnlockIfUnused()
+        //{
+        //    if (this._pcache.RefCount() == 0)
+        //        pagerUnlockAndRollback();
+        //}
 
         //private void pagerUnlockAndRollback()
         //{

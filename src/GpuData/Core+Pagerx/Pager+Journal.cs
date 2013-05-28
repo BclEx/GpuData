@@ -278,223 +278,223 @@ namespace Core
         //    return rc;
         //}
 
-        private RC pagerSyncHotJournal()
-        {
-            var rc = RC.OK;
-            if (!this._noSync)
-                rc = this._journalFile.Sync(VirtualFile.SYNC.NORMAL);
-            if (rc == RC.OK)
-                rc = this._journalFile.get_FileSize(ref this._journalHdr);
-            return rc;
-        }
+        //private RC pagerSyncHotJournal()
+        //{
+        //    var rc = RC.OK;
+        //    if (!this._noSync)
+        //        rc = this._journalFile.Sync(VirtualFile.SYNC.NORMAL);
+        //    if (rc == RC.OK)
+        //        rc = this._journalFile.get_FileSize(ref this._journalHdr);
+        //    return rc;
+        //}
 
-        private RC syncJournal(int newHdr)
-        {
-            var rc = RC.OK;
-            Debug.Assert(this._state == PAGER.WRITER_CACHEMOD || this._state == PAGER.WRITER_DBMOD);
-            Debug.Assert(assert_pager_state());
-            Debug.Assert(!pagerUseWal());
-            rc = sqlite3PagerExclusiveLock();
-            if (rc != RC.OK)
-                return rc;
-            if (!this._noSync)
-            {
-                Debug.Assert(!this._tempFile);
-                if (this._journalFile.IsOpen && this._journalMode != JOURNALMODE.MEMORY)
-                {
-                    var iDc = this._file.DeviceCharacteristics;
-                    Debug.Assert(this._journalFile.IsOpen);
-                    if (0 == (iDc & VirtualFile.IOCAP.SAFE_APPEND))
-                    {
-                        // This block deals with an obscure problem. If the last connection that wrote to this database was operating in persistent-journal
-                        // mode, then the journal file may at this point actually be larger than Pager.journalOff bytes. If the next thing in the journal
-                        // file happens to be a journal-header (written as part of the previous connection's transaction), and a crash or power-failure
-                        // occurs after nRec is updated but before this connection writes anything else to the journal file (or commits/rolls back its
-                        // transaction), then SQLite may become confused when doing the hot-journal rollback following recovery. It may roll back all
-                        // of this connections data, then proceed to rolling back the old, out-of-date data that follows it. Database corruption.
-                        // To work around this, if the journal file does appear to contain a valid header following Pager.journalOff, then write a 0x00
-                        // byte to the start of it to prevent it from being recognized.
-                        // Variable iNextHdrOffset is set to the offset at which this problematic header will occur, if it exists. aMagic is used
-                        // as a temporary buffer to inspect the first couple of bytes of the potential journal header.
-                        var zHeader = new byte[aJournalMagic.Length + 4];
-                        aJournalMagic.CopyTo(zHeader, 0);
-                        ConvertEx.Put4(zHeader, aJournalMagic.Length, this._nRec);
-                        var iNextHdrOffset = journalHdrOffset();
-                        var aMagic = new byte[8];
-                        rc = this._journalFile.Read(aMagic, 8, iNextHdrOffset);
-                        if (rc == RC.OK && 0 == ArrayEx.Compare(aMagic, aJournalMagic, 8))
-                        {
-                            var zerobyte = new byte[1];
-                            rc = this._journalFile.Write(zerobyte, 1, iNextHdrOffset);
-                        }
-                        if (rc != RC.OK && rc != RC.IOERR_SHORT_READ)
-                            return rc;
-                        // Write the nRec value into the journal file header. If in full-synchronous mode, sync the journal first. This ensures that
-                        // all data has really hit the disk before nRec is updated to mark it as a candidate for rollback.
-                        // This is not required if the persistent media supports the SAFE_APPEND property. Because in this case it is not possible
-                        // for garbage data to be appended to the file, the nRec field is populated with 0xFFFFFFFF when the journal header is written
-                        // and never needs to be updated.
-                        if (this._fullSync && 0 == (iDc & VirtualFile.IOCAP.SEQUENTIAL))
-                        {
-                            PAGERTRACE("SYNC journal of {0}", PAGERID(this));
-                            SysEx.IOTRACE("JSYNC {0:x}", this.GetHashCode());
-                            rc = this._journalFile.Sync(this._syncFlags);
-                            if (rc != RC.OK)
-                                return rc;
-                        }
-                        SysEx.IOTRACE("JHDR {0:x} {1,11}", this.GetHashCode(), this._journalHdr);
-                        rc = this._journalFile.Write(zHeader, zHeader.Length, this._journalHdr);
-                        if (rc != RC.OK)
-                            return rc;
-                    }
-                    if (0 == (iDc & VirtualFile.IOCAP.SEQUENTIAL))
-                    {
-                        PAGERTRACE("SYNC journal of {0}", PAGERID(this));
-                        SysEx.IOTRACE("JSYNC {0:x}", this.GetHashCode());
-                        rc = this._journalFile.Sync(this._syncFlags | (this._syncFlags == VirtualFile.SYNC.FULL ? VirtualFile.SYNC.DATAONLY : 0));
-                        if (rc != RC.OK)
-                            return rc;
-                    }
-                    this._journalHdr = this._journalOff;
-                    if (newHdr != 0 && 0 == (iDc & VirtualFile.IOCAP.SAFE_APPEND))
-                    {
-                        this._nRec = 0;
-                        rc = writeJournalHdr();
-                        if (rc != RC.OK)
-                            return rc;
-                    }
-                }
-                else
-                    this._journalHdr = this._journalOff;
-            }
-            // Unless the pager is in noSync mode, the journal file was just successfully synced. Either way, clear the PGHDR_NEED_SYNC flag on all pages.
-            this._pcache.ClearSyncFlags();
-            this._state = PAGER.WRITER_DBMOD;
-            Debug.Assert(assert_pager_state());
-            return RC.OK;
-        }
+        //private RC syncJournal(int newHdr)
+        //{
+        //    var rc = RC.OK;
+        //    Debug.Assert(this._state == PAGER.WRITER_CACHEMOD || this._state == PAGER.WRITER_DBMOD);
+        //    Debug.Assert(assert_pager_state());
+        //    Debug.Assert(!pagerUseWal());
+        //    rc = sqlite3PagerExclusiveLock();
+        //    if (rc != RC.OK)
+        //        return rc;
+        //    if (!this._noSync)
+        //    {
+        //        Debug.Assert(!this._tempFile);
+        //        if (this._journalFile.IsOpen && this._journalMode != JOURNALMODE.MEMORY)
+        //        {
+        //            var iDc = this._file.DeviceCharacteristics;
+        //            Debug.Assert(this._journalFile.IsOpen);
+        //            if (0 == (iDc & VirtualFile.IOCAP.SAFE_APPEND))
+        //            {
+        //                // This block deals with an obscure problem. If the last connection that wrote to this database was operating in persistent-journal
+        //                // mode, then the journal file may at this point actually be larger than Pager.journalOff bytes. If the next thing in the journal
+        //                // file happens to be a journal-header (written as part of the previous connection's transaction), and a crash or power-failure
+        //                // occurs after nRec is updated but before this connection writes anything else to the journal file (or commits/rolls back its
+        //                // transaction), then SQLite may become confused when doing the hot-journal rollback following recovery. It may roll back all
+        //                // of this connections data, then proceed to rolling back the old, out-of-date data that follows it. Database corruption.
+        //                // To work around this, if the journal file does appear to contain a valid header following Pager.journalOff, then write a 0x00
+        //                // byte to the start of it to prevent it from being recognized.
+        //                // Variable iNextHdrOffset is set to the offset at which this problematic header will occur, if it exists. aMagic is used
+        //                // as a temporary buffer to inspect the first couple of bytes of the potential journal header.
+        //                var zHeader = new byte[aJournalMagic.Length + 4];
+        //                aJournalMagic.CopyTo(zHeader, 0);
+        //                ConvertEx.Put4(zHeader, aJournalMagic.Length, this._nRec);
+        //                var iNextHdrOffset = journalHdrOffset();
+        //                var aMagic = new byte[8];
+        //                rc = this._journalFile.Read(aMagic, 8, iNextHdrOffset);
+        //                if (rc == RC.OK && 0 == ArrayEx.Compare(aMagic, aJournalMagic, 8))
+        //                {
+        //                    var zerobyte = new byte[1];
+        //                    rc = this._journalFile.Write(zerobyte, 1, iNextHdrOffset);
+        //                }
+        //                if (rc != RC.OK && rc != RC.IOERR_SHORT_READ)
+        //                    return rc;
+        //                // Write the nRec value into the journal file header. If in full-synchronous mode, sync the journal first. This ensures that
+        //                // all data has really hit the disk before nRec is updated to mark it as a candidate for rollback.
+        //                // This is not required if the persistent media supports the SAFE_APPEND property. Because in this case it is not possible
+        //                // for garbage data to be appended to the file, the nRec field is populated with 0xFFFFFFFF when the journal header is written
+        //                // and never needs to be updated.
+        //                if (this._fullSync && 0 == (iDc & VirtualFile.IOCAP.SEQUENTIAL))
+        //                {
+        //                    PAGERTRACE("SYNC journal of {0}", PAGERID(this));
+        //                    SysEx.IOTRACE("JSYNC {0:x}", this.GetHashCode());
+        //                    rc = this._journalFile.Sync(this._syncFlags);
+        //                    if (rc != RC.OK)
+        //                        return rc;
+        //                }
+        //                SysEx.IOTRACE("JHDR {0:x} {1,11}", this.GetHashCode(), this._journalHdr);
+        //                rc = this._journalFile.Write(zHeader, zHeader.Length, this._journalHdr);
+        //                if (rc != RC.OK)
+        //                    return rc;
+        //            }
+        //            if (0 == (iDc & VirtualFile.IOCAP.SEQUENTIAL))
+        //            {
+        //                PAGERTRACE("SYNC journal of {0}", PAGERID(this));
+        //                SysEx.IOTRACE("JSYNC {0:x}", this.GetHashCode());
+        //                rc = this._journalFile.Sync(this._syncFlags | (this._syncFlags == VirtualFile.SYNC.FULL ? VirtualFile.SYNC.DATAONLY : 0));
+        //                if (rc != RC.OK)
+        //                    return rc;
+        //            }
+        //            this._journalHdr = this._journalOff;
+        //            if (newHdr != 0 && 0 == (iDc & VirtualFile.IOCAP.SAFE_APPEND))
+        //            {
+        //                this._nRec = 0;
+        //                rc = writeJournalHdr();
+        //                if (rc != RC.OK)
+        //                    return rc;
+        //            }
+        //        }
+        //        else
+        //            this._journalHdr = this._journalOff;
+        //    }
+        //    // Unless the pager is in noSync mode, the journal file was just successfully synced. Either way, clear the PGHDR_NEED_SYNC flag on all pages.
+        //    this._pcache.ClearSyncFlags();
+        //    this._state = PAGER.WRITER_DBMOD;
+        //    Debug.Assert(assert_pager_state());
+        //    return RC.OK;
+        //}
 
-        private RC openSubJournal()
-        {
-            var rc = RC.OK;
-            if (!this._journal2File.IsOpen)
-            {
-                if (this._journalMode == JOURNALMODE.MEMORY || this._subjInMemory != 0)
-                    this._journal2File = new MemJournalFile();
-                else
-                    rc = pagerOpentemp(ref this._journal2File, VirtualFileSystem.OPEN.SUBJOURNAL);
-            }
-            return rc;
-        }
+        //private RC openSubJournal()
+        //{
+        //    var rc = RC.OK;
+        //    if (!this._journal2File.IsOpen)
+        //    {
+        //        if (this._journalMode == JOURNALMODE.MEMORY || this._subjInMemory != 0)
+        //            this._journal2File = new MemJournalFile();
+        //        else
+        //            rc = pagerOpentemp(ref this._journal2File, VirtualFileSystem.OPEN.SUBJOURNAL);
+        //    }
+        //    return rc;
+        //}
 
-        private static RC subjournalPage(PgHdr pPg)
-        {
-            var rc = RC.OK;
-            var pPager = pPg.Pager;
-            if (pPager._journalMode != JOURNALMODE.OFF)
-            {
-                // Open the sub-journal, if it has not already been opened
-                Debug.Assert(pPager._useJournal != 0);
-                Debug.Assert(pPager._journalFile.IsOpen || pPager.pagerUseWal());
-                Debug.Assert(pPager._journal2File.IsOpen || pPager._nSubRec == 0);
-                Debug.Assert(pPager.pagerUseWal() || pageInJournal(pPg) || pPg.ID > pPager._dbOrigSize);
-                rc = pPager.openSubJournal();
-                // If the sub-journal was opened successfully (or was already open), write the journal record into the file. 
-                if (rc == RC.OK)
-                {
-                    var pData = pPg._Data;
-                    long offset = pPager._nSubRec * (4 + pPager._pageSize);
-                    byte[] pData2 = null;
-                    if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
-                        return RC.NOMEM;
-                    PAGERTRACE("STMT-JOURNAL {0} page {1}", PAGERID(pPager), pPg.ID);
-                    rc = pPager._journal2File.WriteByte(offset, pPg.ID);
-                    if (rc == RC.OK)
-                        rc = pPager._journal2File.Write(pData2, pPager._pageSize, offset + 4);
-                }
-            }
-            if (rc == RC.OK)
-            {
-                pPager._nSubRec++;
-                Debug.Assert(pPager.nSavepoint > 0);
-                rc = pPager.addToSavepointBitvecs(pPg.ID);
-            }
-            return rc;
-        }
+        //private static RC subjournalPage(PgHdr pPg)
+        //{
+        //    var rc = RC.OK;
+        //    var pPager = pPg.Pager;
+        //    if (pPager._journalMode != JOURNALMODE.OFF)
+        //    {
+        //        // Open the sub-journal, if it has not already been opened
+        //        Debug.Assert(pPager._useJournal != 0);
+        //        Debug.Assert(pPager._journalFile.IsOpen || pPager.pagerUseWal());
+        //        Debug.Assert(pPager._journal2File.IsOpen || pPager._nSubRec == 0);
+        //        Debug.Assert(pPager.pagerUseWal() || pageInJournal(pPg) || pPg.ID > pPager._dbOrigSize);
+        //        rc = pPager.openSubJournal();
+        //        // If the sub-journal was opened successfully (or was already open), write the journal record into the file. 
+        //        if (rc == RC.OK)
+        //        {
+        //            var pData = pPg._Data;
+        //            long offset = pPager._nSubRec * (4 + pPager._pageSize);
+        //            byte[] pData2 = null;
+        //            if (CODEC2(pPager, pData, pPg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2))
+        //                return RC.NOMEM;
+        //            PAGERTRACE("STMT-JOURNAL {0} page {1}", PAGERID(pPager), pPg.ID);
+        //            rc = pPager._journal2File.WriteByte(offset, pPg.ID);
+        //            if (rc == RC.OK)
+        //                rc = pPager._journal2File.Write(pData2, pPager._pageSize, offset + 4);
+        //        }
+        //    }
+        //    if (rc == RC.OK)
+        //    {
+        //        pPager._nSubRec++;
+        //        Debug.Assert(pPager.nSavepoint > 0);
+        //        rc = pPager.addToSavepointBitvecs(pPg.ID);
+        //    }
+        //    return rc;
+        //}
 
-        private RC hasHotJournal(ref int pExists)
-        {
-            var pVfs = this._vfs;
+        //private RC hasHotJournal(ref int pExists)
+        //{
+        //    var pVfs = this._vfs;
 
-            var jrnlOpen = (this._journalFile.IsOpen ? 1 : 0);
-            Debug.Assert(this._useJournal != 0);
-            Debug.Assert(this._file.IsOpen);
-            Debug.Assert(this._state == PAGER.OPEN);
-            Debug.Assert(jrnlOpen == 0 || (this._journalFile.DeviceCharacteristics & VirtualFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
-            pExists = 0;
-            var rc = RC.OK;
-            var exists = 1;               // True if a journal file is present
-            if (0 == jrnlOpen)
-                rc = pVfs.xAccess(this._journal, VirtualFileSystem.ACCESS.EXISTS, out exists);
-            if (rc == RC.OK && exists != 0)
-            {
-                int locked = 0;                 // True if some process holds a RESERVED lock
-                // Race condition here:  Another process might have been holding the the RESERVED lock and have a journal open at the sqlite3OsAccess()
-                // call above, but then delete the journal and drop the lock before we get to the following sqlite3OsCheckReservedLock() call.  If that
-                // is the case, this routine might think there is a hot journal when in fact there is none.  This results in a false-positive which will
-                // be dealt with by the playback routine.
-                rc = this._file.CheckReservedLock(ref locked);
-                if (rc == RC.OK && locked == 0)
-                {
-                    Pgno nPage = 0; // Number of pages in database file
-                    // Check the size of the database file. If it consists of 0 pages, then delete the journal file. See the header comment above for
-                    // the reasoning here.  Delete the obsolete journal file under a RESERVED lock to avoid race conditions and to avoid violating [H33020].
-                    rc = pagerPagecount(ref nPage);
-                    if (rc == RC.OK)
-                        if (nPage == 0)
-                        {
-                            MallocEx.BeginBenignMalloc();
-                            if (pagerLockDb(VFSLOCK.RESERVED) == RC.OK)
-                            {
-                                pVfs.xDelete(this._journal, 0);
-                                if (!this._exclusiveMode)
-                                    pagerUnlockDb(VFSLOCK.SHARED);
-                            }
-                            MallocEx.EndBenignMalloc();
-                        }
-                        else
-                        {
-                            // The journal file exists and no other connection has a reserved or greater lock on the database file. Now check that there is
-                            // at least one non-zero bytes at the start of the journal file. If there is, then we consider this journal to be hot. If not,
-                            // it can be ignored.
-                            if (0 == jrnlOpen)
-                            {
-                                var f = VirtualFileSystem.OPEN.READONLY | VirtualFileSystem.OPEN.MAIN_JOURNAL;
-                                rc = FileEx.OsOpen(pVfs, this._journal, this._journalFile, f, ref f);
-                            }
-                            if (rc == RC.OK)
-                            {
-                                var first = new byte[1];
-                                rc = this._journalFile.Read(first, 1, 0);
-                                if (rc == RC.IOERR_SHORT_READ)
-                                    rc = RC.OK;
-                                if (0 == jrnlOpen)
-                                    FileEx.OSClose(this._journalFile);
-                                pExists = (first[0] != 0) ? 1 : 0;
-                            }
-                            else if (rc == RC.CANTOPEN)
-                            {
-                                // If we cannot open the rollback journal file in order to see if its has a zero header, that might be due to an I/O error, or
-                                // it might be due to the race condition.  Either way, assume that the journal is hot. This might be a false positive.  But if it is, then the
-                                // automatic journal playback and recovery mechanism will deal with it under an EXCLUSIVE lock where we do not need to
-                                // worry so much with race conditions.
-                                pExists = 1;
-                                rc = RC.OK;
-                            }
-                        }
-                }
-            }
-            return rc;
-        }
+        //    var jrnlOpen = (this._journalFile.IsOpen ? 1 : 0);
+        //    Debug.Assert(this._useJournal != 0);
+        //    Debug.Assert(this._file.IsOpen);
+        //    Debug.Assert(this._state == PAGER.OPEN);
+        //    Debug.Assert(jrnlOpen == 0 || (this._journalFile.DeviceCharacteristics & VirtualFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
+        //    pExists = 0;
+        //    var rc = RC.OK;
+        //    var exists = 1;               // True if a journal file is present
+        //    if (0 == jrnlOpen)
+        //        rc = pVfs.xAccess(this._journal, VirtualFileSystem.ACCESS.EXISTS, out exists);
+        //    if (rc == RC.OK && exists != 0)
+        //    {
+        //        int locked = 0;                 // True if some process holds a RESERVED lock
+        //        // Race condition here:  Another process might have been holding the the RESERVED lock and have a journal open at the sqlite3OsAccess()
+        //        // call above, but then delete the journal and drop the lock before we get to the following sqlite3OsCheckReservedLock() call.  If that
+        //        // is the case, this routine might think there is a hot journal when in fact there is none.  This results in a false-positive which will
+        //        // be dealt with by the playback routine.
+        //        rc = this._file.CheckReservedLock(ref locked);
+        //        if (rc == RC.OK && locked == 0)
+        //        {
+        //            Pgno nPage = 0; // Number of pages in database file
+        //            // Check the size of the database file. If it consists of 0 pages, then delete the journal file. See the header comment above for
+        //            // the reasoning here.  Delete the obsolete journal file under a RESERVED lock to avoid race conditions and to avoid violating [H33020].
+        //            rc = pagerPagecount(ref nPage);
+        //            if (rc == RC.OK)
+        //                if (nPage == 0)
+        //                {
+        //                    MallocEx.BeginBenignMalloc();
+        //                    if (pagerLockDb(VFSLOCK.RESERVED) == RC.OK)
+        //                    {
+        //                        pVfs.xDelete(this._journal, 0);
+        //                        if (!this._exclusiveMode)
+        //                            pagerUnlockDb(VFSLOCK.SHARED);
+        //                    }
+        //                    MallocEx.EndBenignMalloc();
+        //                }
+        //                else
+        //                {
+        //                    // The journal file exists and no other connection has a reserved or greater lock on the database file. Now check that there is
+        //                    // at least one non-zero bytes at the start of the journal file. If there is, then we consider this journal to be hot. If not,
+        //                    // it can be ignored.
+        //                    if (0 == jrnlOpen)
+        //                    {
+        //                        var f = VirtualFileSystem.OPEN.READONLY | VirtualFileSystem.OPEN.MAIN_JOURNAL;
+        //                        rc = FileEx.OsOpen(pVfs, this._journal, this._journalFile, f, ref f);
+        //                    }
+        //                    if (rc == RC.OK)
+        //                    {
+        //                        var first = new byte[1];
+        //                        rc = this._journalFile.Read(first, 1, 0);
+        //                        if (rc == RC.IOERR_SHORT_READ)
+        //                            rc = RC.OK;
+        //                        if (0 == jrnlOpen)
+        //                            FileEx.OSClose(this._journalFile);
+        //                        pExists = (first[0] != 0) ? 1 : 0;
+        //                    }
+        //                    else if (rc == RC.CANTOPEN)
+        //                    {
+        //                        // If we cannot open the rollback journal file in order to see if its has a zero header, that might be due to an I/O error, or
+        //                        // it might be due to the race condition.  Either way, assume that the journal is hot. This might be a false positive.  But if it is, then the
+        //                        // automatic journal playback and recovery mechanism will deal with it under an EXCLUSIVE lock where we do not need to
+        //                        // worry so much with race conditions.
+        //                        pExists = 1;
+        //                        rc = RC.OK;
+        //                    }
+        //                }
+        //        }
+        //    }
+        //    return rc;
+        //}
     }
 }

@@ -64,7 +64,7 @@ namespace Core
 		//	void sqlite3PCacheBufferSetup(void *, int sz, int n);
 		__device__ static int Initialize();
 		__device__ static void Shutdown();
-		//	__device__ static int SizeOf();
+		__device__ static int SizeOf();
 		__device__ static void Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p);
 		__device__ void SetPageSize(int sizePage);
 		__device__ int Fetch(Pid id, bool createFlag, PgHdr **pageOut);

@@ -97,7 +97,10 @@ namespace Core
 	{
 		_pcache->Shutdown(); 
 	}
-	//int PCache::SizeOf() { return sizeof(PCache); }
+	int PCache::SizeOf()
+	{
+		return sizeof(PCache);
+	}
 
 	void PCache::Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p)
 	{

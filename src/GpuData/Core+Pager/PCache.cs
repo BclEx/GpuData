@@ -100,7 +100,10 @@ namespace Core
         {
             _pcache.Shutdown();
         }
-        //internal static int SizeOf() { return 4; }
+        //public static int SizeOf()
+        //{
+        //    return 4;
+        //}
 
         public void Open(int sizePage, int sizeExtra, bool purgeable, Func<object, PgHdr, RC> stress, object stressArg, PCache p)
         {

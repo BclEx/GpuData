@@ -107,7 +107,7 @@ namespace Core.IO
                 return (readWrite ? Open(path, file, ((flags | OPEN.READONLY) & ~(OPEN.CREATE | OPEN.READWRITE)), out outFlags) : SysEx.CANTOPEN_BKPT());
             }
             outFlags = (readWrite ? OPEN.READWRITE : OPEN.READONLY);
-            file.Clear();
+            file.memset();
             file.Opened = true;
             file.S = fs;
             file.LastErrorID = 0;

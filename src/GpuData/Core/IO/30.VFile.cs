@@ -23,6 +23,9 @@ namespace Core.IO
             NORMAL = 0x00002,
             FULL = 0x00003,
             DATAONLY = 0x00010,
+            // wal.h
+            WAL_TRANSACTIONS = 0x20,    // Sync at the end of each transaction
+            WAL_MASK = 0x13,            // Mask off the SQLITE_SYNC_* values
         }
 
         // sqlite3.h
@@ -80,7 +83,8 @@ namespace Core.IO
         public string Path;            // Full pathname of this file
         public int Chunk;             // Chunk size configured by FCNTL_CHUNK_SIZE
 
-        public void Clear()
+        // For C#
+        public void memset()
         {
             S = null;
             LockType = 0;

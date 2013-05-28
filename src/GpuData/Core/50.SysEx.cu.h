@@ -80,6 +80,7 @@ namespace Core
 	extern bool IOTrace;
 	__device__ inline static void SysEx_IOTRACE(const char *, ...) { }
 #else
+#define SysEx_OSTRACE(X)
 #define SysEx_IOTRACE(X)
 #endif
 

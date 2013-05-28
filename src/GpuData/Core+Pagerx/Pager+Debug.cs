@@ -6,9 +6,9 @@ namespace Core
 {
     public partial class Pager
     {
-        private static void PAGERTRACE(string x, params object[] args) { Console.WriteLine("p:" + string.Format(x, args)); }
-        private static int PAGERID(Pager p) { return p.GetHashCode(); }
-        private static int FILEHANDLEID(VFile fd) { return fd.GetHashCode(); }
+        //private static void PAGERTRACE(string x, params object[] args) { Console.WriteLine("p:" + string.Format(x, args)); }
+        //private static int PAGERID(Pager p) { return p.GetHashCode(); }
+        //private static int FILEHANDLEID(VFile fd) { return fd.GetHashCode(); }
 
 //#if DEBUG
 //        internal bool assert_pager_state()
@@ -138,12 +138,12 @@ namespace Core
 //        }
 //#endif
 
-#if DEBUG
-        internal static void assertTruncateConstraintCb(PgHdr page) { Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0); Debug.Assert(!subjRequiresPage(page) || page.ID <= page.Pager._dbSize); }
-        internal void assertTruncateConstraint() { _pcache.IterateDirty(assertTruncateConstraintCb); }
-#else
-        internal static void assertTruncateConstraintCb(Page page) { }
-        internal void assertTruncateConstraint() { }
-#endif
+//#if DEBUG
+//        internal static void assertTruncateConstraintCb(PgHdr page) { Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0); Debug.Assert(!subjRequiresPage(page) || page.ID <= page.Pager._dbSize); }
+//        internal void assertTruncateConstraint() { _pcache.IterateDirty(assertTruncateConstraintCb); }
+//#else
+//        internal static void assertTruncateConstraintCb(Page page) { }
+//        internal void assertTruncateConstraint() { }
+//#endif
     }
 }

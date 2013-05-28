@@ -37,116 +37,116 @@ namespace Contoso.Core
         //        this.sectorSize = MAX_SECTOR_SIZE;
         //}
 
-        // was:sqlite3PagerSetCachesize
-        public void SetCacheSize(int mxPage) { this.pPCache.sqlite3PcacheSetCachesize(mxPage); }
+        //// was:sqlite3PagerSetCachesize
+        //public void SetCacheSize(int mxPage) { this.pPCache.sqlite3PcacheSetCachesize(mxPage); }
 
-#if !SQLITE_OMIT_PAGER_PRAGMAS
-        // was:sqlite3PagerSetSafetyLevel
-        public void SetSafetyLevel(int level, int bFullFsync, int bCkptFullFsync)
-        {
-            Debug.Assert(level >= 1 && level <= 3);
-            this.noSync = (level == 1 || this.tempFile);
-            this.fullSync = (level == 3 && !this.tempFile);
-            if (this.noSync)
-            {
-                this.syncFlags = 0;
-                this.ckptSyncFlags = 0;
-            }
-            else if (bFullFsync != 0)
-            {
-                this.syncFlags = VirtualFile.SYNC.FULL;
-                this.ckptSyncFlags = VirtualFile.SYNC.FULL;
-            }
-            else if (bCkptFullFsync != 0)
-            {
-                this.syncFlags = VirtualFile.SYNC.NORMAL;
-                this.ckptSyncFlags = VirtualFile.SYNC.FULL;
-            }
-            else
-            {
-                this.syncFlags = VirtualFile.SYNC.NORMAL;
-                this.ckptSyncFlags = VirtualFile.SYNC.NORMAL;
-            }
-        }
-#endif
+//#if !SQLITE_OMIT_PAGER_PRAGMAS
+//        // was:sqlite3PagerSetSafetyLevel
+//        public void SetSafetyLevel(int level, int bFullFsync, int bCkptFullFsync)
+//        {
+//            Debug.Assert(level >= 1 && level <= 3);
+//            this.noSync = (level == 1 || this.tempFile);
+//            this.fullSync = (level == 3 && !this.tempFile);
+//            if (this.noSync)
+//            {
+//                this.syncFlags = 0;
+//                this.ckptSyncFlags = 0;
+//            }
+//            else if (bFullFsync != 0)
+//            {
+//                this.syncFlags = VirtualFile.SYNC.FULL;
+//                this.ckptSyncFlags = VirtualFile.SYNC.FULL;
+//            }
+//            else if (bCkptFullFsync != 0)
+//            {
+//                this.syncFlags = VirtualFile.SYNC.NORMAL;
+//                this.ckptSyncFlags = VirtualFile.SYNC.FULL;
+//            }
+//            else
+//            {
+//                this.syncFlags = VirtualFile.SYNC.NORMAL;
+//                this.ckptSyncFlags = VirtualFile.SYNC.NORMAL;
+//            }
+//        }
+//#endif
 
-        // was:sqlite3PagerSetBusyhandler
-        public void SetBusyHandler(Func<object, int> xBusyHandler, object pBusyHandlerArg)
-        {
-            this.xBusyHandler = xBusyHandler;
-            this.pBusyHandlerArg = pBusyHandlerArg;
-        }
+        //// was:sqlite3PagerSetBusyhandler
+        //public void SetBusyHandler(Func<object, int> xBusyHandler, object pBusyHandlerArg)
+        //{
+        //    this.xBusyHandler = xBusyHandler;
+        //    this.pBusyHandlerArg = pBusyHandlerArg;
+        //}
 
-        // was:sqlite3PagerSetPagesize
-        public RC SetPageSize(ref uint pPageSize, int nReserve)
-        {
-            // It is not possible to do a full assert_pager_state() here, as this function may be called from within PagerOpen(), before the state
-            // of the Pager object is internally consistent.
-            // At one point this function returned an error if the pager was in PAGER_ERROR state. But since PAGER_ERROR state guarantees that
-            // there is at least one outstanding page reference, this function is a no-op for that case anyhow.
-            var rc = RC.OK;
-            var pageSize = pPageSize;
-            Debug.Assert(pageSize == 0 || (pageSize >= 512 && pageSize <= SQLITE_MAX_PAGE_SIZE));
-            if ((this.memDb == 0 || this.dbSize == 0) && this.pPCache.sqlite3PcacheRefCount() == 0 && pageSize != 0 && pageSize != (uint)this.pageSize)
-            {
-                long nByte = 0;
-                if (this.eState > PAGER.OPEN && this.fd.IsOpen)
-                    rc = this.fd.FileSize(ref nByte);
-                if (rc == RC.OK)
-                {
-                    pager_reset();
-                    this.dbSize = (Pgno)(nByte / pageSize);
-                    this.pageSize = (int)pageSize;
-                    IPCache.sqlite3PageFree(ref this.pTmpSpace);
-                    this.pTmpSpace = MallocEx.sqlite3Malloc((int)pageSize);
-                    this.pPCache.SetPageSize((int)pageSize);
-                }
-            }
-            pPageSize = (uint)this.pageSize;
-            if (rc == RC.OK)
-            {
-                if (nReserve < 0)
-                    nReserve = this.nReserve;
-                Debug.Assert(nReserve >= 0 && nReserve < 1000);
-                this.nReserve = (short)nReserve;
-                pagerReportSize();
-            }
-            return rc;
-        }
+        //// was:sqlite3PagerSetPagesize
+        //public RC SetPageSize(ref uint pPageSize, int nReserve)
+        //{
+        //    // It is not possible to do a full assert_pager_state() here, as this function may be called from within PagerOpen(), before the state
+        //    // of the Pager object is internally consistent.
+        //    // At one point this function returned an error if the pager was in PAGER_ERROR state. But since PAGER_ERROR state guarantees that
+        //    // there is at least one outstanding page reference, this function is a no-op for that case anyhow.
+        //    var rc = RC.OK;
+        //    var pageSize = pPageSize;
+        //    Debug.Assert(pageSize == 0 || (pageSize >= 512 && pageSize <= SQLITE_MAX_PAGE_SIZE));
+        //    if ((this.memDb == 0 || this.dbSize == 0) && this.pPCache.sqlite3PcacheRefCount() == 0 && pageSize != 0 && pageSize != (uint)this.pageSize)
+        //    {
+        //        long nByte = 0;
+        //        if (this.eState > PAGER.OPEN && this.fd.IsOpen)
+        //            rc = this.fd.FileSize(ref nByte);
+        //        if (rc == RC.OK)
+        //        {
+        //            pager_reset();
+        //            this.dbSize = (Pgno)(nByte / pageSize);
+        //            this.pageSize = (int)pageSize;
+        //            IPCache.sqlite3PageFree(ref this.pTmpSpace);
+        //            this.pTmpSpace = MallocEx.sqlite3Malloc((int)pageSize);
+        //            this.pPCache.SetPageSize((int)pageSize);
+        //        }
+        //    }
+        //    pPageSize = (uint)this.pageSize;
+        //    if (rc == RC.OK)
+        //    {
+        //        if (nReserve < 0)
+        //            nReserve = this.nReserve;
+        //        Debug.Assert(nReserve >= 0 && nReserve < 1000);
+        //        this.nReserve = (short)nReserve;
+        //        pagerReportSize();
+        //    }
+        //    return rc;
+        //}
 
-        public byte[] sqlite3PagerTempSpace()
-        {
-            return this.pTmpSpace;
-        }
+        //public byte[] sqlite3PagerTempSpace()
+        //{
+        //    return this.pTmpSpace;
+        //}
 
-        // was:sqlite3PagerMaxPageCount
-        public Pgno SetMaxPageCount(int mxPage)
-        {
-            if (mxPage > 0)
-                this.mxPgno = (Pgno)mxPage;
-            Debug.Assert(this.eState != PAGER.OPEN);    // Called only by OP_MaxPgcnt
-            Debug.Assert(this.mxPgno >= this.dbSize);   // OP_MaxPgcnt enforces this
-            return this.mxPgno;
-        }
+        //// was:sqlite3PagerMaxPageCount
+        //public Pgno SetMaxPageCount(int mxPage)
+        //{
+        //    if (mxPage > 0)
+        //        this.mxPgno = (Pgno)mxPage;
+        //    Debug.Assert(this.eState != PAGER.OPEN);    // Called only by OP_MaxPgcnt
+        //    Debug.Assert(this.mxPgno >= this.dbSize);   // OP_MaxPgcnt enforces this
+        //    return this.mxPgno;
+        //}
 
-        // was:sqlite3PagerPagecount
-        public void GetPageCount(out Pgno pnPage)
-        {
-            Debug.Assert(this.eState >= PAGER.READER);
-            Debug.Assert(this.eState != PAGER.WRITER_FINISHED);
-            pnPage = this.dbSize;
-        }
+        //// was:sqlite3PagerPagecount
+        //public void GetPageCount(out Pgno pnPage)
+        //{
+        //    Debug.Assert(this.eState >= PAGER.READER);
+        //    Debug.Assert(this.eState != PAGER.WRITER_FINISHED);
+        //    pnPage = this.dbSize;
+        //}
 
-        // was:sqlite3PagerPagenumber
-        public static Pgno GetPageID(DbPage pPg) { return pPg.ID; }
-        // was:sqlite3PagerRef
-        public static void AddPageRef(DbPage pPg) { PCache.AddPageRef(pPg); }
-#if DEBUG
-        // was:sqlite3PagerIswriteable
-        public static bool IsPageWriteable(DbPage pPg) { return true; }
-#else
-        public static bool IsPageWriteable(DbPage pPg) { return (pPg.flags & PgHdr.PGHDR.DIRTY) != 0; }        
-#endif
+        //// was:sqlite3PagerPagenumber
+        //public static Pgno GetPageID(DbPage pPg) { return pPg.ID; }
+        //// was:sqlite3PagerRef
+        //public static void AddPageRef(DbPage pPg) { PCache.AddPageRef(pPg); }
+//#if DEBUG
+//        // was:sqlite3PagerIswriteable
+//        public static bool IsPageWriteable(DbPage pPg) { return true; }
+//#else
+//        public static bool IsPageWriteable(DbPage pPg) { return (pPg.flags & PgHdr.PGHDR.DIRTY) != 0; }        
+//#endif
         // was:sqlite3PagerIsreadonly
         public bool IsReadonly { get { return this.readOnly; } }
         // was:sqlite3PagerRefcount
