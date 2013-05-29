@@ -1,11 +1,13 @@
 ﻿// pager.h
 namespace Core
 {
-#define PAGER_MJ_PID(x) ((Pid)((PENDING_BYTE/((x)->PageSize))+1))
+#define IPager_MJ_PID(x) ((Pid)((PENDING_BYTE/((x)->PageSize))+1))
 
 	class IPager
 	{
 	public:
+		__device__ inline static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
+
 		// NOTE: These values must match the corresponding BTREE_ values in btree.h.
 		enum PAGEROPEN : char
 		{
