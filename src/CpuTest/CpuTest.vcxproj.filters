@@ -46,6 +46,9 @@
     <ClCompile Include="..\GpuData\Core+Pager\Pager.cu">
       <Filter>Core+Pager</Filter>
     </ClCompile>
+    <ClCompile Include="..\GpuData\Core+Pager\Wal.cu">
+      <Filter>Core+Pager</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h">
@@ -87,6 +90,9 @@
     </ClInclude>
     <ClInclude Include="..\GpuData\Core\10.ConvertEx.cu.h">
       <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Pager\Wal.cu.h">
+      <Filter>Core+Pager</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

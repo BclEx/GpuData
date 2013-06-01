@@ -1,6 +1,8 @@
 ﻿// os.h
 namespace Core
 {
+#define VERSION_NUMBER 3007016
+
 #include <malloc.h>
 	class SysEx
 	{

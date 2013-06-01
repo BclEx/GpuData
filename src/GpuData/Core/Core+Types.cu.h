@@ -24,4 +24,18 @@ typedef unsigned long long	uint64;
 #define MAX_UTYPE(x) ((((1U << ((sizeof(x) - 1) * 8)) - 1) << 8) | 255U)
 #define MIN_UTYPE(x) 0
 
+// Macros to determine whether the machine is big or little endian, evaluated at runtime.
+#ifdef AMALGAMATION
+const int __one = 1;
+#else
+extern const int __one;
+#endif
+#if defined(i386) || defined(__i386__) || defined(_M_IX86) || defined(__x86_64) || defined(__x86_64__)
+#define TYPE_BIGENDIAN 0
+#define TYPE_LITTLEENDIAN 1
+#else
+#define TYPE_BIGENDIAN (*(char *)(&__one) == 0)
+#define TYPE_LITTLEENDIAN (*(char *)(&__one) == 1)
+#endif
+
 #endif /* __CORE_TYPES_H__ */

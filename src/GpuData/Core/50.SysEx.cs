@@ -5,6 +5,8 @@ namespace Core
 {
     public class SysEx
     {
+        const int VERSION_NUMBER = 3007016;
+
         internal static RC OSError(RC rc, string func, string path)
         {
             var sf = new StackTrace(new StackFrame(true)).GetFrame(0);

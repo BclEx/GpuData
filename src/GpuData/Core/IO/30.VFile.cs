@@ -71,6 +71,18 @@ namespace Core.IO
             POWERSAFE_OVERWRITE = 0x00001000,
         }
 
+        // sqlite3.h
+        [Flags]
+        public enum SHM : byte
+        {
+            UNLOCK = 1,
+            LOCK = 2,
+            SHARED = 4,
+            EXCLUSIVE = 8,
+            SHM_MAX = 8,
+        };
+
+
         protected ulong _sectorSize;        // Sector size of the device file is on
         public bool Opened;
         public VFileSystem Vfs;        // The VFS used to open this file
@@ -115,7 +127,7 @@ namespace Core.IO
             return 0;
         }
 
-        public virtual RC ShmLock(int offset, int n, int flags) { return RC.OK; }
+        public virtual RC ShmLock(int offset, int n, SHM flags) { return RC.OK; }
         public virtual void ShmBarrier() { }
         public virtual RC ShmUnmap(int deleteFlag) { return RC.OK; }
         public virtual RC ShmMap(int iPg, int pgsz, int pInt, out object pvolatile) { pvolatile = null; return RC.OK; }

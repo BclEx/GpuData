@@ -8,9 +8,12 @@ using System.Text;
 
 namespace Core
 {
+    #region Struct
+
     public partial class Pager
     {
         private static readonly byte[] _journalMagic = new byte[] { 0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7 };
+
         // sqliteLimit.h
         const int MAX_PAGE_SIZE = 65535;
         const int DEFAULT_PAGE_SIZE = 1024;
@@ -163,6 +166,8 @@ namespace Core
         static int PAGERID(Pager p) { return p.GetHashCode(); }
         static int FILEHANDLEID(VFile fd) { return fd.GetHashCode(); }
     }
+
+    #endregion
 
     public partial class Pager
     {
@@ -1952,7 +1957,7 @@ pager_set_pagehash(p);
             PCache.Close();
 
 #if HAS_CODEC
-			if (CodecFree) CodecFree(Codec);
+            if (CodecFree) CodecFree(Codec);
 #endif
 
             Debug.Assert(Savepoints == null && !InJournal);
@@ -3398,25 +3403,29 @@ CHECK_PAGE(pPg);
         // was:sqlite3PagerIsreadonly
         public bool IsReadonly
         {
-            get { return this.readOnly; }
+            get { return ReadOnly; }
         }
 
         // was:sqlite3PagerRefcount
         public int RefCount
         {
-            get { return this.pPCache.sqlite3PcacheRefCount(); }
+            get { return PCache.get_Refs(); }
         }
 
         // was:sqlite3PagerMemUsed
         public int MemoryUsed
         {
-            get { var perPageSize = this.pageSize + this.nExtra + 20; return perPageSize * this.pPCache.sqlite3PcachePagecount() + 0 + this.pageSize; }
+            get
+            {
+                var perPageSize = PageSize + ExtraBytes + 20;
+                return perPageSize * PCache.get_Pages() + 0 + PageSize;
+            }
         }
 
         // was:sqlite3PagerPageRefcount
-        public static int GetPageRefCount(DbPage pPage)
+        public static int GetPageRefCount(IPage page)
         {
-            return PCache.sqlite3PcachePageRefcount(pPage);
+            return PCache.get_PageRefs(page);
         }
 
 #if TEST
@@ -3456,310 +3465,362 @@ CHECK_PAGE(pPg);
         // was:sqlite3PagerIsMemdb
         public bool IsMemoryDB
         {
-            get { return this.memDb != 0; }
+            get { return MemoryDB; }
         }
 
         // was:sqlite3PagerOpenSavepoint
-        public RC OpenSavepoint(int nSavepoint)
+        public RC OpenSavepoint(int savepoints)
         {
-            var rc = RC.OK;
-            var nCurrent = this.nSavepoint;        // Current number of savepoints 
-            Debug.Assert(this._state >= PAGER.WRITER_LOCKED);
+            Debug.Assert(State >= PAGER.WRITER_LOCKED);
             Debug.Assert(assert_pager_state());
-            if (nSavepoint > nCurrent && this._useJournal != 0)
+
+            var rc = RC.OK;
+            var currentSavepoints = Savepoints.Length; // Current number of savepoints 
+            if (savepoints > currentSavepoints && UseJournal)
             {
                 // Grow the Pager.aSavepoint array using realloc(). Return SQLITE_NOMEM if the allocation fails. Otherwise, zero the new portion in case a 
                 // malloc failure occurs while populating it in the for(...) loop below.
-                Array.Resize(ref this._savepoint, nSavepoint);
-                var aNew = this._savepoint; // New Pager.aSavepoint array
+                Array.Resize(ref Savepoints, savepoints);
+                var newSavepoints = Savepoints;
+
                 // Populate the PagerSavepoint structures just allocated.
-                for (var ii = nCurrent; ii < nSavepoint; ii++)
+                for (var ii = currentSavepoints; ii < nSavepoint; ii++)
                 {
-                    aNew[ii] = new PagerSavepoint();
-                    aNew[ii].nOrig = this._dbSize;
-                    aNew[ii].iOffset = (this._journalFile.IsOpen && this._journalOff > 0 ? this._journalOff : (int)JOURNAL_HDR_SZ(this));
-                    aNew[ii].iSubRec = this._nSubRec;
-                    aNew[ii].pInSavepoint = new Bitvec(this._dbSize);
-                    if (pagerUseWal())
-                        this._wal.Savepoint(aNew[ii].aWalData);
-                    this.nSavepoint = ii + 1;
+                    newSavepoints[ii] = new PagerSavepoint();
+                    newSavepoints[ii].Orig = DBSize;
+                    newSavepoints[ii].Offset = (JournalFile.Opened && JournalOffset > 0 ? JournalOffset : (int)JOURNAL_HDR_SZ(this));
+                    newSavepoints[ii].SubRecords = SubRecords;
+                    newSavepoints[ii].InSavepoint = new Bitvec(DBSize);
+                    if (UseWal())
+                        Wal.Savepoint(newSavepoints[ii].aWalData);
+                    var savepointsLength = ii + 1;
+                    if (Savepoints.Length != savepointsLength)
+                    {
+                        var lastSavepoints = Savepoints;
+                        Savepoints = new PagerSavepoint[savepointsLength];
+                        lastSavepoints.CopyTo(Savepoints, Math.Min(lastSavepoints.Length, Savepoints.Length));
+                    }
                 }
-                Debug.Assert(this.nSavepoint == nSavepoint);
+                Debug.Assert(Savepoints.Length == savepoints);
                 assertTruncateConstraint();
             }
             return rc;
         }
 
         // was:sqlite3PagerSavepoint
-        public RC Savepoint(SAVEPOINT op, int iSavepoint)
+        public RC Savepoint(SAVEPOINT op, int savepoints)
         {
-            var rc = this._errorCode;
             Debug.Assert(op == SAVEPOINT.RELEASE || op == SAVEPOINT.ROLLBACK);
-            Debug.Assert(iSavepoint >= 0 || op == SAVEPOINT.ROLLBACK);
-            if (rc == RC.OK && iSavepoint < this.nSavepoint)
+            Debug.Assert(savepoints >= 0 || op == SAVEPOINT.ROLLBACK);
+            var rc = ErrorCode;
+            if (rc == RC.OK && savepoints < Savepoints.Length)
             {
-                // Figure out how many savepoints will still be active after this operation. Store this value in nNew. Then free resources associated
+                // Figure out how many savepoints will still be active after this operation. Store this value in nNew. Then free resources associated 
                 // with any savepoints that are destroyed by this operation.
-                var nNew = iSavepoint + ((op == SAVEPOINT.RELEASE) ? 0 : 1); // Number of remaining savepoints after this op.
-                for (var ii = nNew; ii < this.nSavepoint; ii++)
-                    Bitvec.Destroy(ref this._savepoint[ii].pInSavepoint);
-                this.nSavepoint = nNew;
+                var newLength = savepoints + ((op == SAVEPOINT.RELEASE) ? 0 : 1); // Number of remaining savepoints after this op.
+                for (var ii = newLength; ii < Savepoints.Length; ii++)
+                    Bitvec.Destroy(ref Savepoints[ii].InSavepoint);
+                //SavepointLength = newLength;
+
                 // If this is a release of the outermost savepoint, truncate the sub-journal to zero bytes in size.
                 if (op == SAVEPOINT.RELEASE)
-                    if (nNew == 0 && this._journal2File.IsOpen)
+                    if (newLength == 0 && SubJournalFile.Opened)
                     {
                         // Only truncate if it is an in-memory sub-journal.
-                        if (this._journal2File is MemJournalFile)
+                        if (SubJournalFile is MemoryVFile)
                         {
-                            rc = this._journal2File.Truncate(0);
+                            rc = SubJournalFile.Truncate(0);
                             Debug.Assert(rc == RC.OK);
                         }
-                        this._nSubRec = 0;
+                        SubRecords = 0;
                     }
                     // Else this is a rollback operation, playback the specified savepoint. If this is a temp-file, it is possible that the journal file has
                     // not yet been opened. In this case there have been no changes to the database file, so the playback operation can be skipped.
-                    else if (pagerUseWal() || this._journalFile.IsOpen)
+                    else if (UseWal() || JournalFile.Opened)
                     {
-                        var pSavepoint = (nNew == 0 ? (PagerSavepoint)null : this._savepoint[nNew - 1]);
-                        rc = pagerPlaybackSavepoint(pSavepoint);
+                        var savepoint = (newLength == 0 ? (PagerSavepoint)null : Savepoint[newLength - 1]);
+                        rc = pagerPlaybackSavepoint(savepoint);
                         Debug.Assert(rc != RC.DONE);
                     }
             }
             return rc;
         }
 
-        public string sqlite3PagerFilename { get { return this.zFilename; } }
+        public string sqlite3PagerFilename(bool nullIfMemDb)
+        {
+            return (nullIfMemDb && MemoryDB ? string.Empty : Filename);
+        }
 
-        public VirtualFileSystem sqlite3PagerVfs { get { return this.pVfs; } }
+        public VFileSystem sqlite3PagerVfs
+        {
+            get { return Vfs; }
+        }
 
-        public VirtualFile sqlite3PagerFile { get { return this.fd; } }
+        public VFile sqlite3PagerFile
+        {
+            get { return File; }
+        }
 
-        public string sqlite3PagerJournalname { get { return this.zJournal; } }
+        public string sqlite3PagerJournalname
+        {
+            get { return Journal; }
+        }
 
-        public bool sqlite3PagerNosync { get { return this.noSync; } }
+        public bool sqlite3PagerNosync
+        {
+            get { return NoSync; }
+        }
 
 #if HAS_CODEC
-        public void sqlite3PagerSetCodec(codec_ctx.dxCodec xCodec, codec_ctx.dxCodecSizeChng xCodecSizeChng, codec_ctx.dxCodecFree xCodecFree, codec_ctx pCodec)
+        public void sqlite3PagerSetCodec(codec_ctx.dxCodec codec, codec_ctx.dxCodecSizeChng codecSizeChange, codec_ctx.dxCodecFree codecFree, codec_ctx codecArg)
         {
-            if (this.xCodecFree != null)
-                this.xCodecFree(ref this.pCodec);
-            this.xCodec = (this.memDb != 0 ? null : xCodec);
-            this.xCodecSizeChng = xCodecSizeChng;
-            this.xCodecFree = xCodecFree;
-            this.pCodec = pCodec;
+            if (CodecFree != null) CodecFree(ref Codec);
+            Codec = (MemoryDB ? null : codec);
+            CodecSizeChange = codecSizeChange;
+            CodecFree = codecFree;
+            CodecArg = codecArg;
             pagerReportSize();
         }
 
-        public object sqlite3PagerGetCodec() { return this.pCodec; }
+        public object sqlite3PagerGetCodec() { return Codec; }
 #endif
 
 #if !OMIT_AUTOVACUUM
-        public RC sqlite3PagerMovepage(DbPage pPg, Pgno pgno, int isCommit)
+        public RC sqlite3PagerMovepage(IPage pg, Pid pgno, bool isCommit)
         {
-            Debug.Assert(pPg.Refs > 0);
-            Debug.Assert(_state == PAGER.WRITER_CACHEMOD || _state == PAGER.WRITER_DBMOD);
+            Debug.Assert(pg.Refs > 0);
+            Debug.Assert(State == PAGER.WRITER_CACHEMOD ||
+                State == PAGER.WRITER_DBMOD);
             Debug.Assert(assert_pager_state());
+
             // In order to be able to rollback, an in-memory database must journal the page we are moving from.
             var rc = RC.OK;
             if (!_memoryDB)
             {
-                rc = Write(pPg);
-                if (rc != RC.OK)
-                    return rc;
+                rc = Write(pg);
+                if (rc != RC.OK) return rc;
             }
-            PgHdr pPgOld;                // The page being overwritten.
-            uint needSyncPgno = 0;       // Old value of pPg.pgno, if sync is required
-            Pgno origPgno;               // The original page number
-            // If the page being moved is dirty and has not been saved by the latest savepoint, then save the current contents of the page into the
+
+            // If the page being moved is dirty and has not been saved by the latest savepoint, then save the current contents of the page into the 
             // sub-journal now. This is required to handle the following scenario:
+            //
             //   BEGIN;
             //     <journal page X, then modify it in memory>
             //     SAVEPOINT one;
             //       <Move page X to location Y>
             //     ROLLBACK TO one;
+            //
             // If page X were not written to the sub-journal here, it would not be possible to restore its contents when the "ROLLBACK TO one"
             // statement were is processed.
-            // subjournalPage() may need to allocate space to store pPg.pgno into one or more savepoint bitvecs. This is the reason this function
+            //
+            // subjournalPage() may need to allocate space to store pPg->pgno into one or more savepoint bitvecs. This is the reason this function
             // may return SQLITE_NOMEM.
-            if ((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0 && subjRequiresPage(pPg) && RC.OK != (rc = subjournalPage(pPg)))
+            if ((pg.Flags & PgHdr.PGHDR.DIRTY) != 0 &&
+                subjRequiresPage(pg) &&
+                (rc = subjournalPage(pg)) != RC.OK)
                 return rc;
-            PAGERTRACE("MOVE {0} page {1} (needSync={2}) moves to {3}",
-            PAGERID(this), pPg.ID, (pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0, pgno);
-            Console.WriteLine("MOVE {0} {1} {2}", GetHashCode(), pPg.ID, pgno);
-            // If the journal needs to be sync()ed before page pPg.pgno can be written to, store pPg.pgno in local variable needSyncPgno.
-            // If the isCommit flag is set, there is no need to remember that the journal needs to be sync()ed before database page pPg.pgno
+
+            PAGERTRACE("MOVE {0} page {1} (needSync={2}) moves to {3}", PAGERID(this), pg.ID, (pg.Flags & PgHdr.PGHDR.NEED_SYNC != 0 ? 1 : 0), id);
+            Console.WriteLine("MOVE {0} {1} {2}", GetHashCode(), pg.ID, id);
+
+            // If the journal needs to be sync()ed before page pPg->pgno can be written to, store pPg->pgno in local variable needSyncPgno.
+            //
+            // If the isCommit flag is set, there is no need to remember that the journal needs to be sync()ed before database page pPg->pgno 
             // can be written to. The caller has already promised not to write to it.
-            if (((pPg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) && 0 == isCommit)
+            Pid needSyncID = 0; // Old value of pPg.pgno, if sync is required
+            if (((pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) && !isCommit)
             {
-                needSyncPgno = pPg.ID;
-                Debug.Assert(pageInJournal(pPg) || pPg.ID > _dbOrigSize);
+                needSyncID = pPg.ID;
+                Debug.Assert(JournalMode == IPager.JOURNALMODE.OFF || pageInJournal(pg) || pg.ID > DBOrigSize);
                 Debug.Assert((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0);
             }
-            // If the cache contains a page with page-number pgno, remove it from its hash chain. Also, if the PGHDR_NEED_SYNC was set for
+
+            // If the cache contains a page with page-number pgno, remove it from its hash chain. Also, if the PGHDR_NEED_SYNC flag was set for 
             // page pgno before the 'move' operation, it needs to be retained for the page moved there.
-            pPg.Flags &= ~PgHdr.PGHDR.NEED_SYNC;
-            pPgOld = pager_lookup(pgno);
-            Debug.Assert(null == pPgOld || pPgOld.Refs == 1);
-            if (pPgOld != null)
+            pg.Flags &= ~PgHdr.PGHDR.NEED_SYNC;
+            var pgOld = pager_lookup(id); // The page being overwritten.
+            Debug.Assert(pgOld == null || pgOld.Refs == 1);
+            if (pgOld != null)
             {
-                pPg.Flags |= (pPgOld.Flags & PgHdr.PGHDR.NEED_SYNC);
-                if (!_memoryDB)
+                pg.Flags |= (pgOld.Flags & PgHdr.PGHDR.NEED_SYNC);
+                if (!MemoryDB)
                     // Do not discard pages from an in-memory database since we might need to rollback later.  Just move the page out of the way.
-                    PCache.MovePage(pPgOld, this._dbSize + 1);
+                    PCache.Move(pgOld, DBSize + 1);
                 else
-                    PCache.DropPage(pPgOld);
+                    PCache.Drop(pgOld);
             }
-            origPgno = pPg.ID;
-            PCache.MovePage(pPg, pgno);
-            PCache.MakePageDirty(pPg);
+
+            var origID = pg.ID; // The original page number
+            PCache.Move(pg, id);
+            PCache.MakeDirty(pg);
+
             // For an in-memory database, make sure the original page continues to exist, in case the transaction needs to roll back.  Use pPgOld
             // as the original page since it has already been allocated.
-            if (!_memoryDB)
+            if (!MemoryDB)
             {
-                Debug.Assert(pPgOld);
-                PCache.MovePage(pPgOld, origPgno);
-                Unref(pPgOld);
+                Debug.Assert(pgOld);
+                PCache.Move(pgOld, origID);
+                Unref(pgOld);
             }
-            if (needSyncPgno != 0)
+
+            if (needSyncID)
             {
                 // If needSyncPgno is non-zero, then the journal file needs to be sync()ed before any data is written to database file page needSyncPgno.
                 // Currently, no such page exists in the page-cache and the "is journaled" bitvec flag has been set. This needs to be remedied by
                 // loading the page into the pager-cache and setting the PGHDR_NEED_SYNC flag.
+                //
                 // If the attempt to load the page into the page-cache fails, (due to a malloc() or IO failure), clear the bit in the pInJournal[]
                 // array. Otherwise, if the page is loaded and written again in this transaction, it may be written to the database file before
                 // it is synced into the journal file. This way, it may end up in the journal file twice, but that is not a problem.
-                PgHdr pPgHdr = null;
-                rc = Get(needSyncPgno, ref pPgHdr);
+                PgHdr pgHdr = null;
+                rc = Get(needSyncID, ref pgHdr);
                 if (rc != RC.OK)
                 {
-                    if (needSyncPgno <= _dbOrigSize)
+                    if (needSyncID <= DBOrigSize)
                     {
-                        Debug.Assert(this._tempSpace != null);
-                        var pTemp = new uint[this._tempSpace.Length];
-                        this._inJournal.Clear(needSyncPgno, pTemp);
+                        Debug.Assert(TempSpace != null);
+                        var temp = new uint[TempSpace.Length];
+                        InJournal.Clear(needSyncID, temp);
                     }
                     return rc;
                 }
-                pPgHdr.Flags |= PgHdr.PGHDR.NEED_SYNC;
-                PCache.MakePageDirty(pPgHdr);
-                Unref(pPgHdr);
+                pgHdr.Flags |= PgHdr.PGHDR.NEED_SYNC;
+                PCache.MakeDirty(pgHdr);
+                Unref(pgHdr);
             }
             return RC.OK;
         }
 #endif
 
-        public static byte[] sqlite3PagerGetData(DbPage pPg) { Debug.Assert(pPg.Refs > 0 || pPg.Pager._memoryDB != 0); return pPg._Data; }
-
-        public static T sqlite3PagerGetExtra<T>(DbPage pPg) { return (T)pPg.Extra; }
-
-        public bool sqlite3PagerLockingMode(LOCKINGMODE eMode)
+        public static byte[] sqlite3PagerGetData(IPage pg)
         {
-            Debug.Assert(eMode == LOCKINGMODE.QUERY || eMode == LOCKINGMODE.NORMAL || eMode == LOCKINGMODE.EXCLUSIVE);
-            Debug.Assert(LOCKINGMODE.QUERY < 0);
-            Debug.Assert(LOCKINGMODE.NORMAL >= 0 && LOCKINGMODE.EXCLUSIVE >= 0);
-            Debug.Assert(this.exclusiveMode || !this.pWal.HeapMemory());
-            if (eMode >= 0 && !this.tempFile && !this.pWal.HeapMemory())
-                this.exclusiveMode = eMode != 0;
-            return this.exclusiveMode;
+            Debug.Assert(pg.Refs > 0 || pg.Pager.MemoryDB);
+            return pg.Data;
         }
 
-        public JOURNALMODE sqlite3PagerSetJournalMode(JOURNALMODE eMode)
+        public static T sqlite3PagerGetExtra<T>(IPage pg)
         {
-            var eOld = this.journalMode;    // Prior journalmode
+            return (T)pg.Extra;
+        }
+
+        public bool sqlite3PagerLockingMode(IPager.LOCKINGMODE mode)
+        {
+            Debug.Assert(mode == LOCKINGMODE.QUERY ||
+                mode == LOCKINGMODE.NORMAL ||
+                mode == LOCKINGMODE.EXCLUSIVE);
+            Debug.Assert(LOCKINGMODE.QUERY < 0);
+            Debug.Assert(LOCKINGMODE.NORMAL >= 0 && LOCKINGMODE.EXCLUSIVE >= 0);
+            Debug.Assert(ExclusiveMode || !Wal.HeapMemory());
+            if (mode >= 0 && !TempFile && !Wal.HeapMemory())
+                ExclusiveMode = (mode != 0);
+            return ExclusiveMode;
+        }
+
+        public IPager.JOURNALMODE sqlite3PagerSetJournalMode(IPager.JOURNALMODE mode)
+        {
 #if DEBUG
             // The print_pager_state() routine is intended to be used by the debugger only.  We invoke it once here to suppress a compiler warning. */
-            this.print_pager_state();
+            print_pager_state();
 #endif
+
             // The eMode parameter is always valid
-            Debug.Assert(eMode == JOURNALMODE.DELETE
-                || eMode == JOURNALMODE.TRUNCATE
-                || eMode == JOURNALMODE.PERSIST
-                || eMode == JOURNALMODE.OFF
-                || eMode == JOURNALMODE.WAL
-                || eMode == JOURNALMODE.MEMORY);
+            Debug.Assert(mode == IPager.JOURNALMODE.DELETE ||
+                mode == IPager.JOURNALMODE.TRUNCATE ||
+                mode == IPager.JOURNALMODE.PERSIST ||
+                mode == IPager.JOURNALMODE.OFF ||
+                mode == IPager.JOURNALMODE.WAL ||
+                mode == IPager.JOURNALMODE.MEMORY);
+
             // This routine is only called from the OP_JournalMode opcode, and the logic there will never allow a temporary file to be changed to WAL mode.
-            Debug.Assert(this.tempFile == false || eMode != JOURNALMODE.WAL);
+            Debug.Assert(!TempFile || mode != IPager.JOURNALMODE.WAL);
+
             // Do allow the journalmode of an in-memory database to be set to anything other than MEMORY or OFF
-            if (
-#if SQLITE_OMIT_MEMORYDB
-1==MEMDB
-#else
-1 == this.memDb
-#endif
-)
+            var old = JournalMode; // Prior journalmode
+            if (MemoryDB)
             {
-                Debug.Assert(eOld == JOURNALMODE.MEMORY || eOld == JOURNALMODE.OFF);
-                if (eMode != JOURNALMODE.MEMORY && eMode != JOURNALMODE.OFF)
-                    eMode = eOld;
+                Debug.Assert(old == IPager.JOURNALMODE.MEMORY || old == IPager.JOURNALMODE.OFF);
+                if (mode != IPager.JOURNALMODE.JMEMORY && mode != IPager.JOURNALMODE.OFF)
+                    mode = old;
             }
-            if (eMode != eOld)
+
+            if (mode != old)
             {
                 // Change the journal mode.
-                Debug.Assert(this.eState != PAGER.ERROR);
-                this.journalMode = eMode;
+                Debug.Assert(State != PAGER.ERROR);
+                JournalMode = mode;
+
                 // When transistioning from TRUNCATE or PERSIST to any other journal mode except WAL, unless the pager is in locking_mode=exclusive mode,
                 // delete the journal file.
-                Debug.Assert(((int)JOURNALMODE.TRUNCATE & 5) == 1);
-                Debug.Assert(((int)JOURNALMODE.PERSIST & 5) == 1);
-                Debug.Assert(((int)JOURNALMODE.DELETE & 5) == 0);
-                Debug.Assert(((int)JOURNALMODE.MEMORY & 5) == 4);
-                Debug.Assert(((int)JOURNALMODE.OFF & 5) == 0);
-                Debug.Assert(((int)JOURNALMODE.WAL & 5) == 5);
-                Debug.Assert(this.fd.IsOpen || this.exclusiveMode);
-                if (!this.exclusiveMode && ((int)eOld & 5) == 1 && ((int)eMode & 1) == 0)
+                Debug.Assert(((int)IPager.JOURNALMODE.TRUNCATE & 5) == 1);
+                Debug.Assert(((int)IPager.JOURNALMODE.PERSIST & 5) == 1);
+                Debug.Assert(((int)IPager.JOURNALMODE.DELETE & 5) == 0);
+                Debug.Assert(((int)IPager.JOURNALMODE.JMEMORY & 5) == 4);
+                Debug.Assert(((int)IPager.JOURNALMODE.OFF & 5) == 0);
+                Debug.Assert(((int)IPager.JOURNALMODE.WAL & 5) == 5);
+                Debug.Assert(File.Opened || ExclusiveMode);
+                if (!ExclusiveMode && ((int)old & 5) == 1 && ((int)mode & 1) == 0)
                 {
                     // In this case we would like to delete the journal file. If it is not possible, then that is not a problem. Deleting the journal file
                     // here is an optimization only.
+                    //
                     // Before deleting the journal file, obtain a RESERVED lock on the database file. This ensures that the journal file is not deleted
                     // while it is in use by some other client.
-                    FileEx.OSClose(this.jfd);
-                    if (this.eLock >= VFSLOCK.RESERVED)
-                        this.pVfs.xDelete(this.zJournal, 0);
+                    JournalFile.Close();
+                    if (Lock >= VFile.LOCK.RESERVED)
+                        Vfs.Delete(Journal, false);
                     else
                     {
                         var rc = RC.OK;
-                        var state = this.eState;
+                        var state = State;
                         Debug.Assert(state == PAGER.OPEN || state == PAGER.READER);
                         if (state == PAGER.OPEN)
-                            rc = this.SharedLock();
-                        if (this.eState == PAGER.READER)
+                            rc = SharedLock();
+                        if (State == PAGER.READER)
                         {
                             Debug.Assert(rc == RC.OK);
-                            rc = this.pagerLockDb(VFSLOCK.RESERVED);
+                            rc = pagerLockDb(VFile.LOCK.RESERVED);
                         }
                         if (rc == RC.OK)
-                            this.pVfs.xDelete(this.zJournal, 0);
+                            Vfs.Delete(Journal, false);
                         if (rc == RC.OK && state == PAGER.READER)
-                            this.pagerUnlockDb(VFSLOCK.SHARED);
+                            pagerUnlockDb(VFile.LOCK.SHARED);
                         else if (state == PAGER.OPEN)
-                            this.pager_unlock();
-                        Debug.Assert(state == this.eState);
+                            pager_unlock();
+                        Debug.Assert(state == State);
                     }
                 }
             }
+
             // Return the new journal mode
-            return this.journalMode;
+            return JournalMode;
         }
 
-        public JOURNALMODE sqlite3PagerGetJournalMode() { return this.journalMode; }
+        public IPager.JOURNALMODE sqlite3PagerGetJournalMode()
+        {
+            return JournalMode;
+        }
 
         private bool sqlite3PagerOkToChangeJournalMode()
         {
-            Debug.Assert(this.assert_pager_state());
-            if (this.eState >= PAGER.WRITER_CACHEMOD)
-                return false;
-            if (Check.NEVER(this.jfd.IsOpen && this.journalOff > 0))
-                return false;
-            return true;
+            Debug.Assert(assert_pager_state());
+            if (State >= PAGER.WRITER_CACHEMOD) return false;
+            return (SysEx.NEVER(JournalFile.Opened && JournalOffset > 0) ? false : true);
         }
 
-        private long sqlite3PagerJournalSizeLimit(long iLimit)
+        private long sqlite3PagerJournalSizeLimit(long limit)
         {
-            if (iLimit >= -1) { this.journalSizeLimit = iLimit; this.pWal.Limit(iLimit); }
-            return this.journalSizeLimit;
+            if (limit >= -1)
+            {
+                JournalSizeLimit = limit;
+                Wal.Limit(limit);
+            }
+            return JournalSizeLimit;
         }
 
-        public IBackup sqlite3PagerBackupPtr() { return this.pBackup; }
+        public IBackup sqlite3PagerBackupPtr()
+        {
+            return Backup;
+        }
 
 #if !OMIT_VACUUM
         void sqlite3PagerClearCache()
@@ -3774,135 +3835,116 @@ CHECK_PAGE(pPg);
         #region Wal
 #if !OMIT_WAL
 
-int sqlite3PagerCheckpoint(Pager *pPager, int eMode, int *pnLog, int *pnCkpt){
-  int rc = SQLITE.OK;
-  if( pPager.pWal ){
-    rc = sqlite3WalCheckpoint(pPager.pWal, eMode,
-        pPager.xBusyHandler, pPager.pBusyHandlerArg,
-        pPager.ckptSyncFlags, pPager.pageSize, (u8 *)pPager.pTmpSpace,
-        pnLog, pnCkpt
-    );
-  }
-  return rc;
-}
+        RC sqlite3PagerCheckpoint(Pager pager, int mode, ref int logs, ref int checkpoints)
+        {
+            var rc = RC.OK;
+            if (pager.Wal)
+            {
+                rc = sqlite3WalCheckpoint(pager.Wal, mode,
+                pager.BusyHandler, pager.BusyHandlerArg,
+                pager.CheckpointSyncFlags, pager.PageSize, pager.TmpSpace,
+                logs, checkpoints);
+            }
+            return rc;
+        }
 
-    int sqlite3PagerWalCallback(Pager *pPager){
-return sqlite3WalCallback(pPager.pWal);
-}
+        RC sqlite3PagerWalCallback(Pager pPager)
+        {
+            return sqlite3WalCallback(pager.Wal);
+        }
 
-int sqlite3PagerWalSupported(Pager *pPager){
-const sqlite3_io_methods *pMethods = pPager.fd->pMethods;
-return pPager.exclusiveMode || (pMethods->iVersion>=2 && pMethods->xShmMap);
-}
+        bool sqlite3PagerWalSupported(Pager pager)
+        {
+            return false;
+            //const sqlite3_io_methods* pMethods = pPager.fd->pMethods;
+            //return pPager.exclusiveMode || (pMethods->iVersion >= 2 && pMethods->xShmMap);
+        }
 
-static int pagerExclusiveLock(Pager *pPager){
-int rc;                         /* Return code */
+        static RC pagerExclusiveLock(Pager pager)
+        {
+            Debug.Assert(pager.Lock == VFile.LOCK.SHARED || pager.Lock == VFile.LOCK.EXCLUSIVE);
+            var rc = pagerLockDb(pager, VFile.LOCK.EXCLUSIVE);
+            if (rc != RC.OK) // If the attempt to grab the exclusive lock failed, release the pending lock that may have been obtained instead.
+                pagerUnlockDb(pager, VFile.LOCK.SHARED);
+            return rc;
+        }
 
-assert( pPager.eLock==SHARED_LOCK || pPager.eLock==EXCLUSIVE_LOCK );
-rc = pagerLockDb(pPager, EXCLUSIVE_LOCK);
-if( rc!=SQLITE.OK ){
-/* If the attempt to grab the exclusive lock failed, release the
-** pending lock that may have been obtained instead.  */
-pagerUnlockDb(pPager, SHARED_LOCK);
-}
+        static RC pagerOpenWal(Pager pager)
+        {
+            Debug.Assert(pager.Wal == null && !pager.TempFile);
+            Debug.Assert(pager.Lock == VFile.LOCK.SHARED || pager.Lock == VFile.LOCK.EXCLUSIVE || pager.NoReadlock);
 
-return rc;
-}
+            // If the pager is already in exclusive-mode, the WAL module will use heap-memory for the wal-index instead of the VFS shared-memory 
+            // implementation. Take the exclusive lock now, before opening the WAL file, to make sure this is safe.
+            var rc = RC.OK;
+            if (pager.ExclusiveMode)
+                rc = pagerExclusiveLock(pager);
 
-static int pagerOpenWal(Pager *pPager){
-int rc = SQLITE.OK;
+            // Open the connection to the log file. If this operation fails, (e.g. due to malloc() failure), return an error code.
+            if (rc == RC.OK)
+                rc = sqlite3WalOpen(pager.Vfs, pager.File, pager.WalName, pager.ExclusiveMode, ref pager.Wal, pager.JournalSizeLimit, ref pager.Wal);
 
-assert( pPager.pWal==0 && pPager.tempFile==0 );
-assert( pPager.eLock==SHARED_LOCK || pPager.eLock==EXCLUSIVE_LOCK || pPager.noReadlock);
+            return rc;
+        }
 
-/* If the pager is already in exclusive-mode, the WAL module will use 
-** heap-memory for the wal-index instead of the VFS shared-memory 
-** implementation. Take the exclusive lock now, before opening the WAL
-** file, to make sure this is safe.
-*/
-if( pPager.exclusiveMode ){
-rc = pagerExclusiveLock(pPager);
-}
+        RC sqlite3PagerOpenWal(Pager pager, out bool open)
+        {
+            Debug.Assert(assert_pager_state(pager));
+            Debug.Assert(pager.State == PAGER.OPEN || open);
+            Debug.Assert(pager.State == PAGER.READER || !open);
+            Debug.Assert(open == false);
+            Debug.Assert(!pager.TempFile && !pager.Wal);
 
-/* Open the connection to the log file. If this operation fails, 
-** (e.g. due to malloc() failure), return an error code.
-*/
-if( rc==SQLITE.OK ){
-rc = sqlite3WalOpen(pPager.pVfs, 
-pPager.fd, pPager.zWal, pPager.exclusiveMode, &pPager.pWal
-        pPager.journalSizeLimit, &pPager.pWal
-);
-}
+            var rc = RC.OK;
+            if (!pager.TempFile && pager.Wal == null)
+            {
+                if (!sqlite3PagerWalSupported(pager)) return RC.CANTOPEN;
 
-return rc;
-}
+                // Close any rollback journal previously open
+                pager.JournalFile.Close();
 
+                rc = pagerOpenWal(pager);
+                if (rc == RC.OK)
+                {
+                    pager.JournalMode = IPager.JOURNALMODE.WAL;
+                    pager.State = PAGER.OPEN;
+                }
+            }
+            else
+                open = true;
 
-int sqlite3PagerOpenWal(
-Pager *pPager,                  /* Pager object */
-int *pbOpen                     /* OUT: Set to true if call is a no-op */
-){
-int rc = SQLITE.OK;             /* Return code */
+            return rc;
+        }
 
-assert( assert_pager_state(pPager) );
-assert( pPager.eState==PAGER_OPEN   || pbOpen );
-assert( pPager.eState==PAGER_READER || !pbOpen );
-assert( pbOpen==0 || *pbOpen==0 );
-assert( pbOpen!=0 || (!pPager.tempFile && !pPager.pWal) );
+        RC sqlite3PagerCloseWal(Pager pager)
+        {
+            Debug.Assert(pager.JournalMode == IPager.JOURNALMODE.WAL);
 
-if( !pPager.tempFile && !pPager.pWal ){
-if( !sqlite3PagerWalSupported(pPager) ) return SQLITE_CANTOPEN;
+            // If the log file is not already open, but does exist in the file-system, it may need to be checkpointed before the connection can switch to
+            // rollback mode. Open it now so this can happen.
+            var rc = RC.OK;
+            if (pager.Wal == null)
+            {
+                rc = pagerLockDb(pager, VFile.LOCK.SHARED);
+                int logexists = 0;
+                if (rc == RC.OK)
+                    rc = pager.Vfs.Access(pager.WalName, VFileSystem.ACCESS.EXISTS, out logexists);
+                if (rc == RC.OK && logexists)
+                    rc = pagerOpenWal(pager);
+            }
 
-/* Close any rollback journal previously open */
-sqlite3OsClose(pPager.jfd);
-
-rc = pagerOpenWal(pPager);
-if( rc==SQLITE.OK ){
-pPager.journalMode = PAGER_JOURNALMODE_WAL;
-pPager.eState = PAGER_OPEN;
-}
-}else{
-*pbOpen = 1;
-}
-
-return rc;
-}
-
-int sqlite3PagerCloseWal(Pager *pPager){
-int rc = SQLITE.OK;
-
-assert( pPager.journalMode==PAGER_JOURNALMODE_WAL );
-
-/* If the log file is not already open, but does exist in the file-system,
-** it may need to be checkpointed before the connection can switch to
-** rollback mode. Open it now so this can happen.
-*/
-if( !pPager.pWal ){
-int logexists = 0;
-rc = pagerLockDb(pPager, SHARED_LOCK);
-if( rc==SQLITE.OK ){
-rc = sqlite3OsAccess(
-pPager.pVfs, pPager.zWal, SQLITE_ACCESS_EXISTS, &logexists
-);
-}
-if( rc==SQLITE.OK && logexists ){
-rc = pagerOpenWal(pPager);
-}
-}
-
-/* Checkpoint and close the log. Because an EXCLUSIVE lock is held on
-** the database file, the log and log-summary files will be deleted.
-*/
-if( rc==SQLITE.OK && pPager.pWal ){
-rc = pagerExclusiveLock(pPager);
-if( rc==SQLITE.OK ){
-rc = sqlite3WalClose(pPager.pWal, pPager.ckptSyncFlags,
-           pPager.pageSize, (u8*)pPager.pTmpSpace);
-pPager.pWal = 0;
-}
-}
-return rc;
-}
+            // Checkpoint and close the log. Because an EXCLUSIVE lock is held on the database file, the log and log-summary files will be deleted.
+            if (rc == RC.OK && pager.Wal)
+            {
+                rc = pagerExclusiveLock(pager);
+                if (rc == RC.OK)
+                {
+                    rc = sqlite3WalClose(pager.Wal, pager.CheckpointSyncFlags, pager.PageSize, pager.TmpSpace);
+                    pager.Wal = null;
+                }
+            }
+            return rc;
+        }
 
 #endif
         #endregion
@@ -3910,20 +3952,20 @@ return rc;
         #region Misc
 
 #if ENABLE_ZIPVFS
-		int sqlite3PagerWalFramesize(Pager *pager)
+		int sqlite3PagerWalFramesize(Pager pager)
 		{
-			_assert(pager->State == PAGER::READER);
-			return sqlite3WalFramesize(pager->Wal);
+			Debug.Asset(pager.State == PAGER.READER);
+			return sqlite3WalFramesize(pager.Wal);
 		}
 #endif
 
 #if HAS_CODEC
-		void *sqlite3PagerCodec(PgHdr *pg)
-		{
-			void *data = 0;
-			CODEC2(pg->Pager, pg->Data, pg->ID, 6, return 0, data);
-			return data;
-		}
+        void sqlite3PagerCodec(PgHdr pg)
+        {
+            byte[] data = null;
+            if (CODEC2(pg.Pager, pg.Data, pg.ID, 6, data)) return 0;
+            return data;
+        }
 #endif
 
         #endregion

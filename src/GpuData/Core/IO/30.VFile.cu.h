@@ -69,6 +69,16 @@ namespace Core
 			POWERSAFE_OVERWRITE = 0x00001000,
 		};
 
+		// sqlite3.h
+		enum SHM : char
+		{
+			UNLOCK = 1,
+			LOCK = 2,
+			SHARED = 4,
+			EXCLUSIVE = 8,
+			SHM_MAX = 8,
+		};
+
 		bool Opened;
 
 		virtual RC Read(void *buffer, int amount, int64 offset) = 0;
@@ -86,10 +96,10 @@ namespace Core
 		virtual int SectorSize() = 0;
 		virtual int get_DeviceCharacteristics() = 0;
 
-		virtual int ShmLock(int offset, int n, int flags) = 0;
+		virtual RC ShmLock(int offset, int n, SHM flags) = 0;
 		virtual void ShmBarrier() = 0;
-		virtual int ShmUnmap(int deleteFlag) = 0;
-		virtual int ShmMap(int page, int pageSize, int extend, void volatile **p) = 0;
+		virtual RC ShmUnmap(int deleteFlag) = 0;
+		virtual RC ShmMap(int page, int pageSize, int extend, void volatile **p) = 0;
 
 		__device__ inline RC Read4(int64 offset, uint32 *valueOut)
 		{

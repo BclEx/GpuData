@@ -51,7 +51,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;OMIT_WAL;EXPENSIVE_ASSERT;TEST;CHECK_PAGES;ENABLE_MEMORY_MANAGEMENT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;OMIT_WAL;EXPENSIVE_ASSERT;TEST;CHECK_PAGES;ENABLE_MEMORY_MANAGEMENT;HAS_CODEC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -85,6 +85,7 @@
     <ClInclude Include="..\GpuData\Core+Pager\Core+Pager.cu.h" />
     <ClInclude Include="..\GpuData\Core+Pager\Pager.cu.h" />
     <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Pager\Wal.cu.h" />
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
     <ClInclude Include="..\GpuData\Core\10.ConvertEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h" />
@@ -130,6 +131,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core+Pager\Pager.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core+Pager\Wal.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>
