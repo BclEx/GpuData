@@ -25,3 +25,4 @@ public:
 
 #include "Pager.cu.h"
 #include "PCache.cu.h"
+#include "Wal.cu.h"

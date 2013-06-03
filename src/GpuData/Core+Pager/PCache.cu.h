@@ -7,17 +7,17 @@ namespace Core
 	class IPCache
 	{
 	public:
-		virtual RC Init();
-		virtual void Shutdown();
-		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
-		virtual void Cachesize(uint max);
-		virtual void Shrink();
-		virtual int get_Pages();
-		virtual IPage *Fetch(Pid key, int createFlag);
-		virtual void Unpin(IPage *pg, bool reuseUnlikely);
-		virtual void Rekey(IPage *pg, Pid old, Pid new_);
-		virtual void Truncate(Pid limit);
-		virtual void Destroy(IPCache *p);
+		virtual RC Init() = 0;
+		virtual void Shutdown() = 0;
+		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable) = 0;
+		virtual void Cachesize(uint max) = 0;
+		virtual void Shrink() = 0;
+		virtual int get_Pages() = 0;
+		virtual IPage *Fetch(Pid key, int createFlag) = 0;
+		virtual void Unpin(IPage *pg, bool reuseUnlikely) = 0;
+		virtual void Rekey(IPage *pg, Pid old, Pid new_) = 0;
+		virtual void Truncate(Pid limit) = 0;
+		virtual void Destroy(IPCache *p) = 0;
 	};
 
 	struct PgHdr

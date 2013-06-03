@@ -1,52 +1,108 @@
-﻿// wal.c
-#include "Core+Pager.cu.h"
-using namespace Core;
-
-class Wal
+﻿// wal.h
+namespace Core
 {
-public:
-	static RC Open(VFileSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut);
-	static void Limit(Wal *wal, int64 limit);
+	//typedef struct WalIndexHeader WalIndexHeader;
 
+	struct Wal
+	{
 #ifdef OMIT_WAL
-	static RC Open(VFileSystem *x, VFile *y, char *z) { return RC.OK; }
-	static void Limit(Wal *a, long y) { }
-	static RC Close(Wal *a, int x, int y, byte z) { return RC::OK; }
-	static RC BeginReadTransaction(Wal *a, int z) { return RC::OK; }
-	static void EndReadTransaction(Wal *a) { }
-	static RC Read(Wal *a, Pid w, ref int x, int y, byte[] z) { return RC::OK; }
-	static Pid DBSize(Wal *a) { return 0; }
-	static RC BeginWriteTransaction(Wal *a) { return RC::OK; }
-	static RC EndWriteTransaction(Wal *a) { return RC::OK; }
-	static RC Undo(Wal *a, int y, object z) { return RC::OK; }
-	static void Savepoint(Wal *a, object z) { }
-	static RC SavepointUndo(Wal *a, object z) { return RC::OK; }
-	static RC Frames(Wal *a, int v, PgHdr w, Pid x, int y, int z) { return RC::OK; }
-	static RC Checkpoint(Wal *a, int s, int t, byte[] u, int v, int w, byte[] x, ref int y, ref int z) { y = 0; z = 0; return RC::OK; }
-	static RC Callback(Wal *a) { return RC::OK; }
-	static bool ExclusiveMode(Wal *a, int z) { return false; }
-	static bool HeapMemory(Wal *a) { return false; }
+
+		inline static RC Open(VFileSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut) { return RC::OK; }
+		inline void Limit(int64 limit) { }
+		inline RC Close(VFile::SYNC sync_flags, int bufLength, uint8 *buf) { return RC::OK; }
+		inline RC BeginReadTransaction(bool *changed) { return RC::OK; }
+		inline void EndReadTransaction() { }
+		inline RC Read(Pid id, bool *inWal, int bufLength, uint8 *buf) { return RC::OK; }
+		inline Pid DBSize() { return 0; }
+		inline RC BeginWriteTransaction() { return RC::OK; }
+		inline RC EndWriteTransaction() { return RC::OK; }
+		inline RC Undo(int (*undo)(void *, Pid), void *undoCtx) { return RC::OK; }
+		inline void Savepoint(uint32 *walData) { }
+		inline RC SavepointUndo(uint32 *walData) { return RC::OK; }
+		inline RC Frames(int sizePage, PgHdr *list, Pid truncate, bool isCommit, VFile::SYNC sync_flags) { return RC::OK; }
+		inline RC Checkpoint(int mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints) { *logs = 0, *checkpoints = 0; return RC::OK; }
+		inline int Callback() { return 0; }
+		inline bool ExclusiveMode(int op) { return false; }
+		inline bool HeapMemory() { return false; }
+#ifdef ENABLE_ZIPVFS
+		inline int Framesize() { return 0; }
 #endif
-};
+
+#else
+		enum MODE : uint8
+		{
+			NORMAL = 0,
+			EXCLUSIVE = 1,
+			HEAPMEMORY = 2,
+		};
+
+		enum RDONLY : uint8
+		{
+			RDWR = 0,			// Normal read/write connection
+			RDONLY = 1,			// The WAL file is readonly
+			SHM_RDONLY = 2,		// The SHM file is readonly
+		};
 
 
+		VFileSystem *Vfs;				// The VFS used to create pDbFd
+		VFile *DBFile;					// File handle for the database file
+		VFile *WalFile;					// File handle for WAL file
+		uint32 Callback;				// Value to pass to log callback (or 0)
+		int64 MaxWalSize;				// Truncate WAL to this size upon reset
+		int SizeFirstBlock;				// Size of first block written to WAL file
+		//int nWiData;					// Size of array apWiData
+		volatile uint32 **WiData;		// Pointer to wal-index content in memory
+		uint32 SizePage;                // Database page size
+		int16 ReadLock;					// Which read lock is being held.  -1 for none
+		uint8 SyncFlags;				// Flags to use to sync header writes
+		MODE ExclusiveMode;				// Non-zero if connection is in exclusive mode
+		bool WriteLock;					// True if in a write transaction
+		bool CheckpointLock;			// True if holding a checkpoint lock
+		RDONLY ReadOnly;				// WAL_RDWR, WAL_RDONLY, or WAL_SHM_RDONLY
+		bool TruncateOnCommit;			// True to truncate WAL file on commit
+		uint8 SyncHeader;				// Fsync the WAL header if true
+		uint8 PadToSectorBoundary;		// Pad transactions out to the next sector
+		struct IndexHeader
+		{
+			uint32 Version;                 // Wal-index version
+			uint32 Unused;					// Unused (padding) field
+			uint32 Change;                  // Counter incremented each transaction
+			bool IsInit;					// 1 when initialized
+			bool BigEndianChecksum;			// True if checksums in WAL are big-endian
+			uint16 SizePage;                // Database page size in bytes. 1==64K
+			uint32 MaxFrame;                // Index of last valid frame in the WAL
+			uint32 Pages;                   // Size of database in pages
+			uint32 FrameChecksum[2];		// Checksum of last frame in log
+			uint32 Salt[2];					// Two salt values copied from WAL header
+			uint32 Checksum[2];				// Checksum over all prior fields
+		} Header; // Wal-index header for current transaction
+		const char *WalName;			// Name of WAL file
+		uint32 Checkpoints;				// Checkpoint sequence counter in the wal-header
+#ifdef _DEBUG
+		uint8 LockError;				// True if a locking error has occurred
+#endif
+		//
+		static RC Open(VFileSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut);
+		void Limit(int64 limit);
+		RC Close(VFile::SYNC sync_flags, int bufLength, uint8 *buf);
+		RC BeginReadTransaction(bool *changed);
+		void EndReadTransaction();
+		RC Read(Pid id, bool *inWal, int bufLength, uint8 *buf);
+		Pid DBSize();
+		RC BeginWriteTransaction();
+		RC EndWriteTransaction();
+		RC Undo(int (*undo)(void *, Pid), void *undoCtx);
+		void Savepoint(uint32 *walData);
+		RC SavepointUndo(uint32 *walData);
+		RC Frames(int sizePage, PgHdr *list, Pid truncate, bool isCommit, VFile::SYNC sync_flags);
+		RC Checkpoint(int mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints);
+		int Callback();
+		bool ExclusiveMode(int op);
+		bool HeapMemory();
+#ifdef ENABLE_ZIPVFS
+		int Framesize();
+#endif
 
-//#define Wal_Open(x,y,z)                   0
-//#define Wal_Limit(x,y)
-//#define Wal_Close(w,x,y,z)                0
-//#define Wal_BeginReadTransaction(y,z)     0
-//#define Wal_EndReadTransaction(z)
-//#define Wal_Read(v,w,x,y,z)               0
-//#define Wal_Dbsize(y)                     0
-//#define Wal_BeginWriteTransaction(y)      0
-//#define Wal_EndWriteTransaction(x)        0
-//#define Wal_Undo(x,y,z)                   0
-//#define Wal_Savepoint(y,z)
-//#define Wal_SavepointUndo(y,z)            0
-//#define Wal_Frames(u,v,w,x,y,z)           0
-//#define Wal_Checkpoint(r,s,t,u,v,w,x,y,z) 0
-//#define Wal_Callback(z)                   0
-//#define Wal_ExclusiveMode(y,z)            0
-//#define Wal_HeapMemory(z)                 0
-//#define Wal_Framesize(z)                  0
-
+#endif
+	};
+}

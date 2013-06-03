@@ -5,6 +5,16 @@ namespace Core
 {
     public class SysEx
     {
+#if DEBUG
+        internal static bool OSTrace = false;
+        internal static bool IOTrace = true;
+        internal static void OSTRACE(string x, params object[] args) { if (OSTrace) Console.WriteLine("a:" + string.Format(x, args)); }
+        internal static void IOTRACE(string x, params object[] args) { if (IOTrace) Console.WriteLine("i:" + string.Format(x, args)); }
+#else
+        internal static void OSTRACE(string x, params object[] args) { }
+        internal static void IOTRACE(string x, params object[] args) { }
+#endif
+
         const int VERSION_NUMBER = 3007016;
 
         internal static RC OSError(RC rc, string func, string path)
@@ -35,6 +45,8 @@ namespace Core
         public static void EndBenignAlloc() { }
         public static byte[] Alloc(int size) { return new byte[size]; }
         public static byte[] Alloc(int size, bool clear) { return new byte[size]; }
+        public static T[] Alloc<T>(byte s, int size) where T : struct { return new T[size / s]; }
+        public static T[] Alloc<T>(byte s, int size, bool clear) where T : struct { return new T[size / s]; }
         public static int AllocSize(byte[] p)
         {
             Debug.Assert(MemdebugHasType(p, MEMTYPE.HEAP));
@@ -95,19 +107,16 @@ namespace Core
         internal static RC CANTOPEN_BKPT() { return SQLITE_CANTOPEN; }
 #endif
 
-#if DEBUG
-        internal static bool OSTrace = false;
-        internal static void OSTRACE(string x, params object[] args) { if (OSTrace) Console.WriteLine("a:" + string.Format(x, args)); }
-        internal static bool IOTrace = true;
-        internal static void IOTRACE(string x, params object[] args) { if (IOTrace) Console.WriteLine("i:" + string.Format(x, args)); }
-#else
-        internal static void OSTRACE(string x, params object[] args) { }
-        internal static void IOTRACE(string x, params object[] args) { }
-#endif
-
         internal static void MakeRandomness(int size, ref uint ChecksumInit)
         {
             throw new NotImplementedException();
+        }
+
+        internal static T[] Realloc<T>(int s, T[] p, int bytes)
+        {
+            var newT = new T[bytes / s];
+            Array.Copy(p, newT, Math.Min(p.Length, newT.Length));
+            return newT;
         }
     }
 }

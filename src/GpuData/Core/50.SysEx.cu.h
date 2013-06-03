@@ -1,6 +1,16 @@
 ﻿// os.h
 namespace Core
 {
+#ifdef _DEBUG
+	extern bool OSTrace;
+	extern bool IOTrace;
+	__device__ inline static void SysEx_OSTRACE(const char *, ...) { }
+	__device__ inline static void SysEx_IOTRACE(const char *, ...) { }
+#else
+#define SysEx_OSTRACE(X)
+#define SysEx_IOTRACE(X)
+#endif
+
 #define VERSION_NUMBER 3007016
 
 #include <malloc.h>
@@ -37,6 +47,7 @@ namespace Core
 		__device__ inline static bool MemdebugNoType(void *p, MEMTYPE memType) { return true; }
 #endif
 		//
+		__device__ static void Log(RC rc, const char *format, ...);
 		__device__ static void SetRandom(int n, void *buffer);
 	};
 
@@ -74,16 +85,6 @@ namespace Core
 #define SysEx_CORRUPT_BKPT RC::CORRUPT
 #define SysEx_MISUSE_BKPT RC::MISUSE
 #define SysEx_CANTOPEN_BKPT RC::CANTOPEN
-#endif
-
-#ifdef _DEBUG
-	extern bool OSTrace;
-	__device__ inline static void SysEx_OSTRACE(const char *, ...) { }
-	extern bool IOTrace;
-	__device__ inline static void SysEx_IOTRACE(const char *, ...) { }
-#else
-#define SysEx_OSTRACE(X)
-#define SysEx_IOTRACE(X)
 #endif
 
 }

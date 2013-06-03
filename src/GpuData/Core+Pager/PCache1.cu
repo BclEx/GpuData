@@ -38,17 +38,17 @@ namespace Core
 		static void PageFree(void *p);
 		bool UnderMemoryPressure();
 		//
-		virtual RC Init();
-		virtual void Shutdown();
-		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
-		virtual void Cachesize(uint max);
-		virtual void Shrink();
-		virtual int get_Pages();
-		virtual IPage *Fetch(Pid key, int createFlag);
-		virtual void Unpin(IPage *pg, bool reuseUnlikely);
-		virtual void Rekey(IPage *pg, Pid old, Pid new_);
-		virtual void Truncate(Pid limit);
-		virtual void Destroy(IPCache *p);
+		RC Init();
+		void Shutdown();
+		IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
+		void Cachesize(uint max);
+		void Shrink();
+		int get_Pages();
+		IPage *Fetch(Pid key, int createFlag);
+		void Unpin(IPage *pg, bool reuseUnlikely);
+		void Rekey(IPage *pg, Pid old, Pid new_);
+		void Truncate(Pid limit);
+		void Destroy(IPCache *p);
 	};
 
 	struct PgHdr1
@@ -366,6 +366,8 @@ namespace Core
 #pragma endregion
 
 #pragma region Interface
+
+	IPCache *newPCache1() { return (IPCache *)new PCache1(); }
 
 	RC PCache1::Init()
 	{

@@ -43,7 +43,7 @@ namespace Core.IO
             PERSIST_WAL = 10,
             OVERWRITE = 11,
             VFSNAME = 12,
-            POWERSAFE_OVERWRITE = 13,
+            FCNTL_POWERSAFE_OVERWRITE = 13,
             PRAGMA = 14,
             BUSYHANDLER = 15,
             TEMPFILENAME = 16,
@@ -68,17 +68,17 @@ namespace Core.IO
             SAFE_APPEND = 0x00000200,
             SEQUENTIAL = 0x00000400,
             UNDELETABLE_WHEN_OPEN = 0x00000800,
-            POWERSAFE_OVERWRITE = 0x00001000,
+            IOCAP_POWERSAFE_OVERWRITE = 0x00001000,
         }
 
         // sqlite3.h
         [Flags]
         public enum SHM : byte
         {
-            UNLOCK = 1,
-            LOCK = 2,
-            SHARED = 4,
-            EXCLUSIVE = 8,
+            SHM_UNLOCK = 1,
+            SHM_LOCK = 2,
+            SHM_SHARED = 4,
+            SHM_EXCLUSIVE = 8,
             SHM_MAX = 8,
         };
 
@@ -130,7 +130,7 @@ namespace Core.IO
         public virtual RC ShmLock(int offset, int n, SHM flags) { return RC.OK; }
         public virtual void ShmBarrier() { }
         public virtual RC ShmUnmap(int deleteFlag) { return RC.OK; }
-        public virtual RC ShmMap(int iPg, int pgsz, int pInt, out object pvolatile) { pvolatile = null; return RC.OK; }
+        public virtual RC ShmMap(int id, int pageSize, int pInt, object data, int dataOffset) { return RC.OK; }
 
         public RC Read4(int offset, out int valueOut)
         {

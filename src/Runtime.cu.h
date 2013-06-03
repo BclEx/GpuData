@@ -10,7 +10,7 @@ __device__ inline T *__arraySet(T *symbol, int length) { return symbol; }
 template <typename T>
 __device__ inline T *__arrayClear(T *symbol) { return nullptr; }
 #define __arrayLength(symbol) 0
-#define _static_arraylength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
+#define __arrayStaticLength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
 
 #if !defined(DEBUG)
 #define ASSERTONLY(X) X

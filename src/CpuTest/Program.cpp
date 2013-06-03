@@ -11,6 +11,6 @@ void main()
 {
 	PCache::Initialize();
 	PCache::ReleaseMemory(5);
-	//int outA;
-	//Core::Bitvec_BuiltinTest(16, &outA);
+	int outA;
+	Core::Bitvec_BuiltinTest(16, &outA);
 }

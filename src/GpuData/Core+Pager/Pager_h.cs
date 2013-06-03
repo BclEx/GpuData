@@ -7,10 +7,8 @@ namespace Core
 {
     public partial class IPager
     {
-        public static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
-
-        [Flags]
         // NOTE: These values must match the corresponding BTREE_ values in btree.h.
+        [Flags]
         public enum PAGEROPEN : byte
         {
             OMIT_JOURNAL = 0x0001,  // Do not use a rollback journal
@@ -35,5 +33,19 @@ namespace Core
             JMEMORY = 4,     // In-memory journal file
             WAL = 5,        // Use write-ahead logging
         }
+
+        // sqlite3.h
+        enum CHECKPOINT : byte
+        {
+            PASSIVE = 0,
+            FULL = 1,
+            RESTART = 2,
+        };
+    }
+
+    public partial class Pager
+    {
+        // sqliteLimit.h
+        const int MAX_PAGE_SIZE = 65535;
     }
 }

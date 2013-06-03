@@ -1,13 +1,9 @@
 ﻿// pager.h
 namespace Core
 {
-#define IPager_MJ_PID(x) ((Pid)((PENDING_BYTE/((x)->PageSize))+1))
-
 	class IPager
 	{
 	public:
-		__device__ inline static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
-
 		// NOTE: These values must match the corresponding BTREE_ values in btree.h.
 		enum PAGEROPEN : char
 		{
@@ -32,7 +28,18 @@ namespace Core
 			JMEMORY = 4,     // In-memory journal file
 			WAL = 5,        // Use write-ahead logging
 		};
-	};
 
-	typedef class Pager Pager;
+		// sqlite3.h
+		enum CHECKPOINT : byte
+		{
+			PASSIVE = 0,
+			FULL = 1,
+			RESTART = 2,
+		};
+
+		// sqliteLimit.h
+#define MAX_PAGE_SIZE 65536
+
+		typedef class Pager Pager;
+	};
 }

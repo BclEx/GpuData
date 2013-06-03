@@ -56,7 +56,7 @@
     <Compile Include="Core+Pager\Wal_h.cs" />
     <Compile Include="Core+Pager\Core+Pager_h.cs" />
     <Compile Include="Core+Pager\Pager_h.cs" />
-    <Compile Include="Core+Pager\Pager.cs" />
+    <None Include="Core+Pager\Pager.cs" />
     <Compile Include="Core+Pager\PCache_h.cs" />
     <Content Include="Core+Pager\Pager.cu.h" />
     <Content Include="Core+Pager\PCache.cu.h" />

@@ -86,11 +86,12 @@ namespace Core
 #pragma region Interface
 
 	static IPCache *_pcache;
+	extern IPCache *newPCache1();
 
 	int PCache::Initialize() 
 	{ 
-		//if (_pcache == nullptr)
-		//	_pcache = new PCache1();
+		if (_pcache == nullptr)
+			_pcache = newPCache1();
 		return _pcache->Init(); 
 	}
 	void PCache::Shutdown()
