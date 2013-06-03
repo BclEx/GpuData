@@ -22,7 +22,6 @@ namespace Core
         #region Struct
 
         static readonly byte[] _journalMagic = new byte[] { 0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7 };
-        static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
 
         // sqliteLimit.h
         const int DEFAULT_PAGE_SIZE = 1024;
@@ -33,35 +32,24 @@ namespace Core
 
         // sqliteInt.h
 #if ENABLE_ATOMIC_WRITE
-//  private int sqlite3JournalOpen(VFileSystem, string, VFile, int, int);
-//  private int sqlite3JournalSize(VFileSystem);
-//  private int sqlite3JournalCreate(VFile);
+        static int sqlite3JournalOpen(VFileSystem, string, VFile, int, int);
+        static int sqlite3JournalSize(VFileSystem);
+        static int sqlite3JournalCreate(VFile);
 #else
-        private static int sqlite3JournalSize(VFileSystem vfs) { return vfs.SizeOsFile; }
+        static int sqlite3JournalSize(VFileSystem vfs) { return vfs.SizeOsFile; }
 #endif
-
-        public enum PAGER : byte
-        {
-            OPEN = 0,
-            READER = 1,
-            WRITER_LOCKED = 2,
-            WRITER_CACHEMOD = 3,
-            WRITER_DBMOD = 4,
-            WRITER_FINISHED = 5,
-            ERROR = 6,
-        }
 
         const int MAX_SECTOR_SIZE = 0x10000;
 
         // sqliteInt.h
-        public enum SAVEPOINT : byte
+        enum SAVEPOINT : byte
         {
             BEGIN = 0,
             RELEASE = 1,
             ROLLBACK = 2,
         }
 
-        public class PagerSavepoint
+        class PagerSavepoint
         {
             public long Offset;             // Starting offset in main journal
             public long HdrOffset;          // See above
@@ -69,7 +57,7 @@ namespace Core
             public Pid Orig;                // Original number of pages in file
             public Pid SubRecords;              // Index of first record in sub-journal
 #if !OMIT_WAL
-            public uint WalData[WAL_SAVEPOINT_NDATA];        // WAL savepoint context
+            public uint[] WalData = new uint[WAL_SAVEPOINT_NDATA];        // WAL savepoint context
 #else
             // For C#
             public object WalData = null;
@@ -78,87 +66,16 @@ namespace Core
             //public static implicit operator bool(PagerSavepoint b) { return (b != null); }
         }
 
-        public VFileSystem Vfs;             // OS functions to use for IO
-        public bool ExclusiveMode;          // Boolean. True if locking_mode==EXCLUSIVE
-        public IPager.JOURNALMODE JournalMode;     // One of the PAGER_JOURNALMODE_* values
-        public bool UseJournal;             // Use a rollback journal on this file
-        public bool NoSync;                 // Do not sync the journal if true
-        public bool FullSync;               // Do extra syncs of the journal for robustness
-        public VFile.SYNC CheckpointSyncFlags;    // SYNC_NORMAL or SYNC_FULL for checkpoint
-        public VFile.SYNC WalSyncFlags;     // SYNC_NORMAL or SYNC_FULL otherwise
-        public VFile.SYNC SyncFlags;        // SYNC_NORMAL or SYNC_FULL otherwise
-        public bool TempFile;               // zFilename is a temporary file
-        public bool ReadOnly;               // True for a read-only database
-        public bool MemoryDB;               // True to inhibit all file I/O
-        // The following block contains those class members that change during routine opertion.  Class members not in this block are either fixed
-        // when the pager is first created or else only change when there is a significant mode change (such as changing the page_size, locking_mode,
-        // or the journal_mode).  From another view, these class members describe the "state" of the pager, while other class members describe the "configuration" of the pager.
-        public PAGER State;                 // Pager state (OPEN, READER, WRITER_LOCKED..) 
-        public VFile.LOCK Lock;             // Current lock held on database file 
-        public bool ChangeCountDone;        // Set after incrementing the change-counter 
-        public bool SetMaster;              // True if a m-j name has been written to jrnl 
-        public bool DoNotSpill;             // Do not spill the cache when non-zero 
-        public bool DoNotSyncSpill;         // Do not do a spill that requires jrnl sync 
-        public bool SubjInMemory;           // True to use in-memory sub-journals 
-        public Pid DBSize;                  // Number of pages in the database 
-        public Pid DBOrigSize;              // dbSize before the current transaction 
-        public Pid DBFileSize;              // Number of pages in the database file 
-        public Pid DBHintSize;              // Value passed to FCNTL_SIZE_HINT call 
-        public RC ErrorCode;                // One of several kinds of errors 
-        public int Records;                 // Pages journalled since last j-header written 
-        public uint ChecksumInit;           // Quasi-random value added to every checksum 
-        public uint SubRecords;             // Number of records written to sub-journal 
-        public Bitvec InJournal;            // One bit for each page in the database file 
-        public VFile File;                  // File descriptor for database 
-        public VFile JournalFile;           // File descriptor for main journal 
-        public VFile SubJournalFile;        // File descriptor for sub-journal 
-        public long JournalOffset;          // Current write offset in the journal file 
-        public long JournalHeader;          // Byte offset to previous journal header 
-        public IBackup Backup;              // Pointer to list of ongoing backup processes 
-        public PagerSavepoint[] Savepoints; // Array of active savepoints 
-        public byte[] DBFileVersion = new byte[16];    // Changes whenever database file changes
-        // End of the routinely-changing class members
-        public ushort ExtraBytes;           // Add this many bytes to each in-memory page
-        public short ReserveBytes;          // Number of unused bytes at end of each page
-        public VFileSystem.OPEN VfsFlags;   // Flags for VirtualFileSystem.xOpen() 
-        public uint SectorSize;             // Assumed sector size during rollback 
-        public int PageSize;                // Number of bytes in a page 
-        public Pid MaxPid;                  // Maximum allowed size of the database 
-        public long JournalSizeLimit;       // Size limit for persistent journal files 
-        public string Filename;             // Name of the database file 
-        public string Journal;              // Name of the journal file 
-        public Func<object, int> BusyHandler;  // Function to call when busy 
-        public object BusyHandlerArg;       // Context argument for xBusyHandler 
-        public int[] Stats = new int[3];    // Total cache hits, misses and writes
-#if TEST
-        public int Reads;                   // Database pages read
-#endif
-        public Action<IPage> Reiniter;	    // Call this routine when reloading pages
-#if HAS_CODEC
-        public Func<object, object, Pid, int, object> Codec;    // Routine for en/decoding data
-        public Action<object, int, int> CodecSizeChange;        // Notify of page size changes
-        public Action<object> CodecFree;                        // Destructor for the codec
-        public object CodecArg;                                 // First argument to xCodec... methods
-#endif
-        public byte[] TmpSpace;				// Pager.pageSize bytes of space for tmp use
-        public PCache PCache;				// Pointer to page cache object
-#if !OMIT_WAL
-        public Wal Wal;					    // Write-ahead log used by "journal_mode=wal"
-        public char WalName;                // File name for write-ahead log
-#else
-        // For C#
-        public Wal Wal;
-#endif
-
-        public enum STAT : byte
+        enum STAT : byte
         {
             HIT = 0,
             MISS = 1,
             WRITE = 2,
         }
 
-        private static uint JOURNAL_PG_SZ(Pager pager) { return (uint)pager.PageSize + 8; }
-        private static uint JOURNAL_HDR_SZ(Pager pager) { return pager.SectorSize; }
+        static uint JOURNAL_PG_SZ(Pager pager) { return (uint)pager.PageSize + 8; }
+        static uint JOURNAL_HDR_SZ(Pager pager) { return pager.SectorSize; }
+        static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
 
         const int MAX_PID = 2147483647;
 
@@ -1841,8 +1758,8 @@ pager_set_pagehash(p);
             sqlite3_io_error_pending = saved_cnt;
         }
 #else
-        void disable_simulated_io_errors() {}
-        void enable_simulated_io_errors() {}
+        void disable_simulated_io_errors() { }
+        void enable_simulated_io_errors() { }
 #endif
 
         public RC ReadFileHeader(int n, byte[] dest)

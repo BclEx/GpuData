@@ -43,12 +43,12 @@ namespace Core
 		//	return wsdPrng.s[t];
 	}
 
-	void SysEx::SetRandom(int n, void *buffer)
+	void SysEx::PutRandom(int length, void *buffer)
 	{
 		unsigned char *b = (unsigned char *)buffer;
 		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_PRNG);
 		MutexEx::Enter(mutex);
-		while (n--)
+		while (length--)
 			*(b++) = randomByte();
 		MutexEx::Leave(mutex);
 	}

@@ -15,7 +15,7 @@
     <DebugType>full</DebugType>
     <Optimize>False</Optimize>
     <OutputPath>bin\Debug</OutputPath>
-    <DefineConstants>DEBUG;OMIT_WAL EXPENSIVE_ASSERT TEST CHECK_PAGES ENABLE_MEMORY_MANAGEMENT HAS_CODEC</DefineConstants>
+    <DefineConstants>DEBUG;OMIT_WAL EXPENSIVE_ASSERT TEST CHECK_PAGES ENABLE_MEMORY_MANAGEMENT ENABLE_ATOMIC_WRITE HAS_CODEC</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <PlatformTarget>x86</PlatformTarget>

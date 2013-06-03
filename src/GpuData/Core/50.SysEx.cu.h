@@ -11,7 +11,7 @@ namespace Core
 #define SysEx_IOTRACE(X)
 #endif
 
-#define VERSION_NUMBER 3007016
+#define SysEx_VERSION_NUMBER 3007016
 
 #include <malloc.h>
 	class SysEx
@@ -48,7 +48,7 @@ namespace Core
 #endif
 		//
 		__device__ static void Log(RC rc, const char *format, ...);
-		__device__ static void SetRandom(int n, void *buffer);
+		__device__ static void PutRandom(int length, void *buffer);
 	};
 
 #define SysEx_ALWAYS(X) (X)

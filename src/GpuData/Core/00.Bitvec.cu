@@ -162,7 +162,7 @@ bitvec_set_end:
 			default:
 				{
 					nx = 2;
-					SysEx::SetRandom(sizeof(i), &i);
+					SysEx::PutRandom(sizeof(i), &i);
 					break;
 				}
 			}
