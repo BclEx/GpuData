@@ -8,11 +8,11 @@
 // External function definitions for device-side code
 
 // array
-template <typename T>
-__device__ inline T *__arraySet(T *symbol, int length) { return symbol; }
-template <typename T>
-__device__ inline T *__arrayClear(T *symbol) { return nullptr; }
-#define __arrayLength(symbol) 0
+#define __arrayAlloc(t,Ti,length) (Ti*)((int*)malloc(sizeof(Ti)*length+4)+1);*((int*)t&-1)=length
+#define __arraySet(t,length) t;*((int*)&t-1)=length
+#define __arrayLength(t) *((int*)&t-1)
+#define __arraySetLength(t,length) *((int*)&t-1)=length
+#define __arrayClear(t,length) nullptr;*((int*)&t-1)=0
 #define __arrayStaticLength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
 
 // Abuse of templates to simulate varargs
@@ -33,7 +33,7 @@ template <typename T1, typename T2, typename T3, typename T4, typename T5, typen
 __device__ inline void _assert(const int condition) { if (!condition) printf("assert"); }
 __device__ inline void _assert(const int condition, const char *fmt) { if (!condition) printf(fmt); }
 #define ASSERTONLY(X) X
-void Coverage(int);
+inline void Coverage(int line) { }
 #define ASSERTCOVERAGE(X) if (X) { Coverage(__LINE__); }
 #else
 #define _assert(X, ...)
@@ -84,42 +84,10 @@ __device__ inline int _memcmp(T *a, Y *b, size_t length)
 // strlen30
 __device__ inline int _strlen30(const char *z)
 {
-  const char *z2 = z;
-  if (z == nullptr) return 0;
-  while (*z2) { z2++; }
-  return 0x3fffffff & (int)(z2 - z);
+	const char *z2 = z;
+	if (z == nullptr) return 0;
+	while (*z2) { z2++; }
+	return 0x3fffffff & (int)(z2 - z);
 }
-
-
-//char *sqlite3DbStrDup(sqlite3 *db, const char *z){
-//  char *zNew;
-//  size_t n;
-//  if( z==0 ){
-//    return 0;
-//  }
-//  n = sqlite3Strlen30(z) + 1;
-//  assert( (n&0x7fffffff)==n );
-//  zNew = sqlite3DbMallocRaw(db, (int)n);
-//  if( zNew ){
-//    memcpy(zNew, z, n);
-//  }
-//  return zNew;
-//}
-//char *sqlite3DbStrNDup(sqlite3 *db, const char *z, int n){
-//  char *zNew;
-//  if( z==0 ){
-//    return 0;
-//  }
-//  assert( (n&0x7fffffff)==n );
-//  zNew = sqlite3DbMallocRaw(db, n+1);
-//  if( zNew ){
-//    memcpy(zNew, z, n);
-//    zNew[n] = 0;
-//  }
-//  return zNew;
-//}
-
-
-
 
 #endif // __RUNTIME_CPU_H__

@@ -15,7 +15,7 @@ namespace Core
         void Cachesize(uint max);
         void Shrink();
         int get_Pages();
-        ICachePage Fetch(Pid key, int createFlag);
+        ICachePage Fetch(Pid id, bool createFlag);
         void Unpin(ICachePage pg, bool reuseUnlikely);
         void Rekey(ICachePage pg, Pid old, Pid new_);
         void Truncate(Pid limit);

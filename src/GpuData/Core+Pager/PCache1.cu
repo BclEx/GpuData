@@ -28,15 +28,15 @@ namespace Core
 		uint Min;				// Minimum number of pages reserved
 		uint Max;				// Configured "cache_size" value
 		uint N90pct;			// nMax*9/10
-		uint MaxKey;			// Largest key seen since xTruncate()
+		uint MaxID;				// Largest key seen since xTruncate()
 		// Hash table of all pages. The following variables may only be accessed when the accessor is holding the PGroup mutex.
 		uint Recyclables;       // Number of pages in the LRU list
 		uint Pages;             // Total number of pages in apHash
 		uint _0; PgHdr1 **Hash;	// Hash table for fast lookup by key
 	public:
-		static void *PageAlloc(int size);
-		static void PageFree(void *p);
-		bool UnderMemoryPressure();
+		//static void *PageAlloc(int size);
+		//static void PageFree(void *p);
+		//bool UnderMemoryPressure();
 		//
 		RC Init();
 		void Shutdown();
@@ -44,7 +44,7 @@ namespace Core
 		void Cachesize(uint max);
 		void Shrink();
 		int get_Pages();
-		ICachePage *Fetch(Pid key, int createFlag);
+		ICachePage *Fetch(Pid id, bool createFlag);
 		void Unpin(ICachePage *pg, bool reuseUnlikely);
 		void Rekey(ICachePage *pg, Pid old, Pid new_);
 		void Truncate(Pid limit);
@@ -54,7 +54,7 @@ namespace Core
 	struct PgHdr1
 	{
 		ICachePage Page;
-		Pid Key;				// Key value (page number)
+		Pid ID;					// Key value (page number)
 		PgHdr1 *Next;			// Next in hash table chain
 		PCache1 *Cache;			// Cache that currently owns this page
 		PgHdr1 *LruNext;		// Next in LRU list of unpinned pages
@@ -239,19 +239,19 @@ namespace Core
 		}
 	}
 
-	void *PCache1::PageAlloc(int size)
+	__device__ void *PCache_PageAlloc(int size)
 	{
 		return Alloc(size);
 	}
 
-	void PCache1::PageFree(void *p)
+	__device__ void PCache_PageFree(void *p)
 	{
 		Free(p);
 	}
 
-	bool PCache1::UnderMemoryPressure()
+	__device__ static bool UnderMemoryPressure(PCache1 *cache)
 	{
-		return (_pcache1.Slots && (SizePage + SizeExtra) <= _pcache1.SizeSlot ? _pcache1.UnderPressure : SysEx::HeapNearlyFull());
+		return (_pcache1.Slots && (cache->SizePage + cache->SizeExtra) <= _pcache1.SizeSlot ? _pcache1.UnderPressure : SysEx::HeapNearlyFull());
 	}
 
 #pragma endregion
@@ -277,7 +277,7 @@ namespace Core
 				PgHdr1 *next = p->Hash[i];
 				while ((page = next) != 0)
 				{
-					uint h = (page->Key % newLength);
+					uint h = (page->ID % newLength);
 					next = page->Next;
 					page->Next = newHash[h];
 					newHash[h] = page;
@@ -316,7 +316,7 @@ namespace Core
 	{
 		PCache1 *cache = page->Cache;
 		_assert(MutexEx::Held(cache->Group->Mutex));
-		uint h = (page->Key % __arrayLength(cache->Hash));
+		uint h = (page->ID % __arrayLength(cache->Hash));
 		PgHdr1 **pp;
 		for (pp = &cache->Hash[h]; (*pp) != page; pp = &(*pp)->Next);
 		*pp = (*pp)->Next;
@@ -346,7 +346,7 @@ namespace Core
 			PgHdr1 *page;
 			while ((page = *pp) != 0)
 			{
-				if (page->Key >= limit)
+				if (page->ID >= limit)
 				{
 					p->Pages--;
 					*pp = page->Next;
@@ -468,9 +468,9 @@ namespace Core
 		return pages;
 	}
 
-	ICachePage *PCache1::Fetch(Pid key, int createFlag)
+	ICachePage *PCache1::Fetch(Pid id, bool createFlag)
 	{
-		_assert(Purgeable || createFlag != 1);
+		_assert(Purgeable || !createFlag);
 		_assert(Purgeable || Min == 0);
 		_assert(!Purgeable || Min == 10);
 		PGroup *group;
@@ -478,14 +478,14 @@ namespace Core
 
 		// Step 1: Search the hash table for an existing entry.
 		PgHdr1 *page = nullptr;
-		if (__arrayLength(cache->Hash) > 0)
+		if (__arrayLength(Hash) > 0)
 		{
-			uint h = (key % __arrayLength(cache->Hash));
-			for (page = Hash[h]; page && page->Key != key; page = page->Next) ;
+			uint h = (id % __arrayLength(Hash));
+			for (page = Hash[h]; page && page->ID != id; page = page->Next) ;
 		}
 
 		// Step 2: Abort if no existing page is found and createFlag is 0
-		if (page || createFlag == 0)
+		if (page || !createFlag)
 		{
 			PinPage(page);
 			goto fetch_out;
@@ -503,13 +503,13 @@ namespace Core
 		uint pinned = Pages - Recyclables;	
 		_assert(group->MaxPinned == group->MaxPages + 10 - group->MinPages);
 		_assert(N90pct == Max * 9 / 10);
-		if (createFlag == 1 && (pinned >= group->MaxPinned || pinned >= N90pct || UnderMemoryPressure()))
+		if (createFlag && (pinned >= group->MaxPinned || pinned >= N90pct || UnderMemoryPressure(this)))
 			goto fetch_out;
 		if (Pages >= __arrayLength(Hash) && ResizeHash(this))
 			goto fetch_out;
 
 		// Step 4. Try to recycle a page.
-		if (Purgeable && group->LruTail && ((Pages + 1 >= Max) || group->CurrentPages >= group->MaxPages || UnderMemoryPressure()))
+		if (Purgeable && group->LruTail && ((Pages + 1 >= Max) || group->CurrentPages >= group->MaxPages || UnderMemoryPressure(this)))
 		{
 			page = group->LruTail;
 			RemoveFromHash(page);
@@ -534,15 +534,15 @@ namespace Core
 		// Step 5. If a usable page buffer has still not been found, attempt to allocate a new one. 
 		if (!page)
 		{
-			if (createFlag == 1) SysEx::BeginBenignAlloc();
+			if (createFlag) SysEx::BeginBenignAlloc();
 			page = AllocPage(this);
-			if (createFlag == 1) SysEx::EndBenignAlloc();
+			if (createFlag) SysEx::EndBenignAlloc();
 		}
 		if (page)
 		{
-			uint h = (key % __arrayLength(cache->Hash));
+			uint h = (id % __arrayLength(Hash));
 			Pages++;
-			page->Key = key;
+			page->ID = id;
 			page->Next = Hash[h];
 			page->Cache = this;
 			page->LruPrev = nullptr;
@@ -552,8 +552,8 @@ namespace Core
 		}
 
 fetch_out:
-		if (page && key > MaxKey)
-			MaxKey = key;
+		if (page && id > MaxID)
+			MaxID = id;
 		MutexEx::Leave(group->Mutex);
 		return &page->Page;
 	}
@@ -594,30 +594,30 @@ fetch_out:
 	void PCache1::Rekey(ICachePage *pg, Pid old, Pid new_)
 	{
 		PgHdr1 *page = (PgHdr1 *)pg;
-		_assert(page->Key == old);
+		_assert(page->ID == old);
 		_assert(page->Cache == this);
 		MutexEx::Enter(Group->Mutex);
-		uint h = (old % __arrayLength(cache->Hash));
+		uint h = (old % __arrayLength(Hash));
 		PgHdr1 **pp = &Hash[h];
 		while ((*pp) != page)
 			pp = &(*pp)->Next;
 		*pp = page->Next;
-		h = (new_ % __arrayLength(cache->Hash));
-		page->Key = new_;
+		h = (new_ % __arrayLength(Hash));
+		page->ID = new_;
 		page->Next = Hash[h];
 		Hash[h] = page;
-		if (new_ > MaxKey)
-			MaxKey = new_;
+		if (new_ > MaxID)
+			MaxID = new_;
 		MutexEx::Leave(Group->Mutex);
 	}
 
 	void PCache1::Truncate(Pid limit)
 	{
 		MutexEx::Enter(Group->Mutex);
-		if (limit <= MaxKey)
+		if (limit <= MaxID)
 		{
 			TruncateUnsafe(this, limit);
-			MaxKey = limit - 1;
+			MaxID = limit - 1;
 		}
 		MutexEx::Leave(Group->Mutex);
 	}

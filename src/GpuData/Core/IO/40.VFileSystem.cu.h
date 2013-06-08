@@ -1,6 +1,8 @@
 ﻿// sqlite.h
 namespace Core
 {
+	typedef class VFile VFile;
+
 	class VFileSystem
 	{
 	public:
@@ -37,8 +39,8 @@ namespace Core
 		VFileSystem *Next;	// Next registered VFS
 		const char *Name;	// Name of this virtual file system
 		void *Tag;			// Pointer to application-specific data
-        int SizeOsFile;     // Size of subclassed VirtualFile
-        int MaxPathname;	// Maximum file pathname length
+		int SizeOsFile;     // Size of subclassed VirtualFile
+		int MaxPathname;	// Maximum file pathname length
 
 		__device__ static VFileSystem *Find(const char *name);
 		__device__ static int RegisterVfs(VFileSystem *vfs, bool _default);
@@ -47,6 +49,8 @@ namespace Core
 		__device__ virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags) = 0;
 		__device__ virtual RC Delete(const char *path, bool syncDirectory) = 0;
 		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;
-		__device__ virtual RC FullPathname(const char *path, char **outPath) = 0;
+		__device__ virtual RC FullPathname(const char *path, int pathOutLength, char *pathOut) = 0;
 	};
+
+	VFileSystem::OPEN inline operator |= (VFileSystem::OPEN a, VFileSystem::OPEN b) { return (VFileSystem::OPEN)(a | b); }
 }

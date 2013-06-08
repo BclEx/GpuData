@@ -28,11 +28,11 @@ namespace Core
 #ifdef HAS_CODEC
 #define CODEC1(p, d, n, x, e) \
 	if (p->Codec && p->Codec(p->CodecArg, d, id, x) == nullptr) { e; }
-#define CODEC2(p, d, id, x, e, o) \
-	if (p->Codec == nullptr) { o = (char *)d; } else if ((o = (char *)(p->Codec(p->CodecArg, d, id, x))) == nullptr) { e; }
+#define CODEC2(t, o, p, d, id, x, e) \
+	if (p->Codec == nullptr) { o = (t *)d; } else if ((o = (t *)(p->Codec(p->CodecArg, d, id, x))) == nullptr) { e; }
 #else
 # define CODEC1(p, d, id, x, e)
-# define CODEC2(p, d, id, x, e, o) o = (char *)d
+# define CODEC2(t, o, p, d, id, x, e) o = (t *)d
 #endif
 
 #define MAX_SECTOR_SIZE 0x10000
@@ -78,10 +78,10 @@ namespace Core
 	static int UseWal(Pager *pager) { return (pager->Wal != nullptr); }
 #else
 #define UseWal(x) false
-#define RollbackWal(x) RC::OK
-#define WalFrames(v,w,x,y) RC::OK
-#define OpenWalIfPresent(z) RC::OK
-#define BeginReadTransaction(z) RC::OK
+#define pagerRollbackWal(x) RC::OK
+#define pagerWalFrames(v,w,x,y) RC::OK
+#define pagerOpenWalIfPresent(z) RC::OK
+#define pagerBeginReadTransaction(z) RC::OK
 #endif
 
 #pragma endregion
@@ -313,7 +313,7 @@ namespace Core
 	}
 	static uint32 pager_pagehash(PgHdr *page) { return pager_datahash(page->Pager->PageSize, (unsigned char *)page->Data); }
 	static void pager_set_pagehash(PgHdr *page) { page->PageHash = pager_pagehash(page); }
-	//#define CHECK_PAGE(x) checkPage(x)
+	#define CHECK_PAGE(x) checkPage(x)
 	static void checkPage(PgHdr *page)
 	{
 		Pager *pager = page->Pager;
@@ -518,7 +518,7 @@ namespace Core
 				return RC::DONE;
 
 			// Update the page-size to match the value read from the journal. Use a testcase() macro to make sure that malloc failure within PagerSetPagesize() is tested.
-			rc = SetPageSize(&pageSize, -1);
+			rc = pager->SetPageSize(&pageSize, -1);
 			ASSERTCOVERAGE(rc != RC::OK);
 
 			// Update the assumed sector-size to match the value used by the process that created this journal. If this journal was
@@ -531,7 +531,7 @@ namespace Core
 		return rc;
 	}
 
-	static int writeMasterJournal(Pager *pager, const char *master)
+	static RC writeMasterJournal(Pager *pager, const char *master)
 	{
 		_assert(!pager->SetMaster);
 		_assert(!UseWal(pager));
@@ -600,7 +600,7 @@ namespace Core
 	{
 		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
 			Bitvec::Destroy(pager->Savepoints[ii].InSavepoint);
-		if (!pager->ExclusiveMode || VFile::IsMemoryVFile(pager->SubJournalFile))
+		if (!pager->ExclusiveMode || VFile::HasMemoryVFile(pager->SubJournalFile))
 			pager->SubJournalFile->Close();
 		SysEx::Free(pager->Savepoints);
 		__arrayClear(pager->Savepoints);
@@ -610,7 +610,7 @@ namespace Core
 	static RC addToSavepointBitvecs(Pager *pager, Pid id)
 	{
 		int rc = RC::OK;
-		for (int ii = 0; ii < __arrayLength(pager->Savepoint); ii++)
+		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
 		{
 			PagerSavepoint *p = &pager->Savepoints[ii];
 			if (id <= p->Orig)
@@ -725,7 +725,7 @@ namespace Core
 			_assert(!UseWal(pager));
 
 			// Finalize the journal file.
-			if (VFile::IsMemoryVFile(pager->JournalFile))
+			if (VFile::HasMemoryVFile(pager->JournalFile))
 			{
 				_assert(pager->JournalMode == IPager::JOURNALMODE::JMEMORY);
 				pager->JournalFile->Close();
@@ -744,7 +744,7 @@ namespace Core
 			{
 				// This branch may be executed with Pager.journalMode==MEMORY if a hot-journal was just rolled back. In this case the journal
 				// file should be closed and deleted. If this connection writes to the database file, it will do so using an in-memory journal.
-				bool delete_ = (!pager->TempFile && VFile_JournalExists(pager->JournalFile));
+				bool delete_ = (!pager->TempFile && VFile::HasJournalVFile(pager->JournalFile));
 				_assert(pager->JournalMode == IPager::JOURNALMODE::DELETE ||
 					pager->JournalMode == IPager::JOURNALMODE::JMEMORY ||
 					pager->JournalMode == IPager::JOURNALMODE::WAL);
@@ -864,7 +864,7 @@ namespace Core
 		Pid id; // The page number of a page in journal
 		RC rc = journalFile->Read4(*offset, &id);
 		if (rc != RC::OK) return rc;
-		rc = journalFile->Read((uint8 *)data, pager->PageSize, (*offset) + 4);
+		rc = journalFile->Read(data, pager->PageSize, (*offset) + 4);
 		if (rc != RC::OK) return rc;
 		*offset += pager->PageSize + 4 + (isMainJournal ? 4 : 0); //TODO: CHECK THIS
 
@@ -882,7 +882,7 @@ namespace Core
 			uint32 checksum; // Checksum used for sanity checking
 			rc = journalFile->Read4((*offset) - 4, &checksum);
 			if (rc) return rc;
-			if (!isSavepoint && pager_cksum(pager, (uint8*)data) != checksum)
+			if (!isSavepoint && pager_cksum(pager, data) != checksum)
 				return RC::DONE;
 		}
 
@@ -891,9 +891,9 @@ namespace Core
 			return rc;
 
 		// When playing back page 1, restore the nReserve setting
-		if (id == 1 && pager->ReserveBytes != ((uint8 *)data)[20])
+		if (id == 1 && pager->ReserveBytes != data[20])
 		{
-			pager->ReserveBytes = ((uint8 *)data)[20];
+			pager->ReserveBytes = data[20];
 			pagerReportSize(pager);
 		}
 
@@ -921,7 +921,7 @@ namespace Core
 		PgHdr *pg = (UseWal(pager) ? nullptr : pager_lookup(pager, id)); // An existing page in the cache
 		_assert(pg || !pager->MemoryDB);
 		_assert(pager->State != PAGER::OPEN || pg == 0);
-		PAGERTRACE("PLAYBACK %d page %d hash(%08x) %s\n", PAGERID(pager), id, pager_datahash(pager->PageSize, (uint8 *)data), isMainJournal ? "main-journal" : "sub-journal");
+		PAGERTRACE("PLAYBACK %d page %d hash(%08x) %s\n", PAGERID(pager), id, pager_datahash(pager->PageSize, data), isMainJournal ? "main-journal" : "sub-journal");
 		bool isSynced; // True if journal page is synced
 		if (isMainJournal)
 			isSynced = pager->NoSync || (*offset <= pager->JournalHeader);
@@ -932,14 +932,14 @@ namespace Core
 			int64 offset = (id - 1) * (int64)pager->PageSize;
 			ASSERTCOVERAGE(!isSavepoint && pg != nullptr && (pg->Flags & PgHdr::PGHDR::NEED_SYNC) != 0);
 			_assert(!UseWal(pager));
-			rc = pager->File->Write((uint8 *)data, pager->PageSize, offset);
+			rc = pager->File->Write(data, pager->PageSize, offset);
 			if (id > pager->DBFileSize)
 				pager->DBFileSize = id;
 			if (pager->Backup)
 			{
 				CODEC1(pager, data, id, 3, rc = RC::NOMEM);
-				pager->Backup->Update(id, (uint8 *)data);
-				CODEC2(pager, data, id, 7, rc = RC::NOMEM, data);
+				pager->Backup->Update(id, data);
+				CODEC2(uint8, data, pager, data, id, 7, rc = RC::NOMEM);
 			}
 		}
 		else if (!isMainJournal && pg == nullptr)
@@ -1108,9 +1108,9 @@ delmaster_out:
 
 #pragma region Transaction2
 
-	int Pager::SectorSize(VFile *file)
+	int Pager::get_SectorSize(VFile *file)
 	{
-		int ret = file->SectorSize;
+		int ret = file->SectorSize();
 		if (ret < 32)
 			ret = 512;
 		else if (ret > MAX_SECTOR_SIZE)
@@ -1135,7 +1135,7 @@ delmaster_out:
 		// Figure out how many records are in the journal.  Abort early if the journal is empty.
 		_assert(pager->JournalFile->Opened);
 		int64 sizeJournal; // Size of the journal file in bytes
-		RC rc = pager->JournalFile->get_FileSize(&sizeJournal);
+		RC rc = pager->JournalFile->get_FileSize(sizeJournal);
 		if (rc != RC::OK)
 			goto end_playback;
 
@@ -1248,7 +1248,7 @@ end_playback:
 
 		if (rc == RC::OK)
 		{
-			master = pager->TmpSpace;
+			master = (char *)pager->TmpSpace;
 			rc = readMasterJournal(pager->JournalFile, master, vfs->MaxPathname + 1);
 			ASSERTCOVERAGE(rc != RC::OK);
 		}
@@ -1334,7 +1334,7 @@ end_playback:
 		ConvertEx::Put4(((uint8 *)pg->Data) + 96, SysEx_VERSION_NUMBER);
 	}
 
-#ifndef OMIT_WALx
+#ifndef OMIT_WAL
 	static RC pagerUndoCallback(void *ctx, Pid id)
 	{
 		RC rc = RC::OK;
@@ -1381,7 +1381,7 @@ end_playback:
 		return rc;
 	}
 
-	static int pagerWalFrames(Pager *pager, PgHdr *list, Pid nTruncate, int isCommit)
+	static RC pagerWalFrames(Pager *pager, PgHdr *list, Pid nTruncate, bool isCommit)
 	{
 		_assert(pager->Wal != nullptr);
 		_assert(list != nullptr);
@@ -1464,7 +1464,7 @@ end_playback:
 			int64 n = 0; // Size of db file in bytes
 			if (pager->File->Opened)
 			{
-				RC rc = pager->File->get_FileSize(&n);
+				RC rc = pager->File->get_FileSize(n);
 				if (rc != RC::OK)
 					return rc;
 			}
@@ -1605,7 +1605,7 @@ end_playback:
 
 	void Pager::SetCacheSize(int maxPages)
 	{
-		PCache->SetCachesize(maxPages);
+		PCache->set_CacheSize(maxPages);
 	}
 
 	void Pager::Shrink()
@@ -1621,8 +1621,8 @@ end_playback:
 		FullSync = (level == 3 && !TempFile);
 		if (NoSync)
 		{
-			SyncFlags = 0;
-			CheckpointSyncFlags = 0;
+			SyncFlags = (VFile::SYNC)0;
+			CheckpointSyncFlags = (VFile::SYNC)0;
 		}
 		else if (fullFsync)
 		{
@@ -1655,7 +1655,7 @@ end_playback:
 #ifdef TEST
 		sqlite3_opentemp_count++; // Used for testing and analysis only
 #endif
-		vfsFlags |= VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::CREATE | VFileSystem::OPEN::EXCLUSIVE | VFileSystem::OPEN::DELETEONCLOSE;
+		vfsFlags |= (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::CREATE | VFileSystem::OPEN::EXCLUSIVE | VFileSystem::OPEN::DELETEONCLOSE);
 		RC rc = pager->Vfs->Open(nullptr, file, vfsFlags, nullptr);
 		_assert(rc != RC::OK || file->Opened);
 		return rc;
@@ -1691,11 +1691,11 @@ end_playback:
 		{
 			int64 bytes = 0;
 			if (State > PAGER::OPEN && File->Opened)
-				rc = File->get_FileSize(&bytes);
-			uint8 *tempSpace = nullptr; // New temp space
+				rc = File->get_FileSize(bytes);
+			char *tempSpace = nullptr; // New temp space
 			if (rc == RC::OK)
 			{
-				tempSpace = (char *)sqlite3PageMalloc(pageSize);
+				tempSpace = (char *)PCache_PageAlloc(pageSize);
 				if (!tempSpace) rc = RC::NOMEM;
 			}
 			if (rc == RC::OK)
@@ -1703,7 +1703,7 @@ end_playback:
 				pager_reset(this);
 				DBSize = (Pid)((bytes + pageSize - 1) / pageSize);
 				PageSize = (int)pageSize;
-				sqlite3PageFree(TmpSpace);
+				PCache_PageFree(TmpSpace);
 				TmpSpace = tempSpace;
 				PCache->SetPageSize(pageSize);
 			}
@@ -1734,17 +1734,17 @@ end_playback:
 	}
 
 #ifdef TEST
-	extern int sqlite3_io_error_pending;
-	extern int sqlite3_io_error_hit;
+	int sqlite3_io_error_pending;
+	int sqlite3_io_error_hit;
 	static int saved_cnt;
 
-	static void disable_simulated_io_errors()
+	void disable_simulated_io_errors()
 	{
 		saved_cnt = sqlite3_io_error_pending;
 		sqlite3_io_error_pending = -1;
 	}
 
-	static void enable_simulated_io_errors()
+	void enable_simulated_io_errors()
 	{
 		sqlite3_io_error_pending = saved_cnt;
 	}
@@ -1829,7 +1829,7 @@ end_playback:
 		if (!pager->NoSync)
 			rc = pager->JournalFile->Sync(VFile::SYNC::NORMAL);
 		if (rc == RC::OK)
-			rc = pager->JournalFile->get_FileSize(&pager->JournalHeader);
+			rc = pager->JournalFile->get_FileSize(pager->JournalHeader);
 		return rc;
 	}
 
@@ -1866,7 +1866,7 @@ end_playback:
 		SysEx_IOTRACE("CLOSE %p\n", pager);
 		pager->JournalFile->Close();
 		pager->File->Close();
-		sqlite3PageFree(tmp);
+		PCache_PageFree(tmp);
 		pager->PCache->Close();
 
 #ifdef HAS_CODEC
@@ -2028,7 +2028,7 @@ end_playback:
 
 				// Encode the database
 				char *data; // Data to write
-				CODEC2(pager, list->Data, id, 6, return RC::NOMEM, data);
+				CODEC2(char, data, pager, list->Data, id, 6, return RC::NOMEM);
 
 				// Write out the page data.
 				int64 offset = (id - 1) * (int64)pager->PageSize; // Offset to write
@@ -2037,7 +2037,7 @@ end_playback:
 				// If page 1 was just written, update Pager.dbFileVers to match the value now stored in the database file. If writing this 
 				// page caused the database file to grow, update dbFileSize. 
 				if (id == 1)
-					_memcpy(&pager->DBFileVersion, &data[24], sizeof(pager->DBFileVersion));
+					_memcpy(((char *)&pager->DBFileVersion), &data[24], sizeof(pager->DBFileVersion));
 				if (id > pager->DBFileSize)
 					pager->DBFileSize = id;
 				pager->Stats[STAT::WRITE]++;
@@ -2064,7 +2064,7 @@ end_playback:
 		if (!pager->SubJournalFile->Opened)
 		{
 			if (pager->JournalMode == IPager::JOURNALMODE::JMEMORY || pager->SubjInMemory)
-				sqlite3MemJournalOpen(pager->SubJournalFile);
+				VFile::MemoryVFileOpen(pager->SubJournalFile);
 			else
 				rc = pagerOpentemp(pager, pager->SubJournalFile, VFileSystem::OPEN::SUBJOURNAL);
 		}
@@ -2092,8 +2092,7 @@ end_playback:
 				void *data = pg->Data;
 				int64 offset = (int64)pager->SubRecords * (4 + pager->PageSize);
 				char *data2;
-
-				CODEC2(pager, data, pg->ID, 7, return RC::NOMEM, data2);
+				CODEC2(char, data2, pager, data, pg->ID, 7, return RC::NOMEM);
 				PAGERTRACE("STMT-JOURNAL %d page %d\n", PAGERID(pager), pg->ID);
 				rc = pager->SubJournalFile->Write4(offset, pg->ID);
 				if (rc == RC::OK)
@@ -2136,7 +2135,7 @@ end_playback:
 			if (subjRequiresPage(pg))
 				rc = subjournalPage(pg); 
 			if (rc == RC::OK)
-				rc = pagerWalFrames(pager, pg, 0, 0);
+				rc = pagerWalFrames(pager, pg, 0, false);
 		}
 		else
 		{
@@ -2190,7 +2189,7 @@ end_playback:
 		// is the maximum space required for an in-memory journal file handle and a regular journal file-handle. Note that a "regular journal-handle"
 		// may be a wrapper capable of caching the first portion of the journal file in memory to implement the atomic-write optimization (see 
 		// source file journal.c).
-		int journalFileSize = SysEx_ROUND8(VFile_JournalSize(vfs) > MemoryVFile::MemoryVFileSize ? VFile_JournalSize(vfs) : MemoryVFile::MemoryVFileSize); // Bytes to allocate for each journal fd
+		int journalFileSize = SysEx_ROUND8(VFile::JournalVFileSize(vfs) > VFile::MemoryVFileSize() ? VFile::JournalVFileSize(vfs) : VFile::MemoryVFileSize()); // Bytes to allocate for each journal fd
 
 		// Set the output variable to NULL in case an error occurs.
 		pagerOut = nullptr;
@@ -2206,7 +2205,7 @@ end_playback:
 			memoryDB = true;
 			if (filename && filename[0])
 			{
-				pathname = sqlite3DbStrDup(0, filename);
+				pathname = SysEx::TagStrDup(nullptr, filename);
 				if (pathname == nullptr) return RC::NOMEM;
 				pathnameLength = _strlen30(pathname);
 				filename = nullptr;
@@ -2220,7 +2219,7 @@ end_playback:
 		if (filename && filename[0])
 		{
 			pathnameLength = vfs->MaxPathname + 1;
-			pathname = sqlite3DbMallocRaw(0, pathnameLength * 2);
+			pathname = (char *)SysEx::TagAlloc(nullptr, pathnameLength * 2);
 			if (pathname == nullptr) return RC::NOMEM;
 			pathname[0] = 0; // Make sure initialized even if FullPathname() fails
 			rc = vfs->FullPathname(filename, pathnameLength, pathname);
@@ -2242,7 +2241,7 @@ end_playback:
 			}
 			if (rc != RC::OK)
 			{
-				sqlite3DbFree(0, pathname);
+				SysEx::TagFree(nullptr, pathname);
 				return rc;
 			}
 		}
@@ -2260,10 +2259,10 @@ end_playback:
 			+ pathnameLength + 4 + 2			// zWal
 #endif
 			);
-		_assert(SysEx_ROUND8(SQLITE_INT_TO_PTR(journalFileSize)));
+		//_assert(SysEx_ROUND8(INT_TO_PTR(journalFileSize)));
 		if (!ptr)
 		{
-			sqlite3DbFree(0, pathname);
+			SysEx::TagFree(nullptr, pathname);
 			return RC::NOMEM;
 		}
 		Pager *pager = (Pager *)(ptr);
@@ -2290,7 +2289,7 @@ end_playback:
 			_memcpy(&pager->WalName[pathnameLength], "-wal\000", 4 + 1);
 			//sqlite3FileSuffix3(pager->Filename, pager->WalName);
 #endif
-			sqlite3DbFree(0, pathname);
+			SysEx::TagFree(nullptr, pathname);
 		}
 		pager->Vfs = vfs;
 		pager->VfsFlags = vfsFlags;
@@ -2301,7 +2300,7 @@ end_playback:
 		uint32 sizePage = DEFAULT_PAGE_SIZE;  // Default page size
 		if (filename && filename[0])
 		{
-			VFileSystem::OPEN fout = 0; // VFS flags returned by xOpen()
+			VFileSystem::OPEN fout = (VFileSystem::OPEN)0; // VFS flags returned by xOpen()
 			rc = vfs->Open(pager->Filename, pager->File, vfsFlags, &fout);
 			_assert(!memoryDB);
 			readOnly = (fout & VFileSystem::OPEN::READONLY);
@@ -2429,7 +2428,7 @@ end_playback:
 			// is the case, this routine might think there is a hot journal when in fact there is none.  This results in a false-positive which will
 			// be dealt with by the playback routine.  Ticket #3883.
 			int locked = 0; // True if some process holds a RESERVED lock
-			rc = pager->File->CheckReservedLock(&locked);
+			rc = pager->File->CheckReservedLock(locked);
 			if (rc == RC::OK && !locked)
 			{
 				// Check the size of the database file. If it consists of 0 pages, then delete the journal file. See the header comment above for 
@@ -2545,7 +2544,7 @@ end_playback:
 					if (rc == RC::OK && exists)
 					{
 						_assert(!TempFile);
-						VFileSystem::OPEN fout = 0;
+						VFileSystem::OPEN fout = (VFileSystem::OPEN)0;
 						rc = vfs->Open(Journal, JournalFile, (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::MAIN_JOURNAL), &fout);
 						_assert(rc != RC::OK || JournalFile->Opened);
 						if (rc == RC::OK && fout & VFileSystem::OPEN::READONLY)
@@ -2789,12 +2788,12 @@ pager_acquire_err:
 			if (!pager->JournalFile->Opened)
 			{
 				if (pager->JournalMode == IPager::JOURNALMODE::JMEMORY)
-					sqlite3MemJournalOpen(pager->JournalFile);
+					VFile::MemoryVFileOpen(pager->JournalFile);
 				else
 				{
 					const VFileSystem::OPEN flags = (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::CREATE | (pager->TempFile ? VFileSystem::OPEN::DELETEONCLOSE | VFileSystem::OPEN::TEMP_JOURNAL : VFileSystem::OPEN::MAIN_JOURNAL));
 #ifdef ENABLE_ATOMIC_WRITE
-					rc = VFile_JournalOpen(pager->Vfs, pager->Journal, pager->JournalFile, flags, jrnlBufferSize(pager));
+					rc = VFile::JournalVFileOpen(pager->Vfs, pager->Journal, pager->JournalFile, flags, jrnlBufferSize(pager));
 #else
 					rc = pager->Vfs->Open(pager->Journal, pager->JournalFile, flags, 0);
 #endif
@@ -2935,7 +2934,7 @@ pager_acquire_err:
 
 					_assert(pager->JournalHeader <= pager->JournalOffset);
 					char *data2;
-					CODEC2(pager, data, pg->ID, 7, return RC::NOMEM, data2);
+					CODEC2(char, data2, pager, data, pg->ID, 7, return RC::NOMEM);
 					uint32 checksum = pager_cksum(pager, (uint8 *)data2);
 
 					// Even if an IO or diskfull error occurs while journalling the page in the block above, set the need-sync flag for the page.
@@ -3134,7 +3133,7 @@ pager_acquire_err:
 				{
 					const void *buf;
 					_assert(pager->DBFileSize > 0);
-					CODEC2(pager, pgHdr->Data, 1, 6, rc = RC::NOMEM, buf);
+					CODEC2(void, buf, pager, pgHdr->Data, 1, 6, rc = RC::NOMEM);
 					if (rc == RC::OK)
 					{
 						rc = pager->File->Write(buf, pager->PageSize, 0);
@@ -3262,7 +3261,7 @@ pager_acquire_err:
 				}
 				else
 				{
-					rc = sqlite3JournalCreate(JournalFile);
+					rc = VFile::JournalVFileCreate(JournalFile);
 					if (rc == RC::OK)
 						rc = pager_incr_changecounter(this, false);
 				}
@@ -3298,7 +3297,7 @@ pager_acquire_err:
 				// last page is never written out to disk, leaving the database file undersized. Fix this now if it is the case.
 				if (DBSize > DBFileSize)
 				{
-					Pid newID = DBSize - (DBSize == MJ_PGNO(this) ? 1 : 0);
+					Pid newID = DBSize - (DBSize == MJ_PID(this) ? 1 : 0);
 					_assert(State == PAGER::WRITER_DBMOD);
 					rc = pager_truncate(this, newID);
 					if (rc != RC::OK) goto commit_phase_one_exit;
@@ -3415,7 +3414,7 @@ commit_phase_one_exit:
 		static int a[11];
 		a[0] = PCache->get_Refs();
 		a[1] = PCache->get_Pages();
-		a[2] = PCache->get_Cachesize();
+		a[2] = PCache->get_CacheSize();
 		a[3] = State == (PAGER::OPEN ? -1 : (int)DBSize);
 		a[4] = State;
 		a[5] = ErrorCode;
@@ -3505,7 +3504,7 @@ commit_phase_one_exit:
 				if (newLength == 0 && SubJournalFile->Opened)
 				{
 					// Only truncate if it is an in-memory sub-journal.
-					if (VFile::IsMemoryVFile(SubJournalFile))
+					if (VFile::HasMemoryVFile(SubJournalFile))
 					{
 						rc = SubJournalFile->Truncate(0);
 						_assert(rc == RC::OK);
@@ -3717,7 +3716,7 @@ commit_phase_one_exit:
 		_assert(!TempFile || mode != IPager::JOURNALMODE::WAL);
 
 		// Do allow the journalmode of an in-memory database to be set to anything other than MEMORY or OFF
-		uint8 old = JournalMode; // Prior journalmode
+		IPager::JOURNALMODE old = JournalMode; // Prior journalmode
 		if (MemoryDB)
 		{
 			_assert(old == IPager::JOURNALMODE::JMEMORY || old == IPager::JOURNALMODE::OFF);
@@ -3729,7 +3728,7 @@ commit_phase_one_exit:
 		{
 			// Change the journal mode
 			_assert(State != PAGER::ERROR);
-			JournalMode = (uint8)mode;
+			JournalMode = mode;
 
 			// When transistioning from TRUNCATE or PERSIST to any other journal mode except WAL, unless the pager is in locking_mode=exclusive mode,
 			// delete the journal file.
@@ -3775,7 +3774,7 @@ commit_phase_one_exit:
 		}
 
 		// Return the new journal mode
-		return (int)JournalMode;
+		return JournalMode;
 	}
 
 	IPager::JOURNALMODE Pager::GetJournalMode()
@@ -3943,8 +3942,8 @@ commit_phase_one_exit:
 #if defined(HAS_CODEC) && !defined(OMIT_WAL)
 	void *Pager::get_Codec(IPage *pg)
 	{
-		void *data = 0;
-		CODEC2(pg->Pager, pg->Data, pg->ID, 6, return 0, data);
+		void *data = nullptr;
+		CODEC2(void, data, pg->Pager, pg->Data, pg->ID, 6, return nullptr);
 		return data;
 	}
 #endif

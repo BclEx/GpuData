@@ -21,13 +21,12 @@ namespace Core
 		FileChunk *Chunk;	// Specific chunk into which cursor points
 	};
 
-	class MemoryVFile : VFile
+	class MemoryVFile : public VFile
 	{
 	private:
 		FileChunk *First;       // Head of in-memory chunk-list
 		FilePoint _endpoint;    // Pointer to the end of the file
 		FilePoint _readpoint;   // Pointer to the end of the last xRead()
-		__device__ void Open();
 	public:
 		//bool Opened;
 		__device__ virtual RC Read(void *buffer, int amount, int64 offset);
@@ -107,7 +106,7 @@ namespace Core
 			chunk = chunk->Next;
 			SysEx::Free(tmp);
 		}
-		Open();
+		MemoryVFileOpen(this);
 		return RC::OK;
 	}
 
@@ -126,5 +125,23 @@ namespace Core
 	{
 		size = (int64)_endpoint.Offset;
 		return RC::OK;
+	}
+
+	// extensions
+	__device__ void VFile::MemoryVFileOpen(VFile *file)
+	{
+		_assert(SysEx_HASALIGNMENT8(file));
+		_memset(file, 0, MemoryVFileSize());
+		file->Type = 1;
+	}
+
+	__device__ bool VFile::HasMemoryVFile(VFile *file)
+	{
+		return (file->Type == 1);
+	}
+
+	__device__ int VFile::MemoryVFileSize() 
+	{
+		return sizeof(MemoryVFile);
 	}
 }

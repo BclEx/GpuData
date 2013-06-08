@@ -27,7 +27,7 @@ namespace Core
         public uint Min;            // Minimum number of pages reserved
         public uint Max;            // Configured "cache_size" value
         public uint N90pct;         // nMax*9/10
-        public Pid MaxKey;          // Largest key seen since xTruncate()
+        public Pid MaxID;          // Largest key seen since xTruncate()
         // Hash table of all pages. The following variables may only be accessed when the accessor is holding the PGroup mutex.
         public uint Recyclables;    // Number of pages in the LRU list
         public uint Pages;          // Total number of pages in apHash
@@ -38,14 +38,14 @@ namespace Core
             Recyclables = 0;
             Pages = 0;
             Hash = null;
-            MaxKey = 0;
+            MaxID = 0;
         }
     }
 
     public class PgHdr1
     {
         public ICachePage Page;
-        public Pid Key;             // Key value (page number)
+        public Pid ID;             // Key value (page number)
         public PgHdr1 Next;         // Next in hash table chain
         public PCache1 Cache;       // Cache that currently owns this page
         public PgHdr1 LruNext;      // Next in LRU list of unpinned pages
@@ -54,7 +54,7 @@ namespace Core
         public PgHdr _PgHdr = new PgHdr();
         public void memset()
         {
-            Key = 0;
+            ID = 0;
             Next = null;
             Cache = null;
             LruNext = LruPrev = null;
@@ -237,12 +237,12 @@ namespace Core
             }
         }
 
-        private static PgHdr PageAlloc(int size)
+        private static PgHdr PCache_PageAlloc(int size)
         {
             return Alloc(size);
         }
 
-        public static void PageFree(ref byte[] p)
+        public static void PCache_PageFree(ref byte[] p)
         {
             if (p != null)
             {
@@ -250,15 +250,15 @@ namespace Core
                 p = null;
             }
         }
-        public static void PageFree(ref PgHdr p)
+        public static void PCache_PageFree(ref PgHdr p)
         {
             Free(ref p);
         }
 
-        private bool UnderMemoryPressure()
-        {
-            return (_pcache1.Slots != 0 && SizePage <= _pcache1.SizeSlot ? _pcache1.UnderPressure : SysEx.HeapNearlyFull());
-        }
+        //private bool UnderMemoryPressure()
+        //{
+        //    return (_pcache1.Slots != 0 && SizePage <= _pcache1.SizeSlot ? _pcache1.UnderPressure : SysEx.HeapNearlyFull());
+        //}
 
         #endregion
 
@@ -285,7 +285,7 @@ namespace Core
                     var next = p.Hash[i];
                     while ((page = next) != null)
                     {
-                        var h = (uint)(page.Key % newLength);
+                        var h = (uint)(page.ID % newLength);
                         next = page.Next;
                         page.Next = newHash[h];
                         newHash[h] = page;
@@ -323,7 +323,7 @@ namespace Core
         {
             var cache = page.Cache;
             Debug.Assert(MutexEx.Held(cache.Group.Mutex));
-            var h = (uint)(page.Key % cache.Hash.Length);
+            var h = (uint)(page.ID % cache.Hash.Length);
             PgHdr1 pp;
             PgHdr1 prev = null;
             for (pp = cache.Hash[h]; pp != page; prev = pp, pp = pp.Next) ;
@@ -360,7 +360,7 @@ namespace Core
                 PgHdr1 prev = null;
                 while ((page = pp) != null)
                 {
-                    if (page.Key >= limit)
+                    if (page.ID >= limit)
                     {
                         p.Pages--;
                         pp = page.Next;
@@ -488,9 +488,9 @@ namespace Core
             return pages;
         }
 
-        public ICachePage Fetch(Pid key, int createFlag)
+        public ICachePage Fetch(Pid id, bool createFlag)
         {
-            Debug.Assert(Purgeable || createFlag != 1);
+            Debug.Assert(Purgeable || !createFlag);
             Debug.Assert(Purgeable || Min == 0);
             Debug.Assert(!Purgeable || Min == 10);
             PGroup group;
@@ -500,12 +500,12 @@ namespace Core
             PgHdr1 page = null;
             if (Hash.Length > 0)
             {
-                var h = (int)(key % Hash.Length);
-                for (page = Hash[h]; page != null && page.Key != key; page = page.Next) ;
+                var h = (int)(id % Hash.Length);
+                for (page = Hash[h]; page != null && page.ID != id; page = page.Next) ;
             }
 
             // Step 2: Abort if no existing page is found and createFlag is 0
-            if (page != null || createFlag == 0)
+            if (page != null || !createFlag)
             {
                 PinPage(page);
                 goto fetch_out;
@@ -523,7 +523,7 @@ namespace Core
             var pinned = Pages - Recyclables;
             Debug.Assert(group.MaxPinned == group.MaxPages + 10 - group.MinPages);
             Debug.Assert(N90pct == Max * 9 / 10);
-            if (createFlag == 1 && (pinned >= group.MaxPinned || pinned >= (int)N90pct || UnderMemoryPressure()))
+            if (createFlag && (pinned >= group.MaxPinned || pinned >= (int)N90pct || UnderMemoryPressure()))
                 goto fetch_out;
             if (Pages >= Hash.Length && ResizeHash(this) != 0)
                 goto fetch_out;
@@ -554,15 +554,15 @@ namespace Core
             // Step 5. If a usable page buffer has still not been found, attempt to allocate a new one. 
             if (page == null)
             {
-                if (createFlag == 1) SysEx.BeginBenignAlloc();
+                if (createFlag) SysEx.BeginBenignAlloc();
                 page = AllocPage(this);
-                if (createFlag == 1) SysEx.EndBenignAlloc();
+                if (createFlag) SysEx.EndBenignAlloc();
             }
             if (page != null)
             {
-                var h = (uint)(key % Hash.Length);
+                var h = (uint)(id % Hash.Length);
                 Pages++;
-                page.Key = key;
+                page.ID = id;
                 page.Next = Hash[h];
                 page.Cache = this;
                 page.LruPrev = null;
@@ -574,8 +574,8 @@ namespace Core
             }
 
         fetch_out:
-            if (page != null && key > MaxKey)
-                MaxKey = key;
+            if (page != null && id > MaxID)
+                MaxID = id;
             MutexEx.Leave(group.Mutex);
             return page.Page;
         }
@@ -616,7 +616,7 @@ namespace Core
         public void Rekey(ICachePage pg, Pid old, Pid new_)
         {
             var page = (PgHdr1)pg._PgHdr1;
-            Debug.Assert(page.Key == old);
+            Debug.Assert(page.ID == old);
             Debug.Assert(page.Cache == this);
             MutexEx.Enter(Group.Mutex);
             var h = (uint)(old % Hash.Length);
@@ -628,21 +628,21 @@ namespace Core
             else
                 pp.Next = page.Next;
             h = (uint)(new_ % Hash.Length);
-            page.Key = new_;
+            page.ID = new_;
             page.Next = Hash[h];
             Hash[h] = page;
-            if (new_ > MaxKey)
-                MaxKey = new_;
+            if (new_ > MaxID)
+                MaxID = new_;
             MutexEx.Leave(Group.Mutex);
         }
 
         public void Truncate(Pid limit)
         {
             MutexEx.Enter(Group.Mutex);
-            if (limit <= MaxKey)
+            if (limit <= MaxID)
             {
                 TruncateUnsafe(this, limit);
-                MaxKey = limit - 1;
+                MaxID = limit - 1;
             }
             MutexEx.Leave(Group.Mutex);
         }

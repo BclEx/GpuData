@@ -126,14 +126,14 @@ namespace Core
 		SizePage = sizePage;
 	}
 
-	static uint NumberOfCachePages(PCache *p)
+	uint PCache::get_CacheSize() // NumberOfCachePages
 	{
-		if (p->SizeCache >= 0)
-			return (uint)p->SizeCache;
-		return (uint)((-1024 * (int64)p->SizeCache) / (p->SizePage + p->SizeExtra));
+		if (SizeCache >= 0)
+			return (uint)SizeCache;
+		return (uint)((-1024 * (int64)SizeCache) / (SizePage + SizeExtra));
 	}
 
-	int PCache::Fetch(Pid id, bool createFlag, PgHdr **pageOut)
+	RC PCache::Fetch(Pid id, bool createFlag, PgHdr **pageOut)
 	{
 		_assert(id > 0);
 		// If the pluggable cache (sqlite3_pcache*) has not been allocated, allocate it now.
@@ -142,7 +142,7 @@ namespace Core
 			IPCache *p = _pcache->Create(SizePage, SizeExtra + sizeof(PgHdr), Purgeable);
 			if (!p)
 				return RC::NOMEM;
-			p->Cachesize(NumberOfCachePages(this));
+			p->Cachesize(get_CacheSize());
 			Cache = p;
 		}
 		ICachePage *page = nullptr;
@@ -399,7 +399,7 @@ namespace Core
 		return Refs;
 	}
 
-	int get_PageRefs(PgHdr *p)
+	int PCache::get_PageRefs(PgHdr *p)
 	{
 		return p->Refs;
 	}
@@ -409,11 +409,11 @@ namespace Core
 		return (Cache ? Cache->get_Pages() : 0);
 	}
 
-	void PCache::SetCachesize(int maxPage)
+	void PCache::set_CacheSize(int maxPage)
 	{
 		SizeCache = maxPage;
 		if (Cache)
-			Cache->Cachesize(NumberOfCachePages(this));
+			Cache->Cachesize(get_CacheSize());
 	}
 
 	void PCache::Shrink()
@@ -430,16 +430,5 @@ namespace Core
 	}
 #endif
 
-#pragma endregion
-
-#pragma region Test 
-#ifdef TEST
-
-	__device__ uint PCache_testGetCachesize(PCache *cache)
-	{
-		return NumberOfCachePages(cache);
-	}
-
-#endif
 #pragma endregion
 }

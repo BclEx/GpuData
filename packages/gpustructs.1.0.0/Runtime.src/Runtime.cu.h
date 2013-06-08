@@ -6,11 +6,11 @@
 // External function definitions for device-side code
 
 // array
-template <typename T>
-__device__ inline T *__arraySet(T *symbol, int length) { return symbol; }
-template <typename T>
-__device__ inline T *__arrayClear(T *symbol) { return nullptr; }
-#define __arrayLength(symbol) 0
+#define __arrayAlloc(t,Ti,length) (Ti*)((int*)malloc(sizeof(Ti)*length+4)+1);*((int*)t&-1)=length
+#define __arraySet(t,length) t;*((int*)&t-1)=length
+#define __arrayLength(t) *((int*)&t-1)
+#define __arraySetLength(t,length) *((int*)&t-1)=length
+#define __arrayClear(t,length) nullptr;*((int*)&t-1)=0
 #define __arrayStaticLength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
 
 #if __CUDA_ARCH__ == 100
@@ -56,7 +56,7 @@ template <typename T1, typename T2, typename T3, typename T4, typename T5, typen
 extern __device__ void _assert(const int condition);
 extern __device__ void _assert(const int condition, const char *fmt);
 #define ASSERTONLY(X) X
-void Coverage(int);
+inline void Coverage(int line) { }
 #define ASSERTCOVERAGE(X) if (X) { Coverage(__LINE__); }
 #else
 #define _assert(X, ...)
@@ -104,6 +104,15 @@ template <typename T, typename Y>
 __device__ inline int _memcmp(T *a, Y *b, size_t length)
 {
 	return 0;
+}
+
+// strlen30
+__device__ inline int _strlen30(const char *z)
+{
+  const char *z2 = z;
+  if (z == nullptr) return 0;
+  while (*z2) { z2++; }
+  return 0x3fffffff & (int)(z2 - z);
 }
 
 #endif // __RUNTIME_CU_H__

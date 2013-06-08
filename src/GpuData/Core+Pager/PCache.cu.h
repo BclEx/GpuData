@@ -19,7 +19,7 @@ namespace Core
 		virtual void Cachesize(uint max) = 0;
 		virtual void Shrink() = 0;
 		virtual int get_Pages() = 0;
-		virtual ICachePage *Fetch(Pid key, int createFlag) = 0;
+		virtual ICachePage *Fetch(Pid id, bool createFlag) = 0;
 		virtual void Unpin(ICachePage *pg, bool reuseUnlikely) = 0;
 		virtual void Rekey(ICachePage *pg, Pid old, Pid new_) = 0;
 		virtual void Truncate(Pid limit) = 0;
@@ -36,7 +36,7 @@ namespace Core
 			REUSE_UNLIKELY = 0x010, // A hint that reuse is unlikely
 			DONT_WRITE = 0x020		// Do not write content to disk 
 		};
-		ICachePage *Page;				// Pcache object page handle
+		ICachePage *Page;			// Pcache object page handle
 		void *Data;					// Page data
 		void *Extra;				// Extra content
 		PgHdr *Dirty;				// Transient list of dirty pages
@@ -73,7 +73,7 @@ namespace Core
 		__device__ static int SizeOf();
 		__device__ static void Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p);
 		__device__ void SetPageSize(int sizePage);
-		__device__ int Fetch(Pid id, bool createFlag, PgHdr **pageOut);
+		__device__ RC Fetch(Pid id, bool createFlag, PgHdr **pageOut);
 		__device__ static void Release(PgHdr *p);
 		__device__ static void Ref(PgHdr *p);
 		__device__ static void Drop(PgHdr *p);			// Remove page from cache
@@ -89,7 +89,8 @@ namespace Core
 		__device__ int get_Refs();
 		__device__ static int get_PageRefs(PgHdr *p);
 		__device__ int get_Pages();
-		__device__ void SetCachesize(int maxPage);
+		__device__ uint get_CacheSize();
+		__device__ void set_CacheSize(int maxPage);
 		__device__ void Shrink();
 #if defined(CHECK_PAGES) || defined(_DEBUG)
 		__device__ void IterateDirty(void (*iter)(PgHdr *));
@@ -98,8 +99,10 @@ namespace Core
 		__device__ static int ReleaseMemory(int required);
 #endif
 #ifdef TEST
-		__device__ uint PCache_testGetCachesize(PCache *cache);
 		__device__ void PCache1_testStats(uint *current, uint *max, uint *min, uint *recyclables);
 #endif
 	};
+
+	__device__ void *PCache_PageAlloc(int size);
+	__device__ void PCache_PageFree(void *p);
 }

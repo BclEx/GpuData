@@ -5,6 +5,7 @@ namespace Core
 #define MAX_PAGE_SIZE 65536
 
 	typedef struct Pager Pager;
+	typedef struct Wal Wal;
 	typedef struct PgHdr IPage;
 	typedef struct PagerSavepoint PagerSavepoint;
 	typedef struct PCache PCache;
@@ -208,7 +209,7 @@ namespace Core
 		bool get_MemoryDB();
 		void CacheStat(int dbStatus, bool reset, int *value);
 		void ClearCache();
-		static int SectorSize(VFile *file);
+		static int get_SectorSize(VFile *file);
 
 		// Functions used to truncate the database file.
 		void TruncateImage(Pid pages);
@@ -221,15 +222,16 @@ namespace Core
 		static Pid Pagenumber(IPage *pg);
 		static int Iswriteable(IPage *pg);
 #endif
-
 #ifdef TEST
 		int *get_Stats();
-		void disable_simulated_io_errors();
-		void enable_simulated_io_errors();
+#endif
+	};
+
+#ifdef TEST
+	void disable_simulated_io_errors();
+	void enable_simulated_io_errors();
 #else
 #define disable_simulated_io_errors()
 #define enable_simulated_io_errors()
 #endif
-
-	};
 }

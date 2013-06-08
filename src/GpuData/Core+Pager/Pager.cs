@@ -33,7 +33,7 @@ namespace Core
 #if HAS_CODEC
         static bool CODEC1(Pager p, byte[] d, Pid id, int x)
         {
-            return ((p.Codec != null) && (p.Codec(p.CodecArg, d, id, x) == null));
+            return (p.Codec != null && p.Codec(p.CodecArg, d, id, x) == null);
         }
         static bool CODEC2(Pager p, byte[] d, Pid id, int x, ref byte[] o)
         {

@@ -94,6 +94,7 @@ namespace Core.IO
         };
 
         protected ulong _sectorSize;        // Sector size of the device file is on
+        private byte Type;
         public bool Opened;
         public VFileSystem Vfs;        // The VFS used to open this file
         public FileStream S;           // Filestream access to this file

@@ -41,25 +41,36 @@ namespace Core
 	class SysEx
 	{
 	public:
+#pragma region Memory Allocation
+
 		enum MEMTYPE : uint8
 		{
-            HEAP = 0x01,         // General heap allocations
-            LOOKASIDE = 0x02,    // Might have been lookaside memory
-            SCRATCH = 0x04,      // Scratch allocations
-            PCACHE = 0x08,       // Page cache allocations
-            DB = 0x10,           // Uses sqlite3DbMalloc, not sqlite_malloc
+			HEAP = 0x01,         // General heap allocations
+			LOOKASIDE = 0x02,    // Might have been lookaside memory
+			SCRATCH = 0x04,      // Scratch allocations
+			PCACHE = 0x08,       // Page cache allocations
+			DB = 0x10,           // Uses sqlite3DbMalloc, not sqlite_malloc
 		};
 		__device__ inline static void BeginBenignAlloc() { }
 		__device__ inline static void EndBenignAlloc() { }
 		__device__ inline static void *Alloc(size_t size) { return (char *)malloc(size); }
 		__device__ inline static void *Alloc(size_t size, bool clear) { char *b = (char *)malloc(size); if (clear) _memset(b, 0, size); return b; }
+		__device__ inline static void *TagAlloc(void *tag, size_t size) { return (char *)malloc(size); }
+		__device__ inline static void *TagAlloc(void *tag, size_t size, bool clear) { char *b = (char *)malloc(size); if (clear) _memset(b, 0, size); return b; }
 		__device__ inline static int AllocSize(void *p)
 		{
 			_assert(MemdebugHasType(p, MEMTYPE::HEAP));
 			_assert(MemdebugNoType(p, MEMTYPE::DB));
 			return 0; 
 		}
+		__device__ inline static int TagAllocSize(void *tag, void *p)
+		{
+			_assert(MemdebugHasType(p, MEMTYPE::HEAP));
+			_assert(MemdebugNoType(p, MEMTYPE::DB));
+			return 0; 
+		}
 		__device__ inline static void Free(void *p) { free(p); }
+		__device__ inline static void TagFree(void *tag, void *p) { free(p); }
 #ifndef __CUDACC__
 		__device__ inline static void *StackAlloc(size_t size) { return alloca(size); }
 		__device__ inline static void StackFree(void *p) { }
@@ -68,7 +79,8 @@ namespace Core
 		__device__ inline static void StackFree(void *p) { free(p); }
 #endif
 		__device__ inline static bool HeapNearlyFull() { return false; }
-		//__device__ inline static void *Realloc() { return nullptr; }
+		__device__ inline static void *Realloc(void *old, size_t newSize) { return nullptr; }
+		__device__ inline static void *TagRealloc(void *tag, void *old, size_t newSize) { return nullptr; }
 		//
 #if MEMDEBUG
 #else
@@ -76,6 +88,31 @@ namespace Core
 		__device__ inline static bool MemdebugHasType(void *p, MEMTYPE memType) { return true; }
 		__device__ inline static bool MemdebugNoType(void *p, MEMTYPE memType) { return true; }
 #endif
+
+		__device__ inline static char *TagStrDup(void *tag, const char *z)
+		{
+			if (z == nullptr) return nullptr;
+			size_t n = _strlen30(z) + 1;
+			_assert((n & 0x7fffffff) == n);
+			char *newZ = (char *)TagAlloc(tag, (int)n);
+			if (newZ)
+				_memcpy(newZ, z, n);
+			return newZ;
+		}
+		__device__ inline static char *TagStrNDup(void *tag,  const char *z, int n)
+		{
+			if (z == nullptr) return nullptr;
+			_assert((n & 0x7fffffff) == n);
+			char *newZ = (char *)TagAlloc(tag, n + 1);
+			if (newZ)
+			{
+				_memcpy(newZ, z, n);
+				newZ[n] = 0;
+			}
+			return newZ;
+		}
+
+#pragma endregion
 		__device__ static void PutRandom(int length, void *buffer);
 	};
 

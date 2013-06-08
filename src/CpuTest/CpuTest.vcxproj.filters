@@ -49,6 +49,9 @@
     <ClCompile Include="..\GpuData\Core+Pager\Wal.cu">
       <Filter>Core+Pager</Filter>
     </ClCompile>
+    <ClCompile Include="..\GpuData\Core\IO\25.JournalVFile.cu">
+      <Filter>Core\IO</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h">

@@ -6,15 +6,6 @@ namespace Core
 	// sqliteInt.h
 	typedef struct VFileSystem VFileSystem;
 	typedef struct VFile VFile;
-#ifdef ENABLE_ATOMIC_WRITE
-	int VFile_JournalOpen(VFileSystem *vfs, const char *a, VFile *b, int c, int d);
-	int VFile_JournalSize(VFileSystem *vfs);
-	int VFile_JournalCreate(VFile *v);
-	bool VFile_JournalExists(VFile *v);
-#else
-#define VFile_JournalSize(vfs) ((vfs)->SizeOsFile)
-#define VFile_JournalExists(v) true
-#endif
 
 	class VFile
 	{
@@ -92,6 +83,7 @@ namespace Core
 			SHM_MAX = 8,
 		};
 
+		char Type;
 		bool Opened;
 
 		__device__ virtual RC Read(void *buffer, int amount, int64 offset) = 0;
@@ -103,7 +95,7 @@ namespace Core
 
 		__device__ virtual RC Lock(int lock) = 0;
 		__device__ virtual RC Unlock(int lock) = 0;
-		__device__ virtual RC CheckReservedLock(int lock) = 0;
+		__device__ virtual RC CheckReservedLock(int &lock) = 0;
 		__device__ virtual RC FileControl(int op, void *arg) = 0;
 
 		__device__ virtual int SectorSize() = 0;
@@ -130,17 +122,23 @@ namespace Core
 			return Write(ac, 4, offset);
 		}
 
-		__device__ inline static bool IsMemoryVFile(VFile *file)
-		{
-			return true;
-		}
+		// extensions
+#ifdef ENABLE_ATOMIC_WRITE
+		__device__ static RC JournalVFileOpen(VFileSystem *vfs, const char *name, VFile *file, VFileSystem::OPEN flags, int bufferLength);
+		__device__ static int JournalVFileSize(VFileSystem *vfs);
+		__device__ static RC JournalVFileCreate(VFile *file);
+		__device__ static bool HasJournalVFile(VFile *file);
+#else
+		__device__ inline static int JournalVFileSize(VFileSystem *vfs) { return vfs->SizeOsFile; }
+		__device__ inline bool HasJournalVFile(VFile *file) { return true; }
+		//#define JournalSize(vfs) ((vfs)->SizeOsFile)
+		//#define HasJournal(file) true
+#endif
+		__device__ static void MemoryVFileOpen(VFile *file);
+		__device__ static bool HasMemoryVFile(VFile *file);
+		__device__ static int MemoryVFileSize() ;
 
-		__device__ inline static void MemoryVFileOpen(VFile *file)
-		{
-			_assert(SysEx_HASALIGNMENT8(file));
-			_memset(file, 0, MemoryVFileSize);
-		}
-
-		static int MemoryVFileSize;  //sizeof(MemoryVFile));
 	};
+
+	VFile::SYNC inline operator |= (VFile::SYNC a, VFile::SYNC b) { return (VFile::SYNC)(a | b); }
 }

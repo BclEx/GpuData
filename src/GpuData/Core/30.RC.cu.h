@@ -61,4 +61,6 @@
 		ROW = 100,
 		DONE = 101,
 	};
+
+	RC inline operator |= (RC a, RC b) { return (RC)(a | b); }
 }

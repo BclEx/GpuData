@@ -104,6 +104,7 @@
     <Content Include="Core\IO\30.VFile.cu.h" />
     <None Include="Core\IO\40.VFileSystem.cu" />
     <None Include="Core\50.SysEx.cu" />
+    <None Include="Core\IO\25.JournalVFile.cu" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>
