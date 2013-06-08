@@ -56,7 +56,7 @@
     <Compile Include="Core+Pager\Wal_h.cs" />
     <Compile Include="Core+Pager\Core+Pager_h.cs" />
     <Compile Include="Core+Pager\Pager_h.cs" />
-    <None Include="Core+Pager\Pager.cs" />
+    <Compile Include="Core+Pager\Pager.cs" />
     <Compile Include="Core+Pager\PCache_h.cs" />
     <Content Include="Core+Pager\Pager.cu.h" />
     <Content Include="Core+Pager\PCache.cu.h" />
@@ -74,7 +74,7 @@
     <Compile Include="Main.cs" />
     <Compile Include="Core\50.SysEx.cs" />
     <Compile Include="Core\30.RC.cs" />
-    <Compile Include="Core\IO\30.VFile.cs" />
+    <Compile Include="Core\IO\30.VFile_h.cs" />
     <Compile Include="Core\IO\40.VFileSystem.cs" />
     <Compile Include="Core\IO\20.MemoryVFile.cs" />
     <Compile Include="Core\IO\00.CoreVFile.cs" />
@@ -97,6 +97,7 @@
     <Content Include="Core\Core+Types.cu.h" />
     <Content Include="Core\Core.cu.h" />
     <Content Include="Core\40.StatusEx.cu.h" />
+    <None Include="Core\00.And.cu" />
     <None Include="Core\IO\00.CoreVFile.cu" />
     <None Include="Core\IO\10.CoreVFileSystem.cu" />
     <None Include="Core\IO\20.MemoryVFile.cu" />

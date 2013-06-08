@@ -18,6 +18,21 @@
     <CudaCompile Include="..\GpuData\Core\50.SysEx.cu">
       <Filter>Core</Filter>
     </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\00.And.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\IO\10.CoreVFileSystem.cu">
+      <Filter>Core\IO</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu">
+      <Filter>Core\IO</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\IO\40.VFileSystem.cu">
+      <Filter>Core\IO</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\IO\00.CoreVFile.cu">
+      <Filter>Core\IO</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\GpuData\Core\Core.cu.h">
@@ -32,6 +47,12 @@
     <ClInclude Include="..\Runtime.cu.h" />
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h">
       <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h">
+      <Filter>Core\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h">
+      <Filter>Core\IO</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

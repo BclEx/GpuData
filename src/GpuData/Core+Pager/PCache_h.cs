@@ -1,10 +1,11 @@
 ﻿using Pid = System.UInt32;
-using IPage = Core.PgHdr;
 using System;
 
 namespace Core
 {
     public partial class Pager { }
+
+    public class ICachePage : PgHdr { }
 
     public interface IPCache
     {
@@ -14,9 +15,9 @@ namespace Core
         void Cachesize(uint max);
         void Shrink();
         int get_Pages();
-        IPage Fetch(Pid key, int createFlag);
-        void Unpin(IPage pg, bool reuseUnlikely);
-        void Rekey(IPage pg, Pid old, Pid new_);
+        ICachePage Fetch(Pid key, int createFlag);
+        void Unpin(ICachePage pg, bool reuseUnlikely);
+        void Rekey(ICachePage pg, Pid old, Pid new_);
         void Truncate(Pid limit);
         void Destroy(ref IPCache p);
     };
@@ -31,7 +32,7 @@ namespace Core
             REUSE_UNLIKELY = 0x010, // A hint that reuse is unlikely
             DONT_WRITE = 0x020,     // Do not write content to disk
         }
-        public IPage Page;
+        public ICachePage Page;
         public byte[] Data;
         public object Extra;        // Extra content
         public PgHdr Dirty;       // Transient list of dirty pages

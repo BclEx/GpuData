@@ -44,16 +44,16 @@ namespace Core
 		void Cachesize(uint max);
 		void Shrink();
 		int get_Pages();
-		IPage *Fetch(Pid key, int createFlag);
-		void Unpin(IPage *pg, bool reuseUnlikely);
-		void Rekey(IPage *pg, Pid old, Pid new_);
+		ICachePage *Fetch(Pid key, int createFlag);
+		void Unpin(ICachePage *pg, bool reuseUnlikely);
+		void Rekey(ICachePage *pg, Pid old, Pid new_);
 		void Truncate(Pid limit);
 		void Destroy(IPCache *p);
 	};
 
 	struct PgHdr1
 	{
-		IPage Page;
+		ICachePage Page;
 		Pid Key;				// Key value (page number)
 		PgHdr1 *Next;			// Next in hash table chain
 		PCache1 *Cache;			// Cache that currently owns this page
@@ -338,7 +338,7 @@ namespace Core
 
 	static void TruncateUnsafe(PCache1 *p, Pid limit)
 	{
-		ASSERTONLY(uint pages = 0;) 
+		ASSERTONLY(uint pages = 0;)
 			_assert(MutexEx::Held(p->Group->Mutex));
 		for (uint h = 0; h < __arrayLength(p->Hash); h++)
 		{
@@ -468,7 +468,7 @@ namespace Core
 		return pages;
 	}
 
-	IPage *PCache1::Fetch(Pid key, int createFlag)
+	ICachePage *PCache1::Fetch(Pid key, int createFlag)
 	{
 		_assert(Purgeable || createFlag != 1);
 		_assert(Purgeable || Min == 0);
@@ -558,7 +558,7 @@ fetch_out:
 		return &page->Page;
 	}
 
-	void PCache1::Unpin(IPage *pg, bool reuseUnlikely)
+	void PCache1::Unpin(ICachePage *pg, bool reuseUnlikely)
 	{
 		PgHdr1 *page = (PgHdr1 *)pg;
 		PGroup *group = Group;
@@ -591,7 +591,7 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Rekey(IPage *pg, Pid old, Pid new_)
+	void PCache1::Rekey(ICachePage *pg, Pid old, Pid new_)
 	{
 		PgHdr1 *page = (PgHdr1 *)pg;
 		_assert(page->Key == old);

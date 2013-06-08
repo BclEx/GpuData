@@ -4,8 +4,10 @@ namespace Core
 	// sqliteLimit.h
 #define MAX_PAGE_SIZE 65536
 
-	typedef struct PagerSavepoint PagerSavepoint;
+	typedef struct Pager Pager;
 	typedef struct PgHdr IPage;
+	typedef struct PagerSavepoint PagerSavepoint;
+	typedef struct PCache PCache;
 
 	class IPager
 	{
@@ -36,11 +38,19 @@ namespace Core
 		};
 
 		// sqlite3.h
-		enum CHECKPOINT : byte
+		enum CHECKPOINT : char
 		{
 			PASSIVE = 0,
 			FULL = 1,
 			RESTART = 2,
+		};
+
+		// sqliteInt.h
+		enum SAVEPOINT : char
+		{
+			BEGIN = 0,
+			RELEASE = 1,
+			ROLLBACK = 2,
 		};
 	};
 
@@ -60,7 +70,7 @@ namespace Core
 
 		VFileSystem *Vfs;			// OS functions to use for IO
 		bool ExclusiveMode;			// Boolean. True if locking_mode==EXCLUSIVE
-		uint8 JournalMode;			// One of the PAGER_JOURNALMODE_* values
+		IPager::JOURNALMODE JournalMode; // One of the PAGER_JOURNALMODE_* values
 		bool UseJournal;			// Use a rollback journal on this file
 		bool NoSync;				// Do not sync the journal if true
 		bool FullSync;				// Do extra syncs of the journal for robustness
@@ -77,8 +87,8 @@ namespace Core
 		VFile::LOCK Lock;           // Current lock held on database file
 		bool ChangeCountDone;       // Set after incrementing the change-counter
 		bool SetMaster;             // True if a m-j name has been written to jrnl
-		bool DoNotSpill;            // Do not spill the cache when non-zero
-		bool DoNotSyncSpill;        // Do not do a spill that requires jrnl sync
+		uint8 DoNotSpill;           // Do not spill the cache when non-zero
+		uint8 DoNotSyncSpill;       // Do not do a spill that requires jrnl sync
 		bool SubjInMemory;          // True to use in-memory sub-journals
 		Pid DBSize;					// Number of pages in the database
 		Pid DBOrigSize;				// dbSize before the current transaction
@@ -116,7 +126,7 @@ namespace Core
 #endif
 		void (*Reiniter)(IPage *);	// Call this routine when reloading pages
 #ifdef HAS_CODEC
-		void *(*Codec)(void *,void *, Pid, int);	// Routine for en/decoding data
+		void *(*Codec)(void *, void *, Pid, int);	// Routine for en/decoding data
 		void (*CodecSizeChange)(void *, int, int);	// Notify of page size changes
 		void (*CodecFree)(void *);					// Destructor for the codec
 		void *CodecArg;								// First argument to xCodec... methods
@@ -126,11 +136,14 @@ namespace Core
 #ifndef OMIT_WAL
 		Wal *Wal;					// Write-ahead log used by "journal_mode=wal"
 		char *WalName;              // File name for write-ahead log
+#else
+		Wal *Wal;
 #endif
 		// Open and close a Pager connection. 
 		static RC Open(VFileSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VFileSystem::OPEN vfsFlags, void (*reinit)(IPage *));
 		static RC Close(Pager *pager);
 		RC ReadFileheader(int n, unsigned char *dest);
+
 		// Functions used to configure a Pager object.
 		void SetBusyhandler(int (*busyHandler)(void *), void *busyHandlerArg);
 		RC SetPageSize(uint32 *pageSizeRef, int reserveBytes);
@@ -142,83 +155,81 @@ namespace Core
 		IPager::JOURNALMODE SetJournalMode(IPager::JOURNALMODE mode);
 		IPager::JOURNALMODE Pager::GetJournalMode();
 		bool OkToChangeJournalMode();
-		int64 JournalSizeLimit(int64 limit);
+		int64 SetJournalSizeLimit(int64 limit);
 		IBackup **BackupPtr();
+
 		// Functions used to obtain and release page references.
 		//#define Acquire(A,B,C) Acquire(A,B,C,false)
 		RC Acquire(Pid id, IPage **pageOut, bool noContent);
 		IPage *Lookup(Pid id);
 		static void Ref(IPage *pg);
 		static void Unref(IPage *pg);
+
 		// Operations on page references.
 		static RC Write(IPage *page);
-		static void DontWrite(PgHdr *pg);
+		static void DontWrite(IPage *page);
+		RC Movepage(IPage *pg, Pid id, bool isCommit);
+		static int get_PageRefs(IPage *page);
+		static void *GetData(IPage *pg);
+		static void *GetExtra(IPage *pg);
+
+		// Functions used to manage pager transactions and savepoints.
+		void Pages(Pid *pagesOut);
+		RC Begin(int exFlag, bool subjInMemory);
+		RC CommitPhaseOne(const char *master, int noSync);
+		RC ExclusiveLock();
+		RC Sync();
+		RC CommitPhaseTwo();
+		RC Rollback();
+		RC OpenSavepoint(int savepoints);
+		RC Savepoint(IPager::SAVEPOINT op, int savepoints);
+		RC SharedLock();
+#ifndef OMIT_WAL
+		RC Checkpoint(int mode, int *logs, int *checkpoints);
+		bool WalSupported();
+		RC WalCallback();
+		RC OpenWal(bool *opened);
+		RC CloseWal();
+#endif
+#ifdef SQLITE_ENABLE_ZIPVFS
+		int WalFramesize();
+#endif
+
+		// Functions used to query pager state and configuration.
+		bool get_Readonly();
+		int get_Refs();
+		int get_MemUsed();
+		const char *get_Filename(bool nullIfMemDb);
+		const VFileSystem *get_Vfs();
+		VFile *get_File();
+		const char *get_Journalname();
+		int get_NoSync();
+		void *get_TempSpace();
+		bool get_MemoryDB();
+		void CacheStat(int dbStatus, bool reset, int *value);
+		void ClearCache();
+		static int SectorSize(VFile *file);
+
+		// Functions used to truncate the database file.
+		void TruncateImage(Pid pages);
+
+#if defined(HAS_CODEC) && !defined(OMIT_WAL)
+		void *get_Codec(IPage *pg);
+#endif
+		// Functions to support testing and debugging.
+#if !defined(_DEBUG) || defined(TEST)
+		static Pid Pagenumber(IPage *pg);
+		static int Iswriteable(IPage *pg);
+#endif
+
+#ifdef TEST
+		int *get_Stats();
+		void disable_simulated_io_errors();
+		void enable_simulated_io_errors();
+#else
+#define disable_simulated_io_errors()
+#define enable_simulated_io_errors()
+#endif
 
 	};
-
-	//		int sqlite3PagerMovepage(Pager*,DbPage*,Pgno,int);
-	//		int sqlite3PagerPageRefcount(DbPage*);
-	//		void *sqlite3PagerGetData(DbPage *); 
-	//		void *sqlite3PagerGetExtra(DbPage *); 
-	//
-	//		/* Functions used to manage pager transactions and savepoints. */
-	//		void sqlite3PagerPagecount(Pager*, int*);
-	//		int sqlite3PagerBegin(Pager*, int exFlag, int);
-	//		int sqlite3PagerCommitPhaseOne(Pager*,const char *zMaster, int);
-	//		int sqlite3PagerExclusiveLock(Pager*);
-	//		int sqlite3PagerSync(Pager *pPager);
-	//		int sqlite3PagerCommitPhaseTwo(Pager*);
-	//		int sqlite3PagerRollback(Pager*);
-	//		int sqlite3PagerOpenSavepoint(Pager *pPager, int n);
-	//		int sqlite3PagerSavepoint(Pager *pPager, int op, int iSavepoint);
-	//		int sqlite3PagerSharedLock(Pager *pPager);
-	//
-	//#ifndef SQLITE_OMIT_WAL
-	//		int sqlite3PagerCheckpoint(Pager *pPager, int, int*, int*);
-	//		int sqlite3PagerWalSupported(Pager *pPager);
-	//		int sqlite3PagerWalCallback(Pager *pPager);
-	//		int sqlite3PagerOpenWal(Pager *pPager, int *pisOpen);
-	//		int sqlite3PagerCloseWal(Pager *pPager);
-	//#endif
-	//
-	//#ifdef SQLITE_ENABLE_ZIPVFS
-	//		int sqlite3PagerWalFramesize(Pager *pPager);
-	//#endif
-	//
-	//		/* Functions used to query pager state and configuration. */
-	//		u8 sqlite3PagerIsreadonly(Pager*);
-	//		int sqlite3PagerRefcount(Pager*);
-	//		int sqlite3PagerMemUsed(Pager*);
-	//		const char *sqlite3PagerFilename(Pager*, int);
-	//		const sqlite3_vfs *sqlite3PagerVfs(Pager*);
-	//		sqlite3_file *sqlite3PagerFile(Pager*);
-	//		const char *sqlite3PagerJournalname(Pager*);
-	//		int sqlite3PagerNosync(Pager*);
-	//		void *sqlite3PagerTempSpace(Pager*);
-	//		int sqlite3PagerIsMemdb(Pager*);
-	//		void sqlite3PagerCacheStat(Pager *, int, int, int *);
-	//		void sqlite3PagerClearCache(Pager *);
-	//		int sqlite3SectorSize(sqlite3_file *);
-	//
-	//		/* Functions used to truncate the database file. */
-	//		void sqlite3PagerTruncateImage(Pager*,Pgno);
-	//
-	//#if defined(SQLITE_HAS_CODEC) && !defined(SQLITE_OMIT_WAL)
-	//		void *sqlite3PagerCodec(DbPage *);
-	//#endif
-	//
-	//		/* Functions to support testing and debugging. */
-	//#if !defined(NDEBUG) || defined(SQLITE_TEST)
-	//		Pgno sqlite3PagerPagenumber(DbPage*);
-	//		int sqlite3PagerIswriteable(DbPage*);
-	//#endif
-	//#ifdef SQLITE_TEST
-	//		int *sqlite3PagerStats(Pager*);
-	//		void sqlite3PagerRefdump(Pager*);
-	//		void disable_simulated_io_errors(void);
-	//		void enable_simulated_io_errors(void);
-	//#else
-	//# define disable_simulated_io_errors()
-	//# define enable_simulated_io_errors()
-	//#endif
 }

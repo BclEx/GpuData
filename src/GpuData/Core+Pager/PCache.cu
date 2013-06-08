@@ -145,7 +145,7 @@ namespace Core
 			p->Cachesize(NumberOfCachePages(this));
 			Cache = p;
 		}
-		IPage *page = nullptr;
+		ICachePage *page = nullptr;
 		int create = createFlag * (1 + (!Purgeable || !Dirty));
 		if (Cache)
 			page = Cache->Fetch(id, create);

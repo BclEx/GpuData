@@ -3,6 +3,19 @@ namespace Core
 {
 #define PENDING_BYTE 0x40000000
 
+	// sqliteInt.h
+	typedef struct VFileSystem VFileSystem;
+	typedef struct VFile VFile;
+#ifdef ENABLE_ATOMIC_WRITE
+	int VFile_JournalOpen(VFileSystem *vfs, const char *a, VFile *b, int c, int d);
+	int VFile_JournalSize(VFileSystem *vfs);
+	int VFile_JournalCreate(VFile *v);
+	bool VFile_JournalExists(VFile *v);
+#else
+#define VFile_JournalSize(vfs) ((vfs)->SizeOsFile)
+#define VFile_JournalExists(v) true
+#endif
+
 	class VFile
 	{
 	public:
@@ -23,8 +36,8 @@ namespace Core
 			FULL = 0x00003,
 			DATAONLY = 0x00010,
 			// wal.h
-            WAL_TRANSACTIONS = 0x20,    // Sync at the end of each transaction
-            WAL_MASK = 0x13,            // Mask off the SQLITE_SYNC_* values
+			WAL_TRANSACTIONS = 0x20,    // Sync at the end of each transaction
+			WAL_MASK = 0x13,            // Mask off the SQLITE_SYNC_* values
 		};
 
 		// sqlite3.h
@@ -81,25 +94,25 @@ namespace Core
 
 		bool Opened;
 
-		virtual RC Read(void *buffer, int amount, int64 offset) = 0;
-		virtual RC Write(const void *buffer, int amount, int64 offset) = 0;
-		virtual RC Truncate(int64 size) = 0;
-		virtual RC Close() = 0;
-		virtual RC Sync(int flags) = 0;
-		virtual RC get_FileSize(int64 &size) = 0;
+		__device__ virtual RC Read(void *buffer, int amount, int64 offset) = 0;
+		__device__ virtual RC Write(const void *buffer, int amount, int64 offset) = 0;
+		__device__ virtual RC Truncate(int64 size) = 0;
+		__device__ virtual RC Close() = 0;
+		__device__ virtual RC Sync(int flags) = 0;
+		__device__ virtual RC get_FileSize(int64 &size) = 0;
 
-		virtual RC Lock(int lock) = 0;
-		virtual RC Unlock(int lock) = 0;
-		virtual RC CheckReservedLock(int lock) = 0;
-		virtual RC FileControl(int op, void *arg) = 0;
+		__device__ virtual RC Lock(int lock) = 0;
+		__device__ virtual RC Unlock(int lock) = 0;
+		__device__ virtual RC CheckReservedLock(int lock) = 0;
+		__device__ virtual RC FileControl(int op, void *arg) = 0;
 
-		virtual int SectorSize() = 0;
-		virtual int get_DeviceCharacteristics() = 0;
+		__device__ virtual int SectorSize() = 0;
+		__device__ virtual int get_DeviceCharacteristics() = 0;
 
-		virtual RC ShmLock(int offset, int n, SHM flags) = 0;
-		virtual void ShmBarrier() = 0;
-		virtual RC ShmUnmap(int deleteFlag) = 0;
-		virtual RC ShmMap(int page, int pageSize, int extend, void volatile **p) = 0;
+		__device__ virtual RC ShmLock(int offset, int n, SHM flags) = 0;
+		__device__ virtual void ShmBarrier() = 0;
+		__device__ virtual RC ShmUnmap(int deleteFlag) = 0;
+		__device__ virtual RC ShmMap(int page, int pageSize, int extend, void volatile **p) = 0;
 
 		__device__ inline RC Read4(int64 offset, uint32 *valueOut)
 		{
@@ -121,5 +134,13 @@ namespace Core
 		{
 			return true;
 		}
+
+		__device__ inline static void MemoryVFileOpen(VFile *file)
+		{
+			_assert(SysEx_HASALIGNMENT8(file));
+			_memset(file, 0, MemoryVFileSize);
+		}
+
+		static int MemoryVFileSize;  //sizeof(MemoryVFile));
 	};
 }

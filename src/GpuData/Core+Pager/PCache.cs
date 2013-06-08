@@ -1,5 +1,4 @@
 ﻿using Pid = System.UInt32;
-using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
 
@@ -145,7 +144,7 @@ namespace Core
                 p.Cachesize(NumberOfCachePages(this));
                 Cache = p;
             }
-            PgHdr page = null;
+            ICachePage page = null;
             var create = (createFlag ? 1 : 0) * (1 + ((!Purgeable || Dirty == null) ? 1 : 0));
             if (Cache != null)
                 page = Cache.Fetch(id, create);

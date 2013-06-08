@@ -27,15 +27,15 @@ namespace Core
 		FileChunk *First;       // Head of in-memory chunk-list
 		FilePoint _endpoint;    // Pointer to the end of the file
 		FilePoint _readpoint;   // Pointer to the end of the last xRead()
-		void Open();
+		__device__ void Open();
 	public:
 		//bool Opened;
-		virtual RC Read(void *buffer, int amount, int64 offset);
-		virtual RC Write(const void *buffer, int amount, int64 offset);
-		virtual RC Truncate(int64 size);
-		virtual RC Close();
-		virtual RC Sync(int flags);
-		virtual RC get_FileSize(int64 &size);
+		__device__ virtual RC Read(void *buffer, int amount, int64 offset);
+		__device__ virtual RC Write(const void *buffer, int amount, int64 offset);
+		__device__ virtual RC Truncate(int64 size);
+		__device__ virtual RC Close();
+		__device__ virtual RC Sync(int flags);
+		__device__ virtual RC get_FileSize(int64 &size);
 	};
 
 	RC MemoryVFile::Read(void *buffer, int amount, int64 offset)
@@ -126,11 +126,5 @@ namespace Core
 	{
 		size = (int64)_endpoint.Offset;
 		return RC::OK;
-	}
-
-	void MemoryVFile::Open()
-	{
-		_assert(SysEx_HASALIGNMENT8(this));
-		_memset(this, 0, sizeof(MemoryVFile));
 	}
 }

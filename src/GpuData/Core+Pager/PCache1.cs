@@ -44,7 +44,7 @@ namespace Core
 
     public class PgHdr1
     {
-        public IPage Page;
+        public ICachePage Page;
         public Pid Key;             // Key value (page number)
         public PgHdr1 Next;         // Next in hash table chain
         public PCache1 Cache;       // Cache that currently owns this page
@@ -488,7 +488,7 @@ namespace Core
             return pages;
         }
 
-        public IPage Fetch(Pid key, int createFlag)
+        public ICachePage Fetch(Pid key, int createFlag)
         {
             Debug.Assert(Purgeable || createFlag != 1);
             Debug.Assert(Purgeable || Min == 0);
@@ -580,7 +580,7 @@ namespace Core
             return page.Page;
         }
 
-        public void Unpin(IPage pg, bool reuseUnlikely)
+        public void Unpin(ICachePage pg, bool reuseUnlikely)
         {
             var page = (PgHdr1)pg._PgHdr1;
             var group = Group;
@@ -613,7 +613,7 @@ namespace Core
             MutexEx.Leave(group.Mutex);
         }
 
-        public void Rekey(IPage pg, Pid old, Pid new_)
+        public void Rekey(ICachePage pg, Pid old, Pid new_)
         {
             var page = (PgHdr1)pg._PgHdr1;
             Debug.Assert(page.Key == old);

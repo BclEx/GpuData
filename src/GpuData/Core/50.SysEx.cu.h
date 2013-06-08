@@ -1,15 +1,39 @@
 ﻿// os.h
 namespace Core
 {
+#pragma region Log & Trace
+
 #ifdef _DEBUG
 	extern bool OSTrace;
 	extern bool IOTrace;
-	__device__ inline static void SysEx_OSTRACE(const char *, ...) { }
-	__device__ inline static void SysEx_IOTRACE(const char *, ...) { }
+#ifndef __CUDACC__
+	__device__ inline static void SysEx_LOG(RC rc, const char *fmt, ...) { }
+	__device__ inline static void SysEx_OSTRACE(const char *fmt, ...) { }
+	__device__ inline static void SysEx_IOTRACE(const char *fmt, ...) { }
 #else
+	__device__ inline static void SysEx_LOG(RC rc, const char *fmt) { }
+	template <typename T1> __device__ inline static void SysEx_LOG(RC rc, const char *fmt, T1 arg1) { }
+	template <typename T1, typename T2> __device__ inline static void SysEx_LOG(RC rc, const char *fmt, T1 arg1, T2 arg2) { }
+	template <typename T1, typename T2, typename T3> __device__ inline static void SysEx_LOG(RC rc, const char *fmt, T1 arg1, T2 arg2, T3 arg3) { }
+	template <typename T1, typename T2, typename T3, typename T4> __device__ inline static void SysEx_LOG(RC rc, const char *fmt, T1 arg1, T2 arg2, T3 arg3, T4 arg4) { }
+	__device__ inline static void SysEx_OSTRACE(const char *fmt) { }
+	template <typename T1> __device__ inline static void SysEx_OSTRACE(const char *fmt, T1 arg1) { }
+	template <typename T1, typename T2> __device__ inline static void SysEx_OSTRACE(const char *fmt, T1 arg1, T2 arg2) { }
+	template <typename T1, typename T2, typename T3> __device__ inline static void SysEx_OSTRACE(const char *fmt, T1 arg1, T2 arg2, T3 arg3) { }
+	template <typename T1, typename T2, typename T3, typename T4> __device__ inline static void SysEx_OSTRACE(const char *fmt, T1 arg1, T2 arg2, T3 arg3, T4 arg4) { }
+	__device__ inline static void SysEx_IOTRACE(const char *fmt) { }
+	template <typename T1> __device__ inline static void SysEx_IOTRACE(const char *fmt, T1 arg1) { }
+	template <typename T1, typename T2> __device__ inline static void SysEx_IOTRACE(const char *fmt, T1 arg1, T2 arg2) { }
+	template <typename T1, typename T2, typename T3> __device__ inline static void SysEx_IOTRACE(const char *fmt, T1 arg1, T2 arg2, T3 arg3) { }
+	template <typename T1, typename T2, typename T3, typename T4> __device__ inline static void SysEx_IOTRACE(const char *fmt, T1 arg1, T2 arg2, T3 arg3, T4 arg4) { }
+#endif
+#else
+#define SysEx_LOG(X)
 #define SysEx_OSTRACE(X)
 #define SysEx_IOTRACE(X)
 #endif
+
+#pragma endregion
 
 #define SysEx_VERSION_NUMBER 3007016
 
@@ -19,11 +43,11 @@ namespace Core
 	public:
 		enum MEMTYPE : uint8
 		{
-			HEAP =      0x01,  // General heap allocations
-			LOOKASIDE = 0x02,  // Might have been lookaside memory
-			SCRATCH =   0x04,  // Scratch allocations
-			PCACHE =    0x08,  // Page cache allocations
-			DB =        0x10,  // Uses sqlite3DbMalloc, not sqlite_malloc
+            HEAP = 0x01,         // General heap allocations
+            LOOKASIDE = 0x02,    // Might have been lookaside memory
+            SCRATCH = 0x04,      // Scratch allocations
+            PCACHE = 0x08,       // Page cache allocations
+            DB = 0x10,           // Uses sqlite3DbMalloc, not sqlite_malloc
 		};
 		__device__ inline static void BeginBenignAlloc() { }
 		__device__ inline static void EndBenignAlloc() { }
@@ -35,10 +59,16 @@ namespace Core
 			_assert(MemdebugNoType(p, MEMTYPE::DB));
 			return 0; 
 		}
-		__device__ inline static void Free(void *p) { free(p);}
+		__device__ inline static void Free(void *p) { free(p); }
+#ifndef __CUDACC__
 		__device__ inline static void *StackAlloc(size_t size) { return alloca(size); }
 		__device__ inline static void StackFree(void *p) { }
+#else
+		__device__ inline static void *StackAlloc(size_t size) { return malloc(size); }
+		__device__ inline static void StackFree(void *p) { free(p); }
+#endif
 		__device__ inline static bool HeapNearlyFull() { return false; }
+		//__device__ inline static void *Realloc() { return nullptr; }
 		//
 #if MEMDEBUG
 #else
@@ -46,8 +76,6 @@ namespace Core
 		__device__ inline static bool MemdebugHasType(void *p, MEMTYPE memType) { return true; }
 		__device__ inline static bool MemdebugNoType(void *p, MEMTYPE memType) { return true; }
 #endif
-		//
-		__device__ static void Log(RC rc, const char *format, ...);
 		__device__ static void PutRandom(int length, void *buffer);
 	};
 
@@ -65,17 +93,17 @@ namespace Core
 #if _DEBUG
 	__device__ inline static RC CORRUPT_BKPT_(int line)
 	{
-		//sqlite3_log(RC::CORRUPT, "database corruption at line %d of [%.10s]", line, "");
+		SysEx_LOG(RC::CORRUPT, "database corruption at line %d of [%.10s]", line, "src");
 		return RC::CORRUPT;
 	}
 	__device__ inline static RC MISUSE_BKPT_(int line)
 	{
-		//sqlite3_log(RC::MISUSE, "misuse at line %d of [%.10s]", line, "");
+		SysEx_LOG(RC::MISUSE, "misuse at line %d of [%.10s]", line, "src");
 		return RC::MISUSE;
 	}
 	__device__ inline static RC CANTOPEN_BKPT_(int line)
 	{
-		//sqlite3_log(RC::CANTOPEN, "cannot open file at line %d of [%.10s]", line, "");
+		SysEx_LOG(RC::CANTOPEN, "cannot open file at line %d of [%.10s]", line, "src");
 		return RC::CANTOPEN;
 	}
 #define SysEx_CORRUPT_BKPT CORRUPT_BKPT_(__LINE__)

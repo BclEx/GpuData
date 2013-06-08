@@ -43,7 +43,15 @@ namespace Core
             PASSIVE = 0,
             FULL = 1,
             RESTART = 2,
-        };
+        }
+
+        // sqliteInt.h
+        public enum SAVEPOINT : byte
+        {
+            BEGIN = 0,
+            RELEASE = 1,
+            ROLLBACK = 2,
+        }
     }
 
     public partial class Pager

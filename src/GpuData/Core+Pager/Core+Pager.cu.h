@@ -2,16 +2,6 @@
 
 #define Pid uint32
 
-#pragma region IPage
-
-struct IPage
-{
-	void *Buffer;	// The content of the page
-	void *Extra;	// Extra information associated with the page
-};
-
-#pragma endregion
-
 #pragma region IBackup
 
 class IBackup

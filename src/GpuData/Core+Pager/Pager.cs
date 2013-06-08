@@ -30,24 +30,21 @@ namespace Core
         // pager.h
         const int DEFAULT_JOURNAL_SIZE_LIMIT = -1;
 
-        // sqliteInt.h
-#if ENABLE_ATOMIC_WRITE
-        static int sqlite3JournalOpen(VFileSystem, string, VFile, int, int);
-        static int sqlite3JournalSize(VFileSystem);
-        static int sqlite3JournalCreate(VFile);
+#if HAS_CODEC
+        static bool CODEC1(Pager p, byte[] d, Pid id, int x)
+        {
+            return ((p.Codec != null) && (p.Codec(p.CodecArg, d, id, x) == null));
+        }
+        static bool CODEC2(Pager p, byte[] d, Pid id, int x, ref byte[] o)
+        {
+            if (p.Codec == null) { o = d; return false; } else { return ((o = (byte[])p.Codec(p.CodecArg, d, id, x)) == null); }
+        }
 #else
-        static int sqlite3JournalSize(VFileSystem vfs) { return vfs.SizeOsFile; }
+        static bool CODEC1(Pager p, byte[] d, Pid id, int x) { return false; }
+        static bool CODEC2(Pager p, byte[] d, Pid id, int x, ref byte[] o) { o = d; return false; }
 #endif
 
         const int MAX_SECTOR_SIZE = 0x10000;
-
-        // sqliteInt.h
-        enum SAVEPOINT : byte
-        {
-            BEGIN = 0,
-            RELEASE = 1,
-            ROLLBACK = 2,
-        }
 
         class PagerSavepoint
         {
@@ -563,7 +560,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
             // Write the master journal data to the end of the journal file. If an error occurs, return the error code to the caller.
             RC rc;
-            if ((rc = JournalFile.Write4(headerOffset, (uint)IPager.MJ_PID(this))) != RC.OK ||
+            if ((rc = JournalFile.Write4(headerOffset, (uint)MJ_PID(this))) != RC.OK ||
                 (rc = JournalFile.Write(Encoding.UTF8.GetBytes(master), masterLength, headerOffset + 4)) != RC.OK ||
                 (rc = JournalFile.Write4(headerOffset + 4 + masterLength, (uint)masterLength)) != RC.OK ||
                 (rc = JournalFile.Write4(headerOffset + 4 + masterLength + 4, checksum)) != RC.OK ||
@@ -1109,7 +1106,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         void setSectorSize()
         {
             Debug.Assert(File.Opened || TempFile);
-            if (TempFile || (File.get_DeviceCharacteristics() & VFile.IOCAP.POWERSAFE_OVERWRITE) != 0)
+            if (TempFile || (File.get_DeviceCharacteristics() & VFile.IOCAP.IOCAP_POWERSAFE_OVERWRITE) != 0)
                 SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
             else
                 SectorSize = File.SectorSize;
@@ -2643,7 +2640,7 @@ pager_set_pagehash(p);
             if (pageOut.Pager != null && !noContent)
             {
                 // In this case the pcache already contains an initialized copy of the page. Return without further ado.
-                Debug.Assert(id <= MAX_PID && id != IPager.MJ_PID(this));
+                Debug.Assert(id <= MAX_PID && id != MJ_PID(this));
                 return RC.OK;
             }
             // The pager cache has created a new page. Its content needs to be initialized.
@@ -2651,7 +2648,7 @@ pager_set_pagehash(p);
             pg.Pager = this;
 
             // The maximum page number is 2^31. Return CORRUPT if a page number greater than this, or the unused locking-page, is requested.
-            if (id > MAX_PID || id == IPager.MJ_PID(this))
+            if (id > MAX_PID || id == MJ_PID(this))
             {
                 rc = SysEx.CORRUPT_BKPT();
                 goto pager_get_err;
@@ -2884,7 +2881,7 @@ pager_set_pagehash(p);
                     {
 
                         // We should never write to the journal file the page that contains the database locks.  The following Debug.Assert verifies that we do not.
-                        Debug.Assert(pg.ID != IPager.MJ_PID(pager));
+                        Debug.Assert(pg.ID != MJ_PID(pager));
 
                         Debug.Assert(pager.JournalHeader <= pager.JournalOffset);
                         if (CODEC2(pager, data, pg.ID, codec_ctx.ENCRYPT_READ_CTX, ref data2)) return RC.NOMEM;
@@ -2965,7 +2962,7 @@ pager_set_pagehash(p);
                 var pg1 = (Pid)((pg.ID - 1) & ~(pagePerSector - 1)) + 1; // First page of the sector pPg is located on.
 
                 Pid pages = 0; // Number of pages starting at pg1 to journal
-                int pageCount = pager.DBbSize; // Total number of pages in database file
+                int pageCount = pager.DBSize; // Total number of pages in database file
                 if (pg.ID > pageCount)
                     pages = (pg.ID - pg1) + 1;
                 else if ((pg1 + pagePerSector - 1) > pageCount)
@@ -2983,7 +2980,7 @@ pager_set_pagehash(p);
                     var page2 = new PgHdr();
                     if (pg == pg.ID || !pager.InJournal.Get(pg))
                     {
-                        if (pg != IPager.MJ_PID(pager))
+                        if (pg != MJ_PID(pager))
                         {
                             rc = pager.Get(pg, ref page2);
                             if (rc == RC.OK)
@@ -3257,7 +3254,7 @@ pager_set_pagehash(p);
                     // last page is never written out to disk, leaving the database file undersized. Fix this now if it is the case.
                     if (DBSize != _DBFileSize)
                     {
-                        var newID = (Pid)(DBSize - (DBSize == IPager.MJ_PID(this) ? 1 : 0));
+                        var newID = (Pid)(DBSize - (DBSize == MJ_PID(this) ? 1 : 0));
                         Debug.Assert(State >= PAGER.WRITER_DBMOD);
                         rc = pager_truncate(newID);
                         if (rc != RC.OK) goto commit_phase_one_exit;
@@ -3653,11 +3650,11 @@ pager_set_pagehash(p);
 
         public bool sqlite3PagerLockingMode(IPager.LOCKINGMODE mode)
         {
-            Debug.Assert(mode == LOCKINGMODE.QUERY ||
-                mode == LOCKINGMODE.NORMAL ||
-                mode == LOCKINGMODE.EXCLUSIVE);
-            Debug.Assert(LOCKINGMODE.QUERY < 0);
-            Debug.Assert(LOCKINGMODE.NORMAL >= 0 && LOCKINGMODE.EXCLUSIVE >= 0);
+            Debug.Assert(mode == IPager.LOCKINGMODE.QUERY ||
+                mode == IPager.LOCKINGMODE.NORMAL ||
+                mode == IPager.LOCKINGMODE.EXCLUSIVE);
+            Debug.Assert(IPager.LOCKINGMODE.QUERY < 0);
+            Debug.Assert(IPager.LOCKINGMODE.NORMAL >= 0 && IPager.LOCKINGMODE.EXCLUSIVE >= 0);
             Debug.Assert(ExclusiveMode || !Wal.HeapMemory());
             if (mode >= 0 && !TempFile && !Wal.HeapMemory())
                 ExclusiveMode = (mode != 0);
@@ -3677,7 +3674,7 @@ pager_set_pagehash(p);
                 mode == IPager.JOURNALMODE.PERSIST ||
                 mode == IPager.JOURNALMODE.OFF ||
                 mode == IPager.JOURNALMODE.WAL ||
-                mode == IPager.JOURNALMODE.MEMORY);
+                mode == IPager.JOURNALMODE.JMEMORY);
 
             // This routine is only called from the OP_JournalMode opcode, and the logic there will never allow a temporary file to be changed to WAL mode.
             Debug.Assert(!TempFile || mode != IPager.JOURNALMODE.WAL);
@@ -3686,7 +3683,7 @@ pager_set_pagehash(p);
             var old = JournalMode; // Prior journalmode
             if (MemoryDB)
             {
-                Debug.Assert(old == IPager.JOURNALMODE.MEMORY || old == IPager.JOURNALMODE.OFF);
+                Debug.Assert(old == IPager.JOURNALMODE.JMEMORY || old == IPager.JOURNALMODE.OFF);
                 if (mode != IPager.JOURNALMODE.JMEMORY && mode != IPager.JOURNALMODE.OFF)
                     mode = old;
             }
@@ -3755,12 +3752,12 @@ pager_set_pagehash(p);
             return (SysEx.NEVER(JournalFile.Opened && JournalOffset > 0) ? false : true);
         }
 
-        private long sqlite3PagerJournalSizeLimit(long limit)
+        private long SetJournalSizeLimit(long limit)
         {
             if (limit >= -1)
             {
                 JournalSizeLimit = limit;
-                Wal.Limit(limit);
+                Wal_Limit(Wal, limit);
             }
             return JournalSizeLimit;
         }

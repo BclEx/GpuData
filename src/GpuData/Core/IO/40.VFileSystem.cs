@@ -39,7 +39,7 @@ namespace Core.IO
         public VFileSystem Next;        // Next registered VFS
         public string Name = "win32";   // Name of this virtual file system
         public object Tag;              // Pointer to application-specific data
-        //public int SizeOsFile = -1;   // Size of subclassed VirtualFile
+        public int SizeOsFile = -1;     // Size of subclassed VirtualFile
         public int MaxPathname = 256;   // Maximum file pathname length
 
         static VFileSystem()

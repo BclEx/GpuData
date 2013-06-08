@@ -235,20 +235,3 @@ c:\program files\nvidia gpu computing toolkit\cuda\v5.0\include\host_defines.h
 c:\program files\nvidia gpu computing toolkit\cuda\v5.0\include\vector_functions.h
 c:\program files\nvidia gpu computing toolkit\cuda\v5.0\include\device_launch_parameters.h
 c:\program files\nvidia gpu computing toolkit\cuda\v5.0\include\vector_types.h
-c:\_github\gpudata\src\gpudata\core\Core.cu.h
-c:\_github\gpudata\src\gpudata\core\..\..\Runtime.cu.h
-c:\_github\gpudata\src\..\packages\gpustructs.1.0.0\Runtime.src\Cuda.h
-C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v5.0\include\cuda_runtime.h
-c:\_github\gpudata\src\..\packages\gpustructs.1.0.0\Runtime.src\Runtime.cu.h
-c:\_github\gpudata\src\gpudata\core\Core+Types.cu.h
-c:\_github\gpudata\src\gpudata\core\10.ConvertEx.cu.h
-c:\_github\gpudata\src\gpudata\core\30.RC.cu.h
-c:\_github\gpudata\src\gpudata\core\50.SysEx.cu.h
-C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\malloc.h
-C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\crtdefs.h
-c:\_github\gpudata\src\gpudata\core\20.MutexEx.cu.h
-c:\_github\gpudata\src\gpudata\core\00.Bitvec.cu.h
-c:\_github\gpudata\src\gpudata\core\40.StatusEx.cu.h
-c:\_github\gpudata\src\gpudata\core\IO\30.VFile.cu.h
-c:\_github\gpudata\src\gpudata\core\IO\40.VFileSystem.cu.h
-C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\stdarg.h

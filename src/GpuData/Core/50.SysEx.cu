@@ -4,13 +4,13 @@ using namespace Core;
 
 namespace Core
 {
-	void SysEx::Log(RC rc, const char *format, ...)
-	{
-		va_list a;
-		va_start(a, format);
-		vprintf(format, a);
-		va_end(a);
-	}
+	//void SysEx::Log(RC rc, const char *format, ...)
+	//{
+	//	va_list a;
+	//	va_start(a, format);
+	//	vprintf(format, a);
+	//	va_end(a);
+	//}
 
 	static uint8 randomByte()
 	{

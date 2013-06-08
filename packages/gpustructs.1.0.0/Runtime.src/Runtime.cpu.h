@@ -1,5 +1,7 @@
-#ifndef __RUNTIME_CU_H__
-#define __RUNTIME_CU_H__
+#ifndef __RUNTIME_CPU_H__
+#define __RUNTIME_CPU_H__
+#include <stdio.h>
+#define __device__
 
 ///////////////////////////////////////////////////////////////////////////////
 // DEVICE SIDE
@@ -12,31 +14,6 @@ template <typename T>
 __device__ inline T *__arrayClear(T *symbol) { return nullptr; }
 #define __arrayLength(symbol) 0
 #define __arrayStaticLength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
-
-#if __CUDA_ARCH__ == 100
-#error Atomics only used with > sm_10 architecture
-#elif defined(__CUDA_ARCH__) & __CUDA_ARCH__ < 200
-#include "Runtime.cu"
-#else
-
-//
-//	cuRuntimeRestrict
-//
-//	Called to restrict output to a given thread/block. Pass the constant RUNTIME_UNRESTRICTED to unrestrict output
-//	for thread/block IDs. Note you can therefore allow "all printfs from block 3" or "printfs from thread 2
-//	on all blocks", or "printfs only from block 1, thread 5".
-//
-//	Arguments:
-//		threadid - Thread ID to allow printfs from
-//		blockid - Block ID to allow printfs from
-//
-//	NOTE: Restrictions last between invocations of kernels unless cudaRuntimeInit() is called again.
-//
-
-extern __device__ void runtimeSetHeap(void *heap);
-
-#define RUNTIME_UNRESTRICTED -1
-extern "C" __device__ void runtimeRestrict(int threadid, int blockid);
 
 // Abuse of templates to simulate varargs
 extern __device__ int _printf(const char *fmt);
@@ -53,8 +30,8 @@ template <typename T1, typename T2, typename T3, typename T4, typename T5, typen
 
 // Assert
 #ifndef NASSERT
-extern __device__ void _assert(const int condition);
-extern __device__ void _assert(const int condition, const char *fmt);
+__device__ inline void _assert(const int condition) { if (!condition) printf("assert"); }
+__device__ inline void _assert(const int condition, const char *fmt) { if (!condition) printf(fmt); }
 #define ASSERTONLY(X) X
 void Coverage(int);
 #define ASSERTCOVERAGE(X) if (X) { Coverage(__LINE__); }
@@ -65,13 +42,11 @@ void Coverage(int);
 #endif
 
 // Abuse of templates to simulate varargs
-extern __device__ void _throw(const char *fmt);
-template <typename T1> extern __device__ void _throw(const char *fmt, T1 arg1);
-template <typename T1, typename T2> extern __device__ void _throw(const char *fmt, T1 arg1, T2 arg2);
-template <typename T1, typename T2, typename T3> extern __device__ void _throw(const char *fmt, T1 arg1, T2 arg2, T3 arg3);
-template <typename T1, typename T2, typename T3, typename T4> extern __device__ void _throw(const char *fmt, T1 arg1, T2 arg2, T3 arg3, T4 arg4);
-
-#endif // __CUDA_ARCH__
+__device__ inline void _throw(const char *fmt) { printf(fmt); }
+template <typename T1> __device__ inline void _throw(const char *fmt, T1 arg1) { printf(fmt, arg1); }
+template <typename T1, typename T2> __device__ inline void _throw(const char *fmt, T1 arg1, T2 arg2) { printf(fmt, arg1, arg2); }
+template <typename T1, typename T2, typename T3> __device__ inline void _throw(const char *fmt, T1 arg1, T2 arg2, T3 arg3) { printf(fmt, arg1, arg2, arg3); }
+template <typename T1, typename T2, typename T3, typename T4> __device__ inline void _throw(const char *fmt, T1 arg1, T2 arg2, T3 arg3, T4 arg4) { printf(fmt, arg1, arg2, arg3, arg4); }
 
 // strcmp
 template <typename T>
@@ -95,7 +70,7 @@ template <typename T>
 __device__ inline void _memset(T *dest, const char value, size_t length)
 {
 	char *dest2 = (char *)dest;
-	for (size_t i = 0; i < length; ++i, ++dest)
+	for (size_t i = 0; i < length; ++i, ++dest2)
 		*dest2 = value;
 }
 
@@ -106,4 +81,45 @@ __device__ inline int _memcmp(T *a, Y *b, size_t length)
 	return 0;
 }
 
-#endif // __RUNTIME_CU_H__
+// strlen30
+__device__ inline int _strlen30(const char *z)
+{
+  const char *z2 = z;
+  if (z == nullptr) return 0;
+  while (*z2) { z2++; }
+  return 0x3fffffff & (int)(z2 - z);
+}
+
+
+//char *sqlite3DbStrDup(sqlite3 *db, const char *z){
+//  char *zNew;
+//  size_t n;
+//  if( z==0 ){
+//    return 0;
+//  }
+//  n = sqlite3Strlen30(z) + 1;
+//  assert( (n&0x7fffffff)==n );
+//  zNew = sqlite3DbMallocRaw(db, (int)n);
+//  if( zNew ){
+//    memcpy(zNew, z, n);
+//  }
+//  return zNew;
+//}
+//char *sqlite3DbStrNDup(sqlite3 *db, const char *z, int n){
+//  char *zNew;
+//  if( z==0 ){
+//    return 0;
+//  }
+//  assert( (n&0x7fffffff)==n );
+//  zNew = sqlite3DbMallocRaw(db, n+1);
+//  if( zNew ){
+//    memcpy(zNew, z, n);
+//    zNew[n] = 0;
+//  }
+//  return zNew;
+//}
+
+
+
+
+#endif // __RUNTIME_CPU_H__

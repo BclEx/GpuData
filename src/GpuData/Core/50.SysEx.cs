@@ -5,15 +5,21 @@ namespace Core
 {
     public class SysEx
     {
+        #region Log & Trace
+
 #if DEBUG
         internal static bool OSTrace = false;
         internal static bool IOTrace = true;
-        internal static void OSTRACE(string x, params object[] args) { if (OSTrace) Console.WriteLine("a:" + string.Format(x, args)); }
-        internal static void IOTRACE(string x, params object[] args) { if (IOTrace) Console.WriteLine("i:" + string.Format(x, args)); }
+        internal static void LOG(RC rc, string format, params object[] args) { Console.WriteLine("l:" + string.Format(format, args)); }
+        internal static void OSTRACE(string format, params object[] args) { if (OSTrace) Console.WriteLine("a:" + string.Format(format, args)); }
+        internal static void IOTRACE(string format, params object[] args) { if (IOTrace) Console.WriteLine("i:" + string.Format(format, args)); }
 #else
-        internal static void OSTRACE(string x, params object[] args) { }
-        internal static void IOTRACE(string x, params object[] args) { }
+        internal static void LOG(RC rc, string x, params object[] args) { }
+        internal static void OSTRACE(string format, params object[] args) { }
+        internal static void IOTRACE(string format, params object[] args) { }
 #endif
+
+        #endregion
 
         const int VERSION_NUMBER = 3007016;
 
@@ -57,6 +63,12 @@ namespace Core
         public static byte[] StackAlloc(int size) { return new byte[size]; }
         public static void StackFree(ref byte[] p) { p = null; }
         public static bool HeapNearlyFull() { return false; }
+        public static T[] Realloc<T>(int s, T[] p, int bytes)
+        {
+            var newT = new T[bytes / s];
+            Array.Copy(p, newT, Math.Min(p.Length, newT.Length));
+            return newT;
+        }
         //
 #if MEMDEBUG
         //public static void MemdebugSetType<T>(T X, MEMTYPE Y);
@@ -86,37 +98,30 @@ namespace Core
         internal static RC CORRUPT_BKPT()
         {
             var sf = new StackTrace(new StackFrame(true)).GetFrame(0);
-            Console.WriteLine("database corruption at line {0} of [{1}]", sf.GetFileLineNumber(), sf.GetFileName());
+            LOG(RC.CANTOPEN, "database corruption at line {0} of [{1}]", sf.GetFileLineNumber(), sf.GetFileName());
             return RC.CORRUPT;
         }
         internal static RC MISUSE_BKPT()
         {
             var sf = new StackTrace(new StackFrame(true)).GetFrame(0);
-            Console.WriteLine("misuse at line {0} of [{1}]", sf.GetFileLineNumber(), sf.GetFileName());
+            LOG(RC.CANTOPEN, "misuse at line {0} of [{1}]", sf.GetFileLineNumber(), sf.GetFileName());
             return RC.MISUSE;
         }
         internal static RC CANTOPEN_BKPT()
         {
             var sf = new StackTrace(new StackFrame(true)).GetFrame(0);
-            Console.WriteLine("cannot open file at line {0} of [{1}]", sf.GetFileLineNumber(), sf.GetFileName());
+            LOG(RC.CANTOPEN, "cannot open file at line {0} of [{1}]", sf.GetFileLineNumber(), sf.GetFileName());
             return RC.CANTOPEN;
         }
 #else
-        internal static RC CORRUPT_BKPT() { return SQLITE_CORRUPT; }
-        internal static RC MISUSE_BKPT() { return SQLITE_MISUSE; }
-        internal static RC CANTOPEN_BKPT() { return SQLITE_CANTOPEN; }
+        internal static RC CORRUPT_BKPT() { return RC.CORRUPT; }
+        internal static RC MISUSE_BKPT() { return RC.MISUSE; }
+        internal static RC CANTOPEN_BKPT() { return RC.CANTOPEN; }
 #endif
 
         internal static void MakeRandomness(int size, ref uint ChecksumInit)
         {
             throw new NotImplementedException();
-        }
-
-        internal static T[] Realloc<T>(int s, T[] p, int bytes)
-        {
-            var newT = new T[bytes / s];
-            Array.Copy(p, newT, Math.Min(p.Length, newT.Length));
-            return newT;
         }
     }
 }

@@ -40,13 +40,13 @@ namespace Core
         int SizeOsFile;     // Size of subclassed VirtualFile
         int MaxPathname;	// Maximum file pathname length
 
-		static VFileSystem *Find(const char *name);
-		static int RegisterVfs(VFileSystem *vfs, bool _default);
-		static int UnregisterVfs(VFileSystem *vfs);
+		__device__ static VFileSystem *Find(const char *name);
+		__device__ static int RegisterVfs(VFileSystem *vfs, bool _default);
+		__device__ static int UnregisterVfs(VFileSystem *vfs);
 		//
-		virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags) = 0;
-		virtual RC Delete(const char *path, bool syncDirectory) = 0;
-		virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;
-		virtual RC FullPathname(const char *path, char **outPath) = 0;
+		__device__ virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags) = 0;
+		__device__ virtual RC Delete(const char *path, bool syncDirectory) = 0;
+		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;
+		__device__ virtual RC FullPathname(const char *path, char **outPath) = 0;
 	};
 }

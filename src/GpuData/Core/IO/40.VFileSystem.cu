@@ -4,7 +4,7 @@ using namespace Core;
 
 namespace Core
 {
-	static VFileSystem *_vfsList = nullptr;
+	__device__ static VFileSystem *_vfsList = nullptr;
 
 	VFileSystem *VFileSystem::Find(const char *name)
 	{
@@ -16,7 +16,7 @@ namespace Core
 		return vfs;
 	}
 
-	static void UnlinkVfs(VFileSystem *vfs)
+	__device__ static void UnlinkVfs(VFileSystem *vfs)
 	{
 		_assert(MutexEx::Held(MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER)));
 		if (!vfs) { }

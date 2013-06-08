@@ -6,6 +6,17 @@ namespace Core.IO
     {
         public static int PENDING_BYTE = 0x40000000;
 
+        // sqliteInt.h
+#if ENABLE_ATOMIC_WRITE
+        static int JournalOpen(VFileSystem vfs, string a, VFile b, int c, int d) { return 0; }
+        static int JournalSize(VFileSystem vfs) { return 0; }
+        static int JournalCreate(VFile v) { return 0; }
+        static bool JournalExists(VFile v) { return true; }
+#else
+        static int JournalSize(VFileSystem vfs) { return vfs.SizeOsFile; }
+        static bool JournalExists(VFile v) { return true; }
+#endif
+
         public enum LOCK : byte
         {
             NO = 0,
@@ -82,7 +93,6 @@ namespace Core.IO
             SHM_MAX = 8,
         };
 
-
         protected ulong _sectorSize;        // Sector size of the device file is on
         public bool Opened;
         public VFileSystem Vfs;        // The VFS used to open this file
@@ -154,5 +164,15 @@ namespace Core.IO
             ConvertEx.Put4(ac, val);
             return Write(ac, 4, offset);
         }
+
+		public static bool IsMemoryVFile(VFile file)
+		{
+			return true;
+		}
+
+		public static void MemoryVFileOpen(ref VFile file)
+		{
+            file.memset();
+		}
     }
 }

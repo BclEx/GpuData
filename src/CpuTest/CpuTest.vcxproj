@@ -132,7 +132,6 @@
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core+Pager\Pager.cu">
       <FileType>Document</FileType>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

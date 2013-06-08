@@ -4,6 +4,12 @@ namespace Core
 	typedef struct PgHdr PgHdr;
 	typedef struct PCache PCache;
 
+	struct ICachePage
+	{
+		void *Buffer;	// The content of the page
+		void *Extra;	// Extra information associated with the page
+	};
+
 	class IPCache
 	{
 	public:
@@ -13,9 +19,9 @@ namespace Core
 		virtual void Cachesize(uint max) = 0;
 		virtual void Shrink() = 0;
 		virtual int get_Pages() = 0;
-		virtual IPage *Fetch(Pid key, int createFlag) = 0;
-		virtual void Unpin(IPage *pg, bool reuseUnlikely) = 0;
-		virtual void Rekey(IPage *pg, Pid old, Pid new_) = 0;
+		virtual ICachePage *Fetch(Pid key, int createFlag) = 0;
+		virtual void Unpin(ICachePage *pg, bool reuseUnlikely) = 0;
+		virtual void Rekey(ICachePage *pg, Pid old, Pid new_) = 0;
 		virtual void Truncate(Pid limit) = 0;
 		virtual void Destroy(IPCache *p) = 0;
 	};
@@ -30,7 +36,7 @@ namespace Core
 			REUSE_UNLIKELY = 0x010, // A hint that reuse is unlikely
 			DONT_WRITE = 0x020		// Do not write content to disk 
 		};
-		IPage *Page;				// Pcache object page handle
+		ICachePage *Page;				// Pcache object page handle
 		void *Data;					// Page data
 		void *Extra;				// Extra content
 		PgHdr *Dirty;				// Transient list of dirty pages

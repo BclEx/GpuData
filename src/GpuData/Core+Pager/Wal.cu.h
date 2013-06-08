@@ -16,12 +16,12 @@ namespace Core
 		inline Pid DBSize() { return 0; }
 		inline RC BeginWriteTransaction() { return RC::OK; }
 		inline RC EndWriteTransaction() { return RC::OK; }
-		inline RC Undo(int (*undo)(void *, Pid), void *undoCtx) { return RC::OK; }
+		inline RC Undo(RC (*undo)(void *, Pid), void *undoCtx) { return RC::OK; }
 		inline void Savepoint(uint32 *walData) { }
 		inline RC SavepointUndo(uint32 *walData) { return RC::OK; }
 		inline RC Frames(int sizePage, PgHdr *list, Pid truncate, bool isCommit, VFile::SYNC sync_flags) { return RC::OK; }
 		inline RC Checkpoint(int mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints) { *logs = 0, *checkpoints = 0; return RC::OK; }
-		inline int Callback() { return 0; }
+		inline RC Callback() { return RC::OK; }
 		inline bool ExclusiveMode(int op) { return false; }
 		inline bool HeapMemory() { return false; }
 #ifdef ENABLE_ZIPVFS
