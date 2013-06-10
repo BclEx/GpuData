@@ -1,9 +1,6 @@
 ﻿// pager.h
 namespace Core
 {
-	// sqliteLimit.h
-#define MAX_PAGE_SIZE 65536
-
 	typedef struct Pager Pager;
 	typedef struct Wal Wal;
 	typedef struct PgHdr IPage;
@@ -54,6 +51,9 @@ namespace Core
 			ROLLBACK = 2,
 		};
 	};
+
+	// sqliteLimit.h
+#define MAX_PAGE_SIZE 65536
 
 	class Pager
 	{
@@ -160,7 +160,6 @@ namespace Core
 		IBackup **BackupPtr();
 
 		// Functions used to obtain and release page references.
-		//#define Acquire(A,B,C) Acquire(A,B,C,false)
 		RC Acquire(Pid id, IPage **pageOut, bool noContent);
 		IPage *Lookup(Pid id);
 		static void Ref(IPage *pg);
@@ -177,7 +176,7 @@ namespace Core
 		// Functions used to manage pager transactions and savepoints.
 		void Pages(Pid *pagesOut);
 		RC Begin(int exFlag, bool subjInMemory);
-		RC CommitPhaseOne(const char *master, int noSync);
+		RC CommitPhaseOne(const char *master, bool noSync);
 		RC ExclusiveLock();
 		RC Sync();
 		RC CommitPhaseTwo();
@@ -220,7 +219,7 @@ namespace Core
 		// Functions to support testing and debugging.
 #if !defined(_DEBUG) || defined(TEST)
 		static Pid Pagenumber(IPage *pg);
-		static int Iswriteable(IPage *pg);
+		static bool Iswriteable(IPage *pg);
 #endif
 #ifdef TEST
 		int *get_Stats();

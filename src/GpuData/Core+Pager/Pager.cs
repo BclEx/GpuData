@@ -35,7 +35,7 @@ namespace Core
         {
             return (p.Codec != null && p.Codec(p.CodecArg, d, id, x) == null);
         }
-        static bool CODEC2(Pager p, byte[] d, Pid id, int x, ref byte[] o)
+        static bool CODEC2(ref byte[] o, Pager p, byte[] d, Pid id, int x)
         {
             if (p.Codec == null) { o = d; return false; } else { return ((o = (byte[])p.Codec(p.CodecArg, d, id, x)) == null); }
         }
@@ -70,6 +70,15 @@ namespace Core
             WRITE = 2,
         }
 
+#if TEST
+        static int _readdb_count = 0;    // Number of full pages read from DB
+        static int _writedb_count = 0;   // Number of full pages written to DB
+        static int _writej_count = 0;    // Number of pages written to journal
+        static void PAGER_INCR(ref int v) { v++; }
+#else
+        static void PAGER_INCR(ref int v) { }
+#endif
+
         static uint JOURNAL_PG_SZ(Pager pager) { return (uint)pager.PageSize + 8; }
         static uint JOURNAL_HDR_SZ(Pager pager) { return pager.SectorSize; }
         static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
@@ -77,13 +86,13 @@ namespace Core
         const int MAX_PID = 2147483647;
 
 #if !OMIT_WAL
-        internal static bool UseWal(Pager pager) { return (pPager.pWal != 0); }
+        internal static bool UseWal(Pager pager) { return (pager.Wal != null); }
 #else
         internal bool UseWal() { return false; }
-        internal RC RollbackWal() { return RC.OK; }
-        internal RC WalFrames(PgHdr w, Pid x, int y, VFile.SYNC z) { return RC.OK; }
-        internal RC OpenWalIfPresent() { return RC.OK; }
-        internal RC BeginReadTransaction() { return RC.OK; }
+        internal RC pagerRollbackWal() { return RC.OK; }
+        internal RC pagerWalFrames(PgHdr w, Pid x, bool y) { return RC.OK; }
+        internal RC pagerOpenWalIfPresent() { return RC.OK; }
+        internal RC pagerBeginReadTransaction() { return RC.OK; }
 #endif
 
         #endregion
@@ -223,7 +232,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
               JournalMode == IPager.JOURNALMODE.PERSIST ? "persist" :
               JournalMode == IPager.JOURNALMODE.TRUNCATE ? "truncate" :
               JournalMode == IPager.JOURNALMODE.WAL ? "wal" : "?error?"
-          , (TempFile ? 1 : 0), (MemoryDB ? 1 : 0), (int)UseJournal
+          , (TempFile ? 1 : 0), (MemoryDB ? 1 : 0), (UseJournal ? 1 : 0)
           , JournalOffset, JournalHeader
           , (int)DBSize, (int)DBOrigSize, (int)DBFileSize);
         }
@@ -251,34 +260,34 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             return pg.Pager.InJournal.Get(pg.ID);
         }
 
-        private RC pagerUnlockDb(VFile.LOCK @lock)
+        private RC pagerUnlockDb(VFile.LOCK lock_)
         {
-            Debug.Assert(!ExclusiveMode || Lock == @lock);
-            Debug.Assert(@lock == VFile.LOCK.NO || @lock == VFile.LOCK.SHARED);
-            Debug.Assert(@lock != VFile.LOCK.NO || !UseWal());
+            Debug.Assert(!ExclusiveMode || Lock == lock_);
+            Debug.Assert(lock_ == VFile.LOCK.NO || lock_ == VFile.LOCK.SHARED);
+            Debug.Assert(lock_ != VFile.LOCK.NO || !UseWal());
             var rc = RC.OK;
             if (File.Opened)
             {
-                Debug.Assert(Lock >= @lock);
-                rc = File.Unlock(@lock);
+                Debug.Assert(Lock >= lock_);
+                rc = File.Unlock(lock_);
                 if (Lock != VFile.LOCK.UNKNOWN)
-                    Lock = @lock;
-                SysEx.IOTRACE("UNLOCK {0:x} {1}", this, @lock);
+                    Lock = lock_;
+                SysEx.IOTRACE("UNLOCK {0:x} {1}", this, lock_);
             }
             return rc;
         }
 
-        private RC pagerLockDb(VFile.LOCK @lock)
+        private RC pagerLockDb(VFile.LOCK lock_)
         {
-            Debug.Assert(@lock == VFile.LOCK.SHARED || @lock == VFile.LOCK.RESERVED || @lock == VFile.LOCK.EXCLUSIVE);
+            Debug.Assert(lock_ == VFile.LOCK.SHARED || lock_ == VFile.LOCK.RESERVED || lock_ == VFile.LOCK.EXCLUSIVE);
             var rc = RC.OK;
-            if (Lock < @lock || Lock == VFile.LOCK.UNKNOWN)
+            if (Lock < lock_ || Lock == VFile.LOCK.UNKNOWN)
             {
-                rc = File.Lock(@lock);
-                if (rc == RC.OK && (Lock != VFile.LOCK.UNKNOWN || @lock == VFile.LOCK.EXCLUSIVE))
+                rc = File.Lock(lock_);
+                if (rc == RC.OK && (Lock != VFile.LOCK.UNKNOWN || lock_ == VFile.LOCK.EXCLUSIVE))
                 {
-                    Lock = @lock;
-                    SysEx.IOTRACE("LOCK {0:x} {1}", this, @lock);
+                    Lock = lock_;
+                    SysEx.IOTRACE("LOCK {0:x} {1}", this, lock_);
                 }
             }
             return rc;
@@ -294,12 +303,12 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 var dc = pager.File.get_DeviceCharacteristics();
                 var sectorSize = pager.SectorSize;
                 var pageSize = pager.PageSize;
-                Debug.Assert(IOCAP_ATOMIC512 == (512 >> 8));
-                Debug.Assert(IOCAP_ATOMIC64K == (65536 >> 8));
-                if ((dc & (IOCAP_ATOMIC | (pageSize >> 8)) || sectorSize > pageSize) == 0)
+                Debug.Assert((int)VFile.IOCAP.ATOMIC512 == (512 >> 8));
+                Debug.Assert((int)VFile.IOCAP.ATOMIC64K == (65536 >> 8));
+                if (!((dc & (VFile.IOCAP.ATOMIC | (VFile.IOCAP)(pageSize >> 8))) != 0 || sectorSize > pageSize))
                     return 0;
             }
-            return JOURNAL_HDR_SZ(pager) + JOURNAL_PG_SZ(pager);
+            return (int)(JOURNAL_HDR_SZ(pager) + JOURNAL_PG_SZ(pager));
         }
 #endif
 
@@ -332,10 +341,10 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         private static RC readMasterJournal(VFile journalFile, out string master, uint masterLength)
         {
-            int nameLength = 0;         // Length in bytes of master journal name 
-            long fileSize = 0;          // Total size in bytes of journal file pJrnl 
-            uint checksum = 0;          // MJ checksum value read from journal
-            var magic = new byte[8];    // A buffer to hold the magic header
+            int nameLength = 0; // Length in bytes of master journal name 
+            long fileSize = 0; // Total size in bytes of journal file pJrnl 
+            uint checksum = 0; // MJ checksum value read from journal
+            var magic = new byte[8]; // A buffer to hold the magic header
             var master2 = new byte[masterLength];
             master2[0] = 0;
             RC rc;
@@ -370,7 +379,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             long offset = 0;
             var c = JournalOffset;
             if (c != 0)
-                offset = (int)(((c - 1) / JOURNAL_HDR_SZ(this) + 1) * JOURNAL_HDR_SZ(this));
+                offset = (((c - 1) / JOURNAL_HDR_SZ(this) + 1) * JOURNAL_HDR_SZ(this));
             Debug.Assert(offset % JOURNAL_HDR_SZ(this) == 0);
             Debug.Assert(offset >= c);
             Debug.Assert((offset - c) < JOURNAL_HDR_SZ(this));
@@ -499,8 +508,8 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
             if (JournalOffset == 0)
             {
-                uint pageSize = 0;     // Page-size field of journal header
-                uint sectorSize = 0;   // Sector-size field of journal header
+                uint pageSize = 0; // Page-size field of journal header
+                uint sectorSize = 0; // Sector-size field of journal header
                 // Read the page-size and sector-size journal header fields.
                 if ((rc = JournalFile.Read4(headerOffset + 20, out sectorSize)) != RC.OK ||
                     (rc = JournalFile.Read4(headerOffset + 24, out pageSize)) != RC.OK)
@@ -548,7 +557,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
             // Calculate the length in bytes and the checksum of zMaster
             uint checksum = 0;  // Checksum of string zMaster
-            int masterLength;   // Length of string zMaster
+            int masterLength; // Length of string zMaster
             for (masterLength = 0; masterLength < master.Length && master[masterLength] != 0; masterLength++)
                 checksum += master[masterLength];
 
@@ -685,7 +694,9 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         {
             var rc2 = (RC)((int)rc & 0xff);
             Debug.Assert(rc == RC.OK || !MemoryDB);
-            Debug.Assert(ErrorCode == RC.FULL || ErrorCode == RC.OK || ((int)ErrorCode & 0xff) == (int)RC.IOERR);
+            Debug.Assert(ErrorCode == RC.FULL ||
+                ErrorCode == RC.OK ||
+                ((int)ErrorCode & 0xff) == (int)RC.IOERR);
             if (rc2 == RC.FULL || rc2 == RC.IOERR)
             {
                 ErrorCode = rc;
@@ -720,7 +731,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 Debug.Assert(!UseWal());
 
                 // Finalize the journal file.
-                if (JournalFile is MemoryVFile)
+                if (VFile.HasMemoryVFile(JournalFile))
                 {
                     Debug.Assert(JournalMode == IPager.JOURNALMODE.JMEMORY);
                     JournalFile.Close();
@@ -739,7 +750,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 {
                     // This branch may be executed with Pager.journalMode==MEMORY if a hot-journal was just rolled back. In this case the journal
                     // file should be closed and deleted. If this connection writes to the database file, it will do so using an in-memory journal.
-                    var delete_ = (!TempFile && JournalFile.JournalExists());
+                    var delete_ = (!TempFile && VFile.HasJournalVFile(JournalFile));
                     Debug.Assert(JournalMode == IPager.JOURNALMODE.DELETE ||
                         JournalMode == IPager.JOURNALMODE.JMEMORY ||
                         JournalMode == IPager.JOURNALMODE.WAL);
@@ -757,7 +768,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 if (p != null)
                 {
                     p.PageHash = 0;
-                    sqlite3PagerUnref(p);
+                    Pager.Unref(p);
                 }
             }
 #endif
@@ -830,8 +841,6 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         private RC pager_playback_one_page(ref long offset, Bitvec done, bool isMainJournal, bool isSavepoint)
         {
-            //Debug.Assert((isMainJournal & ~1) == 0);            // isMainJrnl is 0 or 1
-            //Debug.Assert((isSavepoint & ~1) == 0);              // isSavepnt is 0 or 1
             Debug.Assert(isMainJournal || done != null);   // pDone always used on sub-journals
             Debug.Assert(isSavepoint || done == null);     // pDone never used on non-savepoint
 
@@ -849,16 +858,14 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             var journalFile = (isMainJournal ? JournalFile : SubJournalFile); // The file descriptor for the journal file
             Pid id; // The page number of a page in journal
             var rc = journalFile.Read4(offset, out id);
-            if (rc != RC.OK)
-                return rc;
+            if (rc != RC.OK) return rc;
             rc = journalFile.Read(data, PageSize, offset + 4);
-            if (rc != RC.OK)
-                return rc;
+            if (rc != RC.OK) return rc;
             offset += PageSize + 4 + (isMainJournal ? 4 : 0); //TODO: CHECK THIS
 
             // Sanity checking on the page.  This is more important that I originally thought.  If a power failure occurs while the journal is being written,
             // it could cause invalid data to be written into the journal.  We need to detect this invalid data (with high probability) and ignore it.
-            if (id == 0 || id == PAGER_MJ_PGNO(this))
+            if (id == 0 || id == MJ_PID(this))
             {
                 Debug.Assert(!isSavepoint);
                 return RC.DONE;
@@ -924,11 +931,9 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                     DBFileSize = id;
                 if (Backup != null)
                 {
-                    if (CODEC1(this, data, id, codec_ctx.DECRYPT))
-                        rc = RC.NOMEM;
+                    if (CODEC1(this, data, id, 3)) rc = RC.NOMEM;
                     Backup.Update(id, data);
-                    if (CODEC2(this, data, id, codec_ctx.ENCRYPT_READ_CTX, ref data))
-                        rc = RC.NOMEM;
+                    if (CODEC2(ref data, this, data, id, 7)) rc = RC.NOMEM;
                 }
             }
             else if (isMainJournal && pg == null)
@@ -945,11 +950,10 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 Debug.Assert(isSavepoint);
                 Debug.Assert(DoNotSpill == 0);
                 DoNotSpill++;
-                rc = Acquire(id, ref pg, 1);
+                rc = Acquire(id, ref pg, true);
                 Debug.Assert(DoNotSpill == 1);
                 DoNotSpill--;
-                if (rc != RC.OK)
-                    return rc;
+                if (rc != RC.OK) return rc;
                 pg.Flags &= ~PgHdr.PGHDR.NEED_READ;
                 PCache.MakeDirty(pg);
             }
@@ -983,7 +987,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                     Buffer.BlockCopy(pageData, 24, DBFileVersion, 0, DBFileVersion.Length);
 
                 // Decode the page just read from disk
-                if (CODEC1(this, pageData, pg.ID, codec_ctx.DECRYPT)) rc = RC.NOMEM;
+                if (CODEC1(this, pageData, pg.ID, 3)) rc = RC.NOMEM;
                 PCache.Release(pg);
             }
             return rc;
@@ -991,68 +995,71 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         private RC pager_delmaster(string master)
         {
-            var vfs = Vfs;
+            throw new NotImplementedException();
+            //var vfs = Vfs;
 
-            // Allocate space for both the pJournal and pMaster file descriptors. If successful, open the master journal file for reading.
-            var masterFile = new CoreVFile();   // Malloc'd master-journal file descriptor
-            var journalFile = new CoreVFile();   // Malloc'd child-journal file descriptor
-            VFileSystem.OPEN dummy;
-            var rc = vfs.Open(master, masterFile, VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MASTER_JOURNAL, out dummy);
-            if (rc != RC.OK) goto delmaster_out;
+            //// Allocate space for both the pJournal and pMaster file descriptors. If successful, open the master journal file for reading.
+            //var masterFile = new CoreVFile(); // Malloc'd master-journal file descriptor
+            //var journalFile = new CoreVFile(); // Malloc'd child-journal file descriptor
+            //VFileSystem.OPEN dummy;
+            //var rc = vfs.Open(master, masterFile, VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MASTER_JOURNAL, out dummy);
+            //if (rc != RC.OK) goto delmaster_out;
 
-            // Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
-            // sufficient space (in zMasterPtr) to hold the names of master journal files extracted from regular rollback-journals.
-            long masterJournalSize; // Size of master journal file
-            rc = masterFile.get_FileSize(out masterJournalSize);
-            if (rc != RC.OK) goto delmaster_out;
-            var masterPtrSize = vfs.MaxPathname + 1; // Amount of space allocated to zMasterPtr[]
-            var masterJournal = new byte[masterJournalSize + 1];
-            string masterPtr;
-            rc = masterFile.Read(masterJournal, (int)masterJournalSize, 0);
-            if (rc != RC.OK) goto delmaster_out;
-            masterJournal[masterJournalSize] = 0;
+            //Debugger.Break();
 
-            var journalIdx = 0; // Pointer to one journal within MJ file
-            while (journalIdx < masterJournalSize)
-            {
-                var journal = "SETME";
-                int exists;
-                rc = vfs.Access(journal, VFileSystem.ACCESS.EXISTS, out exists);
-                if (rc != RC.OK)
-                    goto delmaster_out;
-                if (exists != 0)
-                {
-                    // One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
-                    // so, return without deleting the master journal file.
-                    VFileSystem.OPEN dummy2;
-                    rc = vfs.Open(journal, journalFile, VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MAIN_JOURNAL, out dummy2);
-                    if (rc != RC.OK)
-                        goto delmaster_out;
+            //// Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
+            //// sufficient space (in zMasterPtr) to hold the names of master journal files extracted from regular rollback-journals.
+            //long masterJournalSize; // Size of master journal file
+            //rc = masterFile.get_FileSize(out masterJournalSize);
+            //if (rc != RC.OK) goto delmaster_out;
+            //var masterPtrSize = vfs.MaxPathname + 1; // Amount of space allocated to zMasterPtr[]
+            //var masterJournal = new byte[masterJournalSize + 1];
+            //string masterPtr;
+            //rc = masterFile.Read(masterJournal, (int)masterJournalSize, 0);
+            //if (rc != RC.OK) goto delmaster_out;
+            //masterJournal[masterJournalSize] = 0;
 
-                    rc = readMasterJournal(journalFile, out masterPtr, (uint)masterPtrSize);
-                    journalFile.Close();
-                    if (rc != RC.OK)
-                        goto delmaster_out;
+            //var journalIdx = 0; // Pointer to one journal within MJ file
+            //while (journalIdx < masterJournalSize)
+            //{
+            //    var journal = masterJournal;
+            //    int exists;
+            //    rc = vfs.Access(journal, VFileSystem.ACCESS.EXISTS, out exists);
+            //    if (rc != RC.OK)
+            //        goto delmaster_out;
+            //    if (exists != 0)
+            //    {
+            //        // One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
+            //        // so, return without deleting the master journal file.
+            //        VFileSystem.OPEN dummy2;
+            //        rc = vfs.Open(journal, journalFile, VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MAIN_JOURNAL, out dummy2);
+            //        if (rc != RC.OK)
+            //            goto delmaster_out;
 
-                    var c = string.Equals(master, masterPtr);
-                    if (c) // We have a match. Do not delete the master journal file.
-                        goto delmaster_out;
-                }
-                journalIdx += (sqlite3Strlen30(journal) + 1);
-            }
+            //        rc = readMasterJournal(journalFile, out masterPtr, (uint)masterPtrSize);
+            //        journalFile.Close();
+            //        if (rc != RC.OK)
+            //            goto delmaster_out;
 
-            masterFile.Close();
-            rc = vfs.Delete(master, false);
+            //        var c = string.Equals(master, masterPtr);
+            //        if (c) // We have a match. Do not delete the master journal file.
+            //            goto delmaster_out;
+            //    }
+            //    journalIdx += (sqlite3Strlen30(journal) + 1);
+            //}
 
-        delmaster_out:
-            masterJournal = null;
-            if (masterFile != null)
-            {
-                masterFile.Close();
-                Debug.Assert(!masterFile.Opened);
-                masterFile = null;
-            }
-            return rc;
+            //masterFile.Close();
+            //rc = vfs.Delete(master, false);
+
+            //delmaster_out:
+            //    //masterJournal = null;
+            //    if (masterFile != null)
+            //    {
+            //        masterFile.Close();
+            //        Debug.Assert(!masterFile.Opened);
+            //        masterFile = null;
+            //    }
+            //    return rc;
         }
 
         private RC pager_truncate(Pid pages)
@@ -1090,9 +1097,9 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         #region Transaction2
 
-        uint sqlite3SectorSize(VFile file)
+        public uint get_SectorSize(VFile file)
         {
-            var ret = file.SectorSize;
+            var ret = file.SectorSize();
             if (ret < 32)
                 ret = 512;
             else if (ret > MAX_SECTOR_SIZE)
@@ -1109,11 +1116,14 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             if (TempFile || (File.get_DeviceCharacteristics() & VFile.IOCAP.IOCAP_POWERSAFE_OVERWRITE) != 0)
                 SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
             else
-                SectorSize = File.SectorSize;
+                SectorSize = File.SectorSize();
         }
 
         private RC pager_playback(bool isHot)
         {
+            var res = 1;
+            string master = null; // Name of master journal file if any
+
             // Figure out how many records are in the journal.  Abort early if the journal is empty.
             Debug.Assert(JournalFile.Opened);
             long sizeJournal; // Size of the journal file in bytes
@@ -1128,9 +1138,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             // (pPager->pageSize >= pPager->pVfs->mxPathname+1). Using os_unix.c, mxPathname is 512, which is the same as the minimum allowable value
             // for pageSize.
             var vfs = Vfs;
-            string master; // Name of master journal file if any
             rc = readMasterJournal(JournalFile, out master, (uint)vfs.MaxPathname + 1);
-            var res = 1;
             if (rc == RC.OK && master[0] != 0)
                 rc = vfs.Access(master, VFileSystem.ACCESS.EXISTS, out res);
             master = null;
@@ -1144,7 +1152,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             {
                 // Read the next journal header from the journal file.  If there are not enough bytes left in the journal file for a complete header, or
                 // it is corrupted, then a process must have failed while writing it. This indicates nothing more needs to be rolled back.
-                uint records; // Number of Records in the journal
+                uint records = 0; // Number of Records in the journal
                 Pid maxPage = 0; // Size of the original file in pages
                 rc = readJournalHdr(isHot, sizeJournal, ref records, ref maxPage);
                 if (rc != RC.OK)
@@ -1287,11 +1295,10 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 else
                     Buffer.BlockCopy(page.Data, 24, pager.DBFileVersion, 0, pager.DBFileVersion.Length);
             }
-            if (CODEC1(pager, page.Data, id, codec_ctx.DECRYPT))
-                rc = RC.NOMEM;
+            if (CODEC1(pager, page.Data, id, 3)) rc = RC.NOMEM;
 
-            PAGER_INCR(sqlite3_pager_readdb_count);
-            PAGER_INCR(pager.Reads);
+            PAGER_INCR(ref _readdb_count);
+            PAGER_INCR(ref pager.Reads);
             SysEx.IOTRACE("PGIN {0:x} {1}", pager.GetHashCode(), id);
             PAGERTRACE("FETCH {0} page {1}% hash({2,08:x})", PAGERID(pager), id, pager_pagehash(page));
 
@@ -1310,141 +1317,115 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         }
 
 #if !OMIT_WAL
-        static int pagerUndoCallback(Pager pCtx, Pgno iPg)
+        static RC pagerUndoCallback(object ctx, Pid id)
         {
             var rc = RC.OK;
-            Pager pPager = (Pager)pCtx;
-            PgHdr pPg;
-
-            pPg = sqlite3PagerLookup(pPager, iPg);
-            if (pPg)
+            var pager = (Pager)ctx;
+            var pg = pager.Lookup(id);
+            if (pg != null)
             {
-                if (sqlite3PcachePageRefcount(pPg) == 1)
-                {
-                    sqlite3PcacheDrop(pPg);
-                }
+                if (PCache.get_PageRefs(pg) == 1)
+                    PCache.Drop(pg);
                 else
                 {
-                    rc = readDbPage(pPg);
-                    if (rc == SQLITE.OK)
-                    {
-                        pPager._reiniter(pPg);
-                    }
-                    sqlite3PagerUnref(pPg);
+                    rc = readDbPage(pg);
+                    if (rc == RC.OK)
+                        pager.Reiniter(pg);
+                    Pager.Unref(pg);
                 }
             }
             // Normally, if a transaction is rolled back, any backup processes are updated as data is copied out of the rollback journal and into the
             // database. This is not generally possible with a WAL database, as rollback involves simply truncating the log file. Therefore, if one
             // or more frames have already been written to the log (and therefore also copied into the backup databases) as part of this transaction,
             // the backups must be restarted.
-            sqlite3BackupRestart(pPager.pBackup);
+            if (pager.Backup != null)
+                pager.Backup.Restart();
             return rc;
         }
 
-        static int pagerRollbackWal(Pager pPager)
+        static RC pagerRollbackWal(Pager pager)
         {
-            int rc;                         /* Return Code */
-            PgHdr pList;                   /* List of dirty pages to revert */
-
-            /* For all pages in the cache that are currently dirty or have already been written (but not committed) to the log file, do one of the 
-            ** following:
-            **   + Discard the cached page (if refcount==0), or
-            **   + Reload page content from the database (if refcount>0).
-            */
-            pPager._dbSize = pPager._dbOrigSize;
-            rc = sqlite3WalUndo(pPager._wal, pagerUndoCallback, pPager);
-            pList = sqlite3PcacheDirtyList(pPager._pcache);
-            while (pList && rc == SQLITE.OK)
+            // For all pages in the cache that are currently dirty or have already been written (but not committed) to the log file, do one of the following:
+            //
+            //   + Discard the cached page (if refcount==0), or
+            //   + Reload page content from the database (if refcount>0).
+            pager.DBSize = pager.DBOrigSize;
+            var rc = pager.Wal.Undo(pagerUndoCallback, pager);
+            var list = pager.PCache.DirtyList(); // List of dirty pages to revert 
+            while (list != null && rc == RC.OK)
             {
-                PgHdr pNext = pList.pDirty;
-                rc = pagerUndoCallback(pPager, pList.pgno);
-                pList = pNext;
+                var next = list.Dirty;
+                rc = pagerUndoCallback(pager, list.ID);
+                list = next;
             }
 
             return rc;
         }
 
-
-        static int pagerWalFrames(Pager pPager, PgHdr pList, Pgno nTruncate, int isCommit, int syncFlags)
+        static RC pagerWalFrames(Pager pager, PgHdr list, Pid truncate, bool isCommit)
         {
-            int rc;                         /* Return code */
-#if DEBUG || CHECK_PAGES
-            PgHdr p;                       /* For looping over pages */
-#endif
-
-            Debug.Assert(pPager._wal);
+            Debug.Assert(pager.Wal != null);
+            Debug.Assert(list != null);
+            PgHdr p; // For looping over pages
 #if DEBUG
-/* Verify that the page list is in accending order */
-for(p=pList; p && p->pDirty; p=p->pDirty){
-assert( p->pgno < p->pDirty->pgno );
-}
+            // Verify that the page list is in accending order
+            for (p = list; p != null && p.Dirty != null; p = p.Dirty)
+                Debug.Assert(p.ID < p.Dirty.ID);
 #endif
-
+            int listPages; // Number of pages in pList
+            Debug.Assert(list.Dirty == null || isCommit);
             if (isCommit)
             {
-                /* If a WAL transaction is being committed, there is no point in writing
-                ** any pages with page numbers greater than nTruncate into the WAL file.
-                ** They will never be read by any client. So remove them from the pDirty
-                ** list here. */
-                PgHdr* p;
-                PgHdr** ppNext = &pList;
-                for (p = pList; (*ppNext = p); p = p->pDirty)
-                {
-                    if (p->pgno <= nTruncate) ppNext = &p->pDirty;
-                }
-                assert(pList);
+                // If a WAL transaction is being committed, there is no point in writing any pages with page numbers greater than nTruncate into the WAL file.
+                // They will never be read by any client. So remove them from the pDirty list here.
+                PgHdr next = list;
+                listPages = 0;
+                for (p = list; (next = p) != null; p = p.Dirty)
+                    if (p.ID <= truncate)
+                    {
+                        next = p.Dirty;
+                        listPages++;
+                    }
+                Debug.Assert(list != null);
             }
+            else
+                listPages = 1;
+            pager.Stats[(int)STAT.WRITE] += listPages;
 
-
-            if (pList->pgno == 1) pager_write_changecounter(pList);
-            rc = sqlite3WalFrames(pPager._wal,
-            pPager._pageSize, pList, nTruncate, isCommit, syncFlags
-            );
-            if (rc == SQLITE.OK && pPager.pBackup)
-            {
-                PgHdr* p;
-                for (p = pList; p; p = p->pDirty)
-                {
-                    sqlite3BackupUpdate(pPager.pBackup, p->pgno, (u8*)p->pData);
-                }
-            }
+            if (list.ID == 1) pager_write_changecounter(list);
+            var rc = pager.Wal.Frames(pager.PageSize, list, truncate, isCommit, pager.WalSyncFlags);
+            if (rc == RC.OK && pager.Backup != null)
+                for (p = list; p != null; p = p.Dirty)
+                    pager.Backup.Update(p.ID, p.Data);
 
 #if CHECK_PAGES
-pList = sqlite3PcacheDirtyList(pPager.pPCache);
-for(p=pList; p; p=p->pDirty){
-pager_set_pagehash(p);
-}
+            list = pager.PCache.DirtyList());
+            for (p = list; p != null; p = p.Dirty)
+                pager_set_pagehash(p);
 #endif
 
             return rc;
         }
 
-        static int pagerBeginReadTransaction(Pager* pPager)
+        static RC pagerBeginReadTransaction(Pager pager)
         {
-            int rc;                         /* Return code */
-            int changed = 0;                /* True if cache must be reset */
+            Debug.Assert(UseWal(pager));
+            Debug.Assert(pager.State == PAGER.OPEN || pager.State == PAGER.READER);
 
-            assert(_pagerUseWal(pPager));
-            assert(pPager.eState == PAGER_OPEN || pPager.eState == PAGER_READER);
+            // sqlite3WalEndReadTransaction() was not called for the previous transaction in locking_mode=EXCLUSIVE.  So call it now.  If we
+            // are in locking_mode=NORMAL and EndRead() was previously called, the duplicate call is harmless.
+            pager.Wal.EndReadTransaction();
 
-            /* sqlite3WalEndReadTransaction() was not called for the previous
-            ** transaction in locking_mode=EXCLUSIVE.  So call it now.  If we
-            ** are in locking_mode=NORMAL and EndRead() was previously called,
-            ** the duplicate call is harmless.
-            */
-            sqlite3WalEndReadTransaction(pPager.pWal);
-
-            rc = sqlite3WalBeginReadTransaction(pPager.pWal, &changed);
-            if (rc != SQLITE.OK || changed)
-            {
-                pager_reset(pPager);
-            }
+            int changed = 0; // True if cache must be reset
+            var rc = pager.Wal.BeginReadTransaction(out changed);
+            if (rc != RC.OK || changed)
+                pager_reset(pager);
 
             return rc;
         }
 #endif
 
-        private RC pagerPagecount(out Pid pagesOut)
+        private RC pagerPagecount(out Pid pagesRef)
         {
             // Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
             // if the database size is not available. The database size is not available from the WAL sub-system if the log file is empty or
@@ -1464,7 +1445,10 @@ pager_set_pagehash(p);
                 {
                     var rc = File.get_FileSize(out n);
                     if (rc != RC.OK)
+                    {
+                        pagesRef = 0;
                         return rc;
+                    }
                 }
                 pages = (Pid)((n + PageSize - 1) / PageSize);
             }
@@ -1474,46 +1458,38 @@ pager_set_pagehash(p);
             if (pages > MaxPid)
                 MaxPid = (Pid)pages;
 
-            pagesOut = pages;
+            pagesRef = pages;
             return RC.OK;
         }
 
 #if !OMIT_WAL
-        static int pagerOpenWalIfPresent(Pager* pPager)
+        static RC pagerOpenWalIfPresent(Pager pager)
         {
-            int rc = SQLITE.OK;
-            Debug.Assert(pPager.eState == PAGER_OPEN);
-            Debug.Assert(pPager.eLock >= SHARED_LOCK || pPager.noReadlock);
+            Debug.Assert(pager.State == PAGER.OPEN);
+            Debug.Assert(pager.Lock >= VFile.LOCK.SHARED);
+            var rc = RC.OK;
 
-            if (!pPager.tempFile)
+            if (!pager.TempFile)
             {
                 int isWal;                    /* True if WAL file exists */
-                Pgno nPage;                   /* Size of the database file */
-
-                rc = pagerPagecount(pPager, &nPage);
-                if (rc) return rc;
-                if (nPage == 0)
+                Pid pages; // Size of the database file
+                rc = pagerPagecount(pager, &pages);
+                if (rc != RC.OK) return rc;
+                int isWal; // True if WAL file exists
+                if (pages == 0)
                 {
-                    rc = sqlite3OsDelete(pPager.pVfs, pPager.zWal, 0);
+                    rc = pager.Vfs.Delete(pager.WalName, false);
+                    if (rc == RC.IOERR_DELETE_NOENT) rc = RC.OK;
                     isWal = 0;
                 }
                 else
-                {
-                    rc = sqlite3OsAccess(
-                    pPager.pVfs, pPager.zWal, SQLITE_ACCESS_EXISTS, &isWal
-                    );
-                }
-                if (rc == SQLITE.OK)
+                    rc = pager.Vfs.Access(pager.WalName, VFileSystem.ACCESS.EXISTS, out isWal);
+                if (rc == RC.OK)
                 {
                     if (isWal)
-                    {
-                        testcase(sqlite3PcachePagecount(pPager.pPCache) == 0);
-                        rc = sqlite3PagerOpenWal(pPager, 0);
-                    }
-                    else if (pPager.journalMode == PAGER_JOURNALMODE_WAL)
-                    {
-                        pPager.journalMode = PAGER_JOURNALMODE_DELETE;
-                    }
+                        rc = pager.pagerOpenWal(0);
+                    else if (pager.JournalMode == IPager.JOURNALMODE.WAL)
+                        pager.JournalMode = IPager.JOURNALMODE.DELETE;
                 }
             }
             return rc;
@@ -1545,7 +1521,6 @@ pager_set_pagehash(p);
             // Begin by rolling back records from the main journal starting at PagerSavepoint.iOffset and continuing to the next journal header.
             // There might be records in the main journal that have a page number greater than the current database size (pPager->dbSize) but those
             // will be skipped automatically.  Pages are added to pDone as they are played back.
-
             var rc = RC.OK;
             if (savepoint != null && !UseWal())
             {
@@ -1562,8 +1537,8 @@ pager_set_pagehash(p);
             // of the main journal file.  Continue to skip out-of-range pages and continue adding pages rolled back to pDone.
             while (rc == RC.OK && JournalOffset < sizeJournal)
             {
-                uint records; // Number of Journal Records
-                uint dummy;
+                uint records = 0; // Number of Journal Records
+                uint dummy = 0;
                 rc = readJournalHdr(false, sizeJournal, ref records, ref dummy);
                 Debug.Assert(rc != RC.DONE);
 
@@ -1582,6 +1557,7 @@ pager_set_pagehash(p);
             if (savepoint != null)
             {
                 long offset = savepoint.SubRecords * (4 + PageSize);
+
                 if (UseWal())
                     rc = Wal.SavepointUndo(savepoint.WalData);
                 for (var ii = savepoint.SubRecords; rc == RC.OK && ii < SubRecords; ii++)
@@ -1606,16 +1582,15 @@ pager_set_pagehash(p);
         // was:sqlite3PagerSetCachesize
         public void SetCacheSize(int maxPage)
         {
-            PCache.SetCachesize(maxPage);
+            PCache.set_CacheSize(maxPage);
         }
 
-        void sqlite3PagerShrink(Pager pager)
+        public void Shrink()
         {
             PCache.Shrink();
         }
 
 #if !OMIT_PAGER_PRAGMAS
-        // was:sqlite3PagerSetSafetyLevel
         public void SetSafetyLevel(int level, bool fullFsync, bool checkpointFullFsync)
         {
             Debug.Assert(level >= 1 && level <= 3);
@@ -1649,13 +1624,13 @@ pager_set_pagehash(p);
 
 #if TEST
         // The following global variable is incremented whenever the library attempts to open a temporary file.  This information is used for testing and analysis only.  
-        int sqlite3_opentemp_count = 0;
+        int _opentemp_count = 0;
 #endif
 
         private RC pagerOpentemp(ref VFile file, VFileSystem.OPEN vfsFlags)
         {
 #if TEST
-            sqlite3_opentemp_count++; // Used for testing and analysis only
+            _opentemp_count++; // Used for testing and analysis only
 #endif
             vfsFlags |= VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.EXCLUSIVE | VFileSystem.OPEN.DELETEONCLOSE;
             VFileSystem.OPEN dummy = 0;
@@ -1680,7 +1655,6 @@ pager_set_pagehash(p);
             }
         }
 
-        // was:sqlite3PagerSetPagesize
         public RC SetPageSize(ref uint pageSizeRef, int reserveBytes)
         {
             // It is not possible to do a full assert_pager_state() here, as this function may be called from within PagerOpen(), before the state
@@ -1700,15 +1674,13 @@ pager_set_pagehash(p);
                     rc = File.get_FileSize(out bytes);
                 byte[] tempSpace = null; // New temp space
                 if (rc == RC.OK)
-                {
-                    tempSpace = sqlite3PageMalloc(pageSize); //MallocEx.sqlite3Malloc((int)pageSize)
-                }
+                    tempSpace = SysEx.Alloc((int)pageSize); //PCache1.PageAlloc((int)pageSize);
                 if (rc == RC.OK)
                 {
                     pager_reset();
                     DBSize = (Pid)((bytes + pageSize - 1) / pageSize);
                     PageSize = (int)pageSize;
-                    sqlite3PageFree(ref TmpSpace);
+                    PCache1.PageFree(ref TmpSpace);
                     TmpSpace = tempSpace;
                     PCache.SetPageSize((int)pageSize);
                 }
@@ -1724,13 +1696,12 @@ pager_set_pagehash(p);
             return rc;
         }
 
-        public byte[] sqlite3PagerTempSpace()
+        public byte[] get_TempSpace()
         {
             return TmpSpace;
         }
 
-        // was:sqlite3PagerMaxPageCount
-        public Pid SetMaxPageCount(int maxPage)
+        public Pid MaxPages(int maxPage)
         {
             if (maxPage > 0)
                 MaxPid = (Pid)maxPage;
@@ -1740,19 +1711,19 @@ pager_set_pagehash(p);
         }
 
 #if TEST
-        //extern int sqlite3_io_error_pending;
-        //extern int sqlite3_io_error_hit;
+        static int _io_error_pending;
+        static int _io_error_hit;
         static int saved_cnt;
 
         void disable_simulated_io_errors()
         {
-            saved_cnt = sqlite3_io_error_pending;
-            sqlite3_io_error_pending = -1;
+            saved_cnt = _io_error_pending;
+            _io_error_pending = -1;
         }
 
         void enable_simulated_io_errors()
         {
-            sqlite3_io_error_pending = saved_cnt;
+            _io_error_pending = saved_cnt;
         }
 #else
         void disable_simulated_io_errors() { }
@@ -1779,7 +1750,7 @@ pager_set_pagehash(p);
         }
 
         // was:sqlite3PagerPagecount
-        public void GetPageCount(out Pid pagesOut)
+        public void Pages(out Pid pagesOut)
         {
             Debug.Assert(State >= PAGER.READER);
             Debug.Assert(State != PAGER.WRITER_FINISHED);
@@ -1807,6 +1778,7 @@ pager_set_pagehash(p);
             Debug.Assert((page.Flags & PgHdr.PGHDR.DIRTY) != 0);
             Debug.Assert(!subjRequiresPage(page) || page.ID <= page.Pager.DBSize);
         }
+
         void assertTruncateConstraint()
         {
             PCache.IterateDirty(assertTruncateConstraintCb);
@@ -1847,7 +1819,7 @@ pager_set_pagehash(p);
             ExclusiveMode = false;
             var tmp = TmpSpace;
 #if !OMIT_WAL
-            Wal.sqlite3WalClose(CheckpointSyncFlags, PageSize, tmp);
+            Wal.Close(CheckpointSyncFlags, PageSize, tmp);
             Wal = null;
 #endif
             pager_reset();
@@ -1870,11 +1842,11 @@ pager_set_pagehash(p);
             SysEx.IOTRACE("CLOSE {0:x}", GetHashCode());
             JournalFile.Close();
             File.Close();
-            sqlite3PageFree(tmp);
+            PCache1.PageFree(ref tmp);
             PCache.Close();
 
 #if HAS_CODEC
-            if (CodecFree) CodecFree(Codec);
+            if (CodecFree != null) CodecFree(Codec);
 #endif
 
             Debug.Assert(Savepoints == null && !InJournal);
@@ -1909,7 +1881,7 @@ pager_set_pagehash(p);
             Debug.Assert(assert_pager_state());
             Debug.Assert(!UseWal());
 
-            var rc = sqlite3PagerExclusiveLock();
+            var rc = ExclusiveLock();
             if (rc != RC.OK) return rc;
 
             if (!NoSync)
@@ -2034,7 +2006,7 @@ pager_set_pagehash(p);
 
                     // Encode the database
                     byte[] data = null; // Data to write
-                    if (CODEC2(this, list.Data, id, codec_ctx.ENCRYPT_WRITE_CTX, ref data)) return RC.NOMEM;
+                    if (CODEC2(ref data, this, list.Data, id, 6)) return RC.NOMEM;
 
                     // Write out the page data.
                     long offset = (id - 1) * (long)PageSize; // Offset to write
@@ -2053,7 +2025,7 @@ pager_set_pagehash(p);
 
                     PAGERTRACE("STORE {0} page {1} hash({2,08:x})", PAGERID(this), id, pager_pagehash(list));
                     SysEx.IOTRACE("PGOUT {0:x} {1}", GetHashCode(), id);
-                    PAGER_INCR(sqlite3_pager_writedb_count);
+                    PAGER_INCR(ref _writedb_count);
                 }
                 else
                     PAGERTRACE("NOSTORE {0} page {1}", PAGERID(this), id);
@@ -2070,7 +2042,7 @@ pager_set_pagehash(p);
             if (!SubJournalFile.Opened)
             {
                 if (JournalMode == IPager.JOURNALMODE.JMEMORY || SubjInMemory)
-                    sqlite3MemJournalOpen(SubJournalFile); //SubJournalFile = new MemoryVFile();
+                    VFile.MemoryVFileOpen(ref SubJournalFile);
                 else
                     rc = pagerOpentemp(ref SubJournalFile, VFileSystem.OPEN.SUBJOURNAL);
             }
@@ -2084,7 +2056,7 @@ pager_set_pagehash(p);
             if (pager.JournalMode != IPager.JOURNALMODE.OFF)
             {
                 // Open the sub-journal, if it has not already been opened
-                Debug.Assert(pager.UseJournal != 0);
+                Debug.Assert(pager.UseJournal);
                 Debug.Assert(pager.JournalFile.Opened || pager.UseWal());
                 Debug.Assert(pager.SubJournalFile.Opened || pager.SubRecords == 0);
                 Debug.Assert(pager.UseWal() || pageInJournal(pg) || pg.ID > pager.DBOrigSize);
@@ -2094,12 +2066,12 @@ pager_set_pagehash(p);
                 {
                     var data = pg.Data;
                     long offset = pager.SubRecords * (4 + pager.PageSize);
-                    byte[] pData2 = null;
-                    if (CODEC2(pager, data, pg.ID, codec_ctx.ENCRYPT_READ_CTX, ref pData2)) return RC.NOMEM;
+                    byte[] data2 = null;
+                    if (CODEC2(ref data2, pager, data, pg.ID, 7)) return RC.NOMEM;
                     PAGERTRACE("STMT-JOURNAL {0} page {1}", PAGERID(pager), pg.ID);
                     rc = pager.SubJournalFile.Write4(offset, pg.ID);
                     if (rc == RC.OK)
-                        rc = pager.SubJournalFile.Write(pData2, pager.PageSize, offset + 4);
+                        rc = pager.SubJournalFile.Write(data2, pager.PageSize, offset + 4);
                 }
             }
             if (rc == RC.OK)
@@ -2125,10 +2097,9 @@ pager_set_pagehash(p);
             // Spilling is also prohibited when in an error state since that could lead to database corruption.   In the current implementaton it 
             // is impossible for sqlite3PcacheFetch() to be called with createFlag==1 while in the error state, hence it is impossible for this routine to
             // be called in the error state.  Nevertheless, we include a NEVER() test for the error state as a safeguard against future changes.
-
             if (SysEx.NEVER(pager.ErrorCode != 0)) return RC.OK;
-            if (pager.DoNotSpill) return RC.OK;
-            if (pager.DoNotSyncSpill && (pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) return RC.OK;
+            if (pager.DoNotSpill != 0) return RC.OK;
+            if (pager.DoNotSyncSpill != 0 && (pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) return RC.OK;
 
             pg.Dirty = null;
             var rc = RC.OK;
@@ -2138,7 +2109,7 @@ pager_set_pagehash(p);
                 if (subjRequiresPage(pg))
                     rc = subjournalPage(pg);
                 if (rc == RC.OK)
-                    rc = pager.pagerWalFrames(pg, 0, 0);
+                    rc = pager.pagerWalFrames(pg, 0, false);
             }
             else
             {
@@ -2193,7 +2164,7 @@ pager_set_pagehash(p);
             // is the maximum space required for an in-memory journal file handle and a regular journal file-handle. Note that a "regular journal-handle"
             // may be a wrapper capable of caching the first portion of the journal file in memory to implement the atomic-write optimization (see 
             // source file journal.c).
-            int journalFileSize = SysEx.ROUND8(sqlite3JournalSize(vfs) > MemoryVFile.sqlite3MemJournalSize() ? sqlite3JournalSize(vfs) : MemoryVFile.sqlite3MemJournalSize()); // Bytes to allocate for each journal fd
+            int journalFileSize = SysEx.ROUND8(VFile.JournalVFileSize(vfs) > VFile.MemoryVFileSize() ? VFile.JournalVFileSize(vfs) : VFile.MemoryVFileSize()); // Bytes to allocate for each journal fd
 
             // Set the output variable to NULL in case an error occurs.
             pagerOut = null;
@@ -2233,7 +2204,7 @@ pager_set_pagehash(p);
             }
 
             // Allocate memory for the Pager structure, PCache object, the three file descriptors, the database file name and the journal file name.
-            var pager = new Pager(memPageBuilder);
+            var pager = new Pager(); //memPageBuilder);
             pager.PCache = new PCache();
             pager.File = new MemoryVFile();
             pager.SubJournalFile = new MemoryVFile();
@@ -2390,7 +2361,7 @@ pager_set_pagehash(p);
                 {
                     // Check the size of the database file. If it consists of 0 pages, then delete the journal file. See the header comment above for 
                     // the reasoning here.  Delete the obsolete journal file under a RESERVED lock to avoid race conditions and to avoid violating [H33020].
-                    Pid pages = 0; // Number of pages in database file
+                    Pid pages; // Number of pages in database file
                     rc = pagerPagecount(out pages);
                     if (rc == RC.OK)
                         if (pages == 0)
@@ -2558,7 +2529,7 @@ pager_set_pagehash(p);
                     // 
                     // There is a vanishingly small chance that a change will not be detected.  The chance of an undetected change is so small that
                     // it can be neglected.
-                    Pid pages = 0;
+                    Pid pages;
                     var dbFileVersion = new byte[DBFileVersion.Length];
 
                     rc = pagerPagecount(out pages);
@@ -2575,7 +2546,7 @@ pager_set_pagehash(p);
                     else
                         Array.Clear(dbFileVersion, 0, dbFileVersion.Length);
 
-                    if (Enumerable.SequenceEqual(DBFileVersion, dbFileVersion) != 0)
+                    if (!Enumerable.SequenceEqual(DBFileVersion, dbFileVersion))
                         pager_reset();
                 }
 
@@ -2741,7 +2712,7 @@ pager_set_pagehash(p);
                     {
                         var flags = VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | (TempFile ? VFileSystem.OPEN.DELETEONCLOSE | VFileSystem.OPEN.TEMP_JOURNAL : VFileSystem.OPEN.MAIN_JOURNAL);
 #if ENABLE_ATOMIC_WRITE
-                        rc = sqlite3JournalOpen(Vfs, Journal, JournalFile, flags, jrnlBufferSize());
+                        rc = VFile.JournalVFileOpen(Vfs, Journal, ref JournalFile, flags, jrnlBufferSize(this));
 #else
                         VFileSystem.OPEN dummy;
                         rc = Vfs.Open(Journal, JournalFile, flags, out dummy);
@@ -2756,7 +2727,7 @@ pager_set_pagehash(p);
                     // TODO: Check if all of these are really required.
                     Records = 0;
                     JournalOffset = 0;
-                    SetMaster = 0;
+                    SetMaster = false;
                     JournalHeader = 0;
                     rc = writeJournalHdr();
                 }
@@ -2764,7 +2735,8 @@ pager_set_pagehash(p);
 
             if (rc != RC.OK)
             {
-                Bitvec.Destroy(ref InJournal); InJournal = null;
+                Bitvec.Destroy(ref InJournal);
+                InJournal = null;
             }
             else
             {
@@ -2825,8 +2797,8 @@ pager_set_pagehash(p);
                     JournalOffset = 0;
                 }
 
-                Debug.Assert(rc == RC.OK || _state == PAGER.READER);
-                Debug.Assert(rc != RC.OK || _state == PAGER.WRITER_LOCKED);
+                Debug.Assert(rc == RC.OK || State == PAGER.READER);
+                Debug.Assert(rc != RC.OK || State == PAGER.WRITER_LOCKED);
                 Debug.Assert(assert_pager_state());
             }
 
@@ -2851,7 +2823,7 @@ pager_set_pagehash(p);
             // Higher-level routines never call this function if database is not writable.  But check anyway, just for robustness.
             if (SysEx.NEVER(pager.ReadOnly)) return RC.PERM;
 
-            CHECK_PAGE(pg);
+            checkPage(pg);
 
             // The journal file needs to be opened. Higher level routines have already obtained the necessary locks to begin the write-transaction, but the
             // rollback journal might not yet be open. Open it now if this is the case.
@@ -2879,13 +2851,12 @@ pager_set_pagehash(p);
                     Debug.Assert(!pager.UseWal());
                     if (pg.ID <= pager.DBOrigSize && pager.JournalFile.Opened)
                     {
-
                         // We should never write to the journal file the page that contains the database locks.  The following Debug.Assert verifies that we do not.
                         Debug.Assert(pg.ID != MJ_PID(pager));
 
                         Debug.Assert(pager.JournalHeader <= pager.JournalOffset);
-                        if (CODEC2(pager, data, pg.ID, codec_ctx.ENCRYPT_READ_CTX, ref data2)) return RC.NOMEM;
                         byte[] data2 = null;
+                        if (CODEC2(ref data2, pager, data, pg.ID, 7)) return RC.NOMEM;
                         var checksum = pager.pager_cksum(data2);
 
                         // Even if an IO or diskfull error occurs while journalling the page in the block above, set the need-sync flag for the page.
@@ -2902,7 +2873,7 @@ pager_set_pagehash(p);
                         if (rc != RC.OK) return rc;
 
                         SysEx.IOTRACE("JOUT {0:x} {1} {2,11} {3}", pager.GetHashCode(), pg.ID, pager.JournalOffset, pager.PageSize);
-                        PAGER_INCR(sqlite3_pager_writej_count);
+                        PAGER_INCR(ref _writej_count);
                         PAGERTRACE("JOURNAL {0} page {1} needSync={2} hash({3,08:x})", PAGERID(pager), pg.ID, (pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0, pager_pagehash(pg));
 
                         pager.JournalOffset += 8 + pager.PageSize;
@@ -2962,7 +2933,7 @@ pager_set_pagehash(p);
                 var pg1 = (Pid)((pg.ID - 1) & ~(pagePerSector - 1)) + 1; // First page of the sector pPg is located on.
 
                 Pid pages = 0; // Number of pages starting at pg1 to journal
-                int pageCount = pager.DBSize; // Total number of pages in database file
+                var pageCount = pager.DBSize; // Total number of pages in database file
                 if (pg.ID > pageCount)
                     pages = (pg.ID - pg1) + 1;
                 else if ((pg1 + pagePerSector - 1) > pageCount)
@@ -2976,13 +2947,13 @@ pager_set_pagehash(p);
                 bool needSync = false;   // True if any page has PGHDR_NEED_SYNC
                 for (var ii = 0; ii < pages && rc == RC.OK; ii++)
                 {
-                    var pg = (Pid)(pg1 + ii);
+                    var id = (Pid)(pg1 + ii);
                     var page2 = new PgHdr();
-                    if (pg == pg.ID || !pager.InJournal.Get(pg))
+                    if (id == pg.ID || !pager.InJournal.Get(id))
                     {
-                        if (pg != MJ_PID(pager))
+                        if (id != MJ_PID(pager))
                         {
-                            rc = pager.Get(pg, ref page2);
+                            rc = pager.Acquire(id, ref page2, false);
                             if (rc == RC.OK)
                             {
                                 rc = pager_write(page2);
@@ -2992,7 +2963,7 @@ pager_set_pagehash(p);
                             }
                         }
                     }
-                    else if ((page2 = pager.pager_lookup(pg)) != null)
+                    else if ((page2 = pager.pager_lookup(id)) != null)
                     {
                         if ((page2.Flags & PgHdr.PGHDR.NEED_SYNC) != 0)
                             needSync = true;
@@ -3026,14 +2997,12 @@ pager_set_pagehash(p);
         }
 
 #if DEBUG
-        // was:sqlite3PagerIswriteable
         public static bool IsPageWriteable(IPage pg)
         {
-            return pg->Flags & PgHdr.PGHDR.DIRTY;
+            return ((pg.Flags & PgHdr.PGHDR.DIRTY) != 0);
         }
 #endif
 
-        // was:sqlite3PagerDontWrite
         public static void DontWrite(PgHdr pg)
         {
             var pager = pg.Pager;
@@ -3070,7 +3039,7 @@ pager_set_pagehash(p);
 
                 // Open page 1 of the file for writing.
                 PgHdr pgHdr = null; // Reference to page 1
-                rc = Get(1, ref pgHdr);
+                rc = Acquire(1, ref pgHdr, false);
                 Debug.Assert(pgHdr == null || rc == RC.OK);
 
                 // If page one was fetched successfully, and this function is not operating in direct-mode, make page 1 writable.  When not in 
@@ -3088,11 +3057,11 @@ pager_set_pagehash(p);
                     {
                         byte[] buf = null;
                         Debug.Assert(DBFileSize > 0);
-                        if (CODEC2(this, pgHdr.Data, 1, codec_ctx.ENCRYPT_WRITE_CTX, ref buf)) return rc = RC.NOMEM;
+                        if (CODEC2(ref buf, this, pgHdr.Data, 1, 6)) return rc = RC.NOMEM;
                         if (rc == RC.OK)
                         {
                             rc = File.Write(buf, PageSize, 0);
-                            Stats[STAT.WRITE]++;
+                            Stats[(int)STAT.WRITE]++;
                         }
                         if (rc == RC.OK)
                             ChangeCountDone = true;
@@ -3130,7 +3099,7 @@ pager_set_pagehash(p);
 
         #region Commit
 
-        private RC sqlite3PagerExclusiveLock()
+        public RC ExclusiveLock()
         {
             Debug.Assert(State == PAGER.WRITER_CACHEMOD ||
                 State == PAGER.WRITER_DBMOD ||
@@ -3149,7 +3118,6 @@ pager_set_pagehash(p);
                 State == PAGER.WRITER_DBMOD ||
                 State == PAGER.ERROR);
             Debug.Assert(assert_pager_state());
-
 
             // If a prior error occurred, report that error again.
             if (SysEx.NEVER(ErrorCode != 0)) return ErrorCode;
@@ -3175,13 +3143,13 @@ pager_set_pagehash(p);
                     if (list == null)
                     {
                         // Must have at least one page for the WAL commit flag. Ticket [2d1a5c67dfc2363e44f29d9bbd57f] 2011-05-18
-                        rc = Get(1, ref pageOne);
+                        rc = Acquire(1, ref pageOne, false);
                         list = pageOne;
                         list.Dirty = null;
                     }
                     Debug.Assert(rc == RC.OK);
-                    if (SysEx.ALWAYS(list))
-                        rc = pagerWalFrames(list, DBSize, 1);
+                    if (SysEx.ALWAYS(list != null))
+                        rc = pagerWalFrames(list, DBSize, true);
                     Unref(pageOne);
                     if (rc == RC.OK)
                         PCache.CleanAll();
@@ -3206,7 +3174,7 @@ pager_set_pagehash(p);
                     Debug.Assert(JournalFile.Opened ||
                         JournalMode == IPager.JOURNALMODE.OFF ||
                         JournalMode == IPager.JOURNALMODE.WAL);
-                    if (!master && JournalFile.Opened &&
+                    if (master == null && JournalFile.Opened &&
                         JournalOffset == jrnlBufferSize(this) &&
                         DBSize >= DBOrigSize &&
                         ((pg = PCache.DirtyList()) == null || pg.Dirty == null))
@@ -3214,13 +3182,13 @@ pager_set_pagehash(p);
                         // Update the db file change counter via the direct-write method. The following call will modify the in-memory representation of page 1 
                         // to include the updated change counter and then write page 1 directly to the database file. Because of the atomic-write 
                         // property of the host file-system, this is safe.
-                        rc = pager_incr_changecounter(this, true);
+                        rc = pager_incr_changecounter(true);
                     }
                     else
                     {
-                        rc = sqlite3JournalCreate(JournalFile);
+                        rc = VFile.JournalVFileCreate(JournalFile);
                         if (rc == RC.OK)
-                            rc = pager_incr_changecounter(this, false);
+                            rc = pager_incr_changecounter(false);
                     }
 #else
                     rc = pager_incr_changecounter(false);
@@ -3229,7 +3197,7 @@ pager_set_pagehash(p);
 
                     // Write the master journal name into the journal file. If a master journal file name has already been written to the journal file, 
                     // or if zMaster is NULL (no master journal), then this call is a no-op.
-                    rc = writeMasterJournal(pager, master);
+                    rc = writeMasterJournal(master);
                     if (rc != RC.OK) goto commit_phase_one_exit;
 
                     // Sync the journal file and write all dirty pages to the database. If the atomic-update optimization is being used, this sync will not 
@@ -3247,12 +3215,12 @@ pager_set_pagehash(p);
                         Debug.Assert(rc != RC.IOERR_BLOCKED);
                         goto commit_phase_one_exit;
                     }
-                    _pcache.CleanAll();
+                    PCache.CleanAll();
 
                     // If the file on disk is smaller than the database image, use pager_truncate to grow the file here. This can happen if the database
                     // image was extended as part of the current transaction and then the last page in the db image moved to the free-list. In this case the
                     // last page is never written out to disk, leaving the database file undersized. Fix this now if it is the case.
-                    if (DBSize != _DBFileSize)
+                    if (DBSize != DBFileSize)
                     {
                         var newID = (Pid)(DBSize - (DBSize == MJ_PID(this) ? 1 : 0));
                         Debug.Assert(State >= PAGER.WRITER_DBMOD);
@@ -3273,12 +3241,11 @@ pager_set_pagehash(p);
             return rc;
         }
 
-        // was:sqlite3PagerCommitPhaseTwo
         public RC CommitPhaseTwo()
         {
             // This routine should not be called if a prior error has occurred. But if (due to a coding error elsewhere in the system) it does get
             // called, just return the same error code without doing anything.
-            if (SysEx.NEVER(ErrorCode) != RC.OK) return ErrorCode;
+            if (SysEx.NEVER(ErrorCode != RC.OK)) return ErrorCode;
             Debug.Assert(State == PAGER.WRITER_LOCKED ||
                 State == PAGER.WRITER_FINISHED ||
                 (UseWal() && State == PAGER.WRITER_CACHEMOD));
@@ -3315,15 +3282,15 @@ pager_set_pagehash(p);
             var rc = RC.OK;
             if (UseWal())
             {
-                rc = Savepoint(SAVEPOINT.ROLLBACK, -1);
+                rc = Savepoint(IPager.SAVEPOINT.ROLLBACK, -1);
                 var rc2 = pager_end_transaction(SetMaster, false);
                 if (rc == RC.OK) rc = rc2;
             }
             else if (!JournalFile.Opened || State == PAGER.WRITER_LOCKED)
             {
-                var eState = _state;
+                var eState = State;
                 rc = pager_end_transaction(false, false);
-                if (_memoryDB && eState > PAGER.WRITER_LOCKED)
+                if (MemoryDB && eState > PAGER.WRITER_LOCKED)
                 {
                     // This can happen using journal_mode=off. Move the pager to the error state to indicate that the contents of the cache may not be trusted. Any active readers will get SQLITE_ABORT.
                     ErrorCode = RC.ABORT;
@@ -3334,7 +3301,7 @@ pager_set_pagehash(p);
             else
                 rc = pager_playback(false);
 
-            Debug.Assert(Sate == PAGER.READER || rc != RC.OK);
+            Debug.Assert(State == PAGER.READER || rc != RC.OK);
             Debug.Assert(rc == RC.OK || rc == RC.FULL || ((int)rc & 0xFF) == (int)RC.IOERR);
 
             // If an error occurs during a ROLLBACK, we can no longer trust the pager cache. So call pager_error() on the way out to make any error persistent.
@@ -3345,30 +3312,23 @@ pager_set_pagehash(p);
 
         #region Name4
 
-        // was:sqlite3PagerIsreadonly
-        public bool IsReadonly
+        public bool get_Readonly()
         {
-            get { return ReadOnly; }
+            return ReadOnly;
         }
 
-        // was:sqlite3PagerRefcount
-        public int RefCount
+        public int get_Refs()
         {
-            get { return PCache.get_Refs(); }
+            return PCache.get_Refs();
         }
 
-        // was:sqlite3PagerMemUsed
-        public int MemoryUsed
+        public int get_MemUsed()
         {
-            get
-            {
-                var perPageSize = PageSize + ExtraBytes + 20;
-                return perPageSize * PCache.get_Pages() + 0 + PageSize;
-            }
+            var perPageSize = PageSize + ExtraBytes + 20;
+            return perPageSize * PCache.get_Pages() + 0 + PageSize;
         }
 
-        // was:sqlite3PagerPageRefcount
-        public static int GetPageRefCount(IPage page)
+        public static int get_PageRefs(IPage page)
         {
             return PCache.get_PageRefs(page);
         }
@@ -3379,19 +3339,19 @@ pager_set_pagehash(p);
             var a = new int[11];
             a[0] = PCache.get_Refs();
             a[1] = PCache.get_Pages();
-            a[2] = PCache.get_Cachesize();
-            a[3] = State == (PAGER.OPEN ? -1 : (int)pager->DBSize);
-            a[4] = State;
-            a[5] = ErrorCode;
-            a[6] = Stats[STAT.HIT];
-            a[7] = Stats[STAT.MISS];
+            a[2] = (int)PCache.get_CacheSize();
+            a[3] = (State == PAGER.OPEN ? -1 : (int)DBSize);
+            a[4] = (int)State;
+            a[5] = (int)ErrorCode;
+            a[6] = Stats[(int)STAT.HIT];
+            a[7] = Stats[(int)STAT.MISS];
             a[8] = 0;  // Used to be pager->nOvfl
             a[9] = Reads;
-            a[10] = Stats[STAT.WRITE];
+            a[10] = Stats[(int)STAT.WRITE];
             return a;
         }
 #endif
-        void sqlite3PagerCacheStat(int dbStatus, bool reset, ref int value)
+        public void CacheStat(int dbStatus, bool reset, ref int value)
         {
             //Debug.Assert(dbStatus == DBSTATUS::CACHE_HIT ||
             //    dbStatus == DBSTATUS::CACHE_MISS ||
@@ -3407,13 +3367,11 @@ pager_set_pagehash(p);
             //    Stats[dbStatus - DBSTATUS::CACHE_HIT] = 0;
         }
 
-        // was:sqlite3PagerIsMemdb
-        public bool IsMemoryDB
+        public bool get_MemoryDB
         {
             get { return MemoryDB; }
         }
 
-        // was:sqlite3PagerOpenSavepoint
         public RC OpenSavepoint(int savepoints)
         {
             Debug.Assert(State >= PAGER.WRITER_LOCKED);
@@ -3429,7 +3387,7 @@ pager_set_pagehash(p);
                 var newSavepoints = Savepoints;
 
                 // Populate the PagerSavepoint structures just allocated.
-                for (var ii = currentSavepoints; ii < nSavepoint; ii++)
+                for (var ii = currentSavepoints; ii < Savepoints.Length; ii++)
                 {
                     newSavepoints[ii] = new PagerSavepoint();
                     newSavepoints[ii].Orig = DBSize;
@@ -3437,7 +3395,7 @@ pager_set_pagehash(p);
                     newSavepoints[ii].SubRecords = SubRecords;
                     newSavepoints[ii].InSavepoint = new Bitvec(DBSize);
                     if (UseWal())
-                        Wal.Savepoint(newSavepoints[ii].aWalData);
+                        Wal.Savepoint(newSavepoints[ii].WalData);
                     var savepointsLength = ii + 1;
                     if (Savepoints.Length != savepointsLength)
                     {
@@ -3452,23 +3410,22 @@ pager_set_pagehash(p);
             return rc;
         }
 
-        // was:sqlite3PagerSavepoint
-        public RC Savepoint(SAVEPOINT op, int savepoints)
+        public RC Savepoint(IPager.SAVEPOINT op, int savepoints)
         {
-            Debug.Assert(op == SAVEPOINT.RELEASE || op == SAVEPOINT.ROLLBACK);
-            Debug.Assert(savepoints >= 0 || op == SAVEPOINT.ROLLBACK);
+            Debug.Assert(op == IPager.SAVEPOINT.RELEASE || op == IPager.SAVEPOINT.ROLLBACK);
+            Debug.Assert(savepoints >= 0 || op == IPager.SAVEPOINT.ROLLBACK);
             var rc = ErrorCode;
             if (rc == RC.OK && savepoints < Savepoints.Length)
             {
                 // Figure out how many savepoints will still be active after this operation. Store this value in nNew. Then free resources associated 
                 // with any savepoints that are destroyed by this operation.
-                var newLength = savepoints + ((op == SAVEPOINT.RELEASE) ? 0 : 1); // Number of remaining savepoints after this op.
+                var newLength = savepoints + ((op == IPager.SAVEPOINT.RELEASE) ? 0 : 1); // Number of remaining savepoints after this op.
                 for (var ii = newLength; ii < Savepoints.Length; ii++)
                     Bitvec.Destroy(ref Savepoints[ii].InSavepoint);
                 //SavepointLength = newLength;
 
                 // If this is a release of the outermost savepoint, truncate the sub-journal to zero bytes in size.
-                if (op == SAVEPOINT.RELEASE)
+                if (op == IPager.SAVEPOINT.RELEASE)
                     if (newLength == 0 && SubJournalFile.Opened)
                     {
                         // Only truncate if it is an in-memory sub-journal.
@@ -3483,7 +3440,7 @@ pager_set_pagehash(p);
                     // not yet been opened. In this case there have been no changes to the database file, so the playback operation can be skipped.
                     else if (UseWal() || JournalFile.Opened)
                     {
-                        var savepoint = (newLength == 0 ? (PagerSavepoint)null : Savepoint[newLength - 1]);
+                        var savepoint = (newLength == 0 ? (PagerSavepoint)null : Savepoints[newLength - 1]);
                         rc = pagerPlaybackSavepoint(savepoint);
                         Debug.Assert(rc != RC.DONE);
                     }
@@ -3491,35 +3448,35 @@ pager_set_pagehash(p);
             return rc;
         }
 
-        public string sqlite3PagerFilename(bool nullIfMemDb)
+        public string get_Filename(bool nullIfMemDb)
         {
             return (nullIfMemDb && MemoryDB ? string.Empty : Filename);
         }
 
-        public VFileSystem sqlite3PagerVfs
+        public VFileSystem get_Vfs()
         {
-            get { return Vfs; }
+            return Vfs;
         }
 
-        public VFile sqlite3PagerFile
+        public VFile get_File()
         {
-            get { return File; }
+            return File;
         }
 
-        public string sqlite3PagerJournalname
+        public string get_Journalname()
         {
-            get { return Journal; }
+            return Journal;
         }
 
-        public bool sqlite3PagerNosync
+        public bool get_NoSync()
         {
-            get { return NoSync; }
+            return NoSync;
         }
 
 #if HAS_CODEC
         public void sqlite3PagerSetCodec(Func<object, object, Pid, int, object> codec, Action<object, int, int> codecSizeChange, Action<object> codecFree, object codecArg)
         {
-            if (CodecFree != null) CodecFree(ref Codec);
+            if (CodecFree != null) CodecFree(Codec);
             Codec = (MemoryDB ? null : codec);
             CodecSizeChange = codecSizeChange;
             CodecFree = codecFree;
@@ -3527,11 +3484,14 @@ pager_set_pagehash(p);
             pagerReportSize();
         }
 
-        public object sqlite3PagerGetCodec() { return Codec; }
+        public object sqlite3PagerGetCodec()
+        {
+            return Codec;
+        }
 #endif
 
 #if !OMIT_AUTOVACUUM
-        public RC sqlite3PagerMovepage(IPage pg, Pid pgno, bool isCommit)
+        public RC Movepage(IPage pg, Pid id, bool isCommit)
         {
             Debug.Assert(pg.Refs > 0);
             Debug.Assert(State == PAGER.WRITER_CACHEMOD ||
@@ -3540,7 +3500,7 @@ pager_set_pagehash(p);
 
             // In order to be able to rollback, an in-memory database must journal the page we are moving from.
             var rc = RC.OK;
-            if (!_memoryDB)
+            if (!MemoryDB)
             {
                 rc = Write(pg);
                 if (rc != RC.OK) return rc;
@@ -3565,7 +3525,7 @@ pager_set_pagehash(p);
                 (rc = subjournalPage(pg)) != RC.OK)
                 return rc;
 
-            PAGERTRACE("MOVE {0} page {1} (needSync={2}) moves to {3}", PAGERID(this), pg.ID, (pg.Flags & PgHdr.PGHDR.NEED_SYNC != 0 ? 1 : 0), id);
+            PAGERTRACE("MOVE {0} page {1} (needSync={2}) moves to {3}", PAGERID(this), pg.ID, ((pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0 ? 1 : 0), id);
             Console.WriteLine("MOVE {0} {1} {2}", GetHashCode(), pg.ID, id);
 
             // If the journal needs to be sync()ed before page pPg->pgno can be written to, store pPg->pgno in local variable needSyncPgno.
@@ -3575,9 +3535,9 @@ pager_set_pagehash(p);
             Pid needSyncID = 0; // Old value of pPg.pgno, if sync is required
             if (((pg.Flags & PgHdr.PGHDR.NEED_SYNC) != 0) && !isCommit)
             {
-                needSyncID = pPg.ID;
+                needSyncID = pg.ID;
                 Debug.Assert(JournalMode == IPager.JOURNALMODE.OFF || pageInJournal(pg) || pg.ID > DBOrigSize);
-                Debug.Assert((pPg.Flags & PgHdr.PGHDR.DIRTY) != 0);
+                Debug.Assert((pg.Flags & PgHdr.PGHDR.DIRTY) != 0);
             }
 
             // If the cache contains a page with page-number pgno, remove it from its hash chain. Also, if the PGHDR_NEED_SYNC flag was set for 
@@ -3603,12 +3563,12 @@ pager_set_pagehash(p);
             // as the original page since it has already been allocated.
             if (!MemoryDB)
             {
-                Debug.Assert(pgOld);
+                Debug.Assert(pgOld != null);
                 PCache.Move(pgOld, origID);
                 Unref(pgOld);
             }
 
-            if (needSyncID)
+            if (needSyncID != 0)
             {
                 // If needSyncPgno is non-zero, then the journal file needs to be sync()ed before any data is written to database file page needSyncPgno.
                 // Currently, no such page exists in the page-cache and the "is journaled" bitvec flag has been set. This needs to be remedied by
@@ -3618,13 +3578,13 @@ pager_set_pagehash(p);
                 // array. Otherwise, if the page is loaded and written again in this transaction, it may be written to the database file before
                 // it is synced into the journal file. This way, it may end up in the journal file twice, but that is not a problem.
                 PgHdr pgHdr = null;
-                rc = Get(needSyncID, ref pgHdr);
+                rc = Acquire(needSyncID, ref pgHdr, false);
                 if (rc != RC.OK)
                 {
                     if (needSyncID <= DBOrigSize)
                     {
-                        Debug.Assert(TempSpace != null);
-                        var temp = new uint[TempSpace.Length];
+                        //Debug.Assert(TmpSpace != null);
+                        var temp = new uint[TmpSpace.Length];
                         InJournal.Clear(needSyncID, temp);
                     }
                     return rc;
@@ -3637,18 +3597,18 @@ pager_set_pagehash(p);
         }
 #endif
 
-        public static byte[] sqlite3PagerGetData(IPage pg)
+        public static byte[] GetData(IPage pg)
         {
             Debug.Assert(pg.Refs > 0 || pg.Pager.MemoryDB);
             return pg.Data;
         }
 
-        public static T sqlite3PagerGetExtra<T>(IPage pg)
+        public static T GetData<T>(IPage pg)
         {
             return (T)pg.Extra;
         }
 
-        public bool sqlite3PagerLockingMode(IPager.LOCKINGMODE mode)
+        public bool LockingMode(IPager.LOCKINGMODE mode)
         {
             Debug.Assert(mode == IPager.LOCKINGMODE.QUERY ||
                 mode == IPager.LOCKINGMODE.NORMAL ||
@@ -3661,7 +3621,7 @@ pager_set_pagehash(p);
             return ExclusiveMode;
         }
 
-        public IPager.JOURNALMODE sqlite3PagerSetJournalMode(IPager.JOURNALMODE mode)
+        public IPager.JOURNALMODE SetJournalMode(IPager.JOURNALMODE mode)
         {
 #if DEBUG
             // The print_pager_state() routine is intended to be used by the debugger only.  We invoke it once here to suppress a compiler warning. */
@@ -3740,12 +3700,12 @@ pager_set_pagehash(p);
             return JournalMode;
         }
 
-        public IPager.JOURNALMODE sqlite3PagerGetJournalMode()
+        public IPager.JOURNALMODE GetJournalMode()
         {
             return JournalMode;
         }
 
-        private bool sqlite3PagerOkToChangeJournalMode()
+        private bool OkToChangeJournalMode()
         {
             Debug.Assert(assert_pager_state());
             if (State >= PAGER.WRITER_CACHEMOD) return false;
@@ -3757,18 +3717,18 @@ pager_set_pagehash(p);
             if (limit >= -1)
             {
                 JournalSizeLimit = limit;
-                Wal_Limit(Wal, limit);
+                Wal.Limit(limit);
             }
             return JournalSizeLimit;
         }
 
-        public IBackup sqlite3PagerBackupPtr()
+        public IBackup BackupPtr()
         {
             return Backup;
         }
 
 #if !OMIT_VACUUM
-        void sqlite3PagerClearCache()
+        void ClearCache()
         {
             if (!MemoryDB && !TempFile)
                 pager_reset();
@@ -3780,12 +3740,12 @@ pager_set_pagehash(p);
         #region Wal
 #if !OMIT_WAL
 
-        RC sqlite3PagerCheckpoint(Pager pager, int mode, ref int logs, ref int checkpoints)
+        public RC Checkpoint(int mode, ref int logs, ref int checkpoints)
         {
             var rc = RC.OK;
-            if (pager.Wal)
+            if (Wal)
             {
-                rc = sqlite3WalCheckpoint(pager.Wal, mode,
+                rc = Wal.Checkpoint(mode,
                 pager.BusyHandler, pager.BusyHandlerArg,
                 pager.CheckpointSyncFlags, pager.PageSize, pager.TmpSpace,
                 logs, checkpoints);
@@ -3793,12 +3753,12 @@ pager_set_pagehash(p);
             return rc;
         }
 
-        RC sqlite3PagerWalCallback(Pager pPager)
+        public RC WalCallback()
         {
-            return sqlite3WalCallback(pager.Wal);
+            return Wal.Callback();
         }
 
-        bool sqlite3PagerWalSupported(Pager pager)
+        public bool WalSupported()
         {
             return false;
             //const sqlite3_io_methods* pMethods = pPager.fd->pMethods;
@@ -3832,60 +3792,59 @@ pager_set_pagehash(p);
             return rc;
         }
 
-        RC sqlite3PagerOpenWal(Pager pager, out bool open)
+        public RC OpenWal(out bool opened)
         {
-            Debug.Assert(assert_pager_state(pager));
-            Debug.Assert(pager.State == PAGER.OPEN || open);
-            Debug.Assert(pager.State == PAGER.READER || !open);
-            Debug.Assert(open == false);
-            Debug.Assert(!pager.TempFile && !pager.Wal);
+            Debug.Assert(assert_pager_state(this));
+            Debug.Assert(State == PAGER.OPEN || opened);
+            Debug.Assert(State == PAGER.READER || !opened);
+            Debug.Assert((TempFile == null && Wal == null));
 
             var rc = RC.OK;
-            if (!pager.TempFile && pager.Wal == null)
+            if (!TempFile && Wal == null)
             {
-                if (!sqlite3PagerWalSupported(pager)) return RC.CANTOPEN;
+                if (!WalSupported()) return RC.CANTOPEN;
 
                 // Close any rollback journal previously open
-                pager.JournalFile.Close();
+                JournalFile.Close();
 
-                rc = pagerOpenWal(pager);
+                rc = pagerOpenWal(this);
                 if (rc == RC.OK)
                 {
-                    pager.JournalMode = IPager.JOURNALMODE.WAL;
-                    pager.State = PAGER.OPEN;
+                    JournalMode = IPager.JOURNALMODE.WAL;
+                    State = PAGER.OPEN;
                 }
             }
             else
-                open = true;
+                opened = true;
 
             return rc;
         }
 
-        RC sqlite3PagerCloseWal(Pager pager)
+        public RC CloseWal()
         {
-            Debug.Assert(pager.JournalMode == IPager.JOURNALMODE.WAL);
+            Debug.Assert(JournalMode == IPager.JOURNALMODE.WAL);
 
             // If the log file is not already open, but does exist in the file-system, it may need to be checkpointed before the connection can switch to
             // rollback mode. Open it now so this can happen.
             var rc = RC.OK;
-            if (pager.Wal == null)
+            if (Wal == null)
             {
-                rc = pagerLockDb(pager, VFile.LOCK.SHARED);
+                rc = pagerLockDb(this, VFile.LOCK.SHARED);
                 int logexists = 0;
                 if (rc == RC.OK)
-                    rc = pager.Vfs.Access(pager.WalName, VFileSystem.ACCESS.EXISTS, out logexists);
+                    rc = Vfs.Access(WalName, VFileSystem.ACCESS.EXISTS, out logexists);
                 if (rc == RC.OK && logexists)
-                    rc = pagerOpenWal(pager);
+                    rc = pagerOpenWal(this);
             }
 
             // Checkpoint and close the log. Because an EXCLUSIVE lock is held on the database file, the log and log-summary files will be deleted.
-            if (rc == RC.OK && pager.Wal)
+            if (rc == RC.OK && Wal != null)
             {
-                rc = pagerExclusiveLock(pager);
+                rc = pagerExclusiveLock(this);
                 if (rc == RC.OK)
                 {
-                    rc = sqlite3WalClose(pager.Wal, pager.CheckpointSyncFlags, pager.PageSize, pager.TmpSpace);
-                    pager.Wal = null;
+                    rc = Wal.Close(CheckpointSyncFlags, PageSize, TmpSpace);
+                    Wal = null;
                 }
             }
             return rc;
@@ -3897,18 +3856,18 @@ pager_set_pagehash(p);
         #region Misc
 
 #if ENABLE_ZIPVFS
-		int sqlite3PagerWalFramesize(Pager pager)
+		int WalFramesize()
 		{
-			Debug.Asset(pager.State == PAGER.READER);
-			return sqlite3WalFramesize(pager.Wal);
+			Debug.Asset(State == PAGER.READER);
+			return Wal.Frames();
 		}
 #endif
 
 #if HAS_CODEC
-        void sqlite3PagerCodec(PgHdr pg)
+        public byte[] get_Codec(PgHdr pg)
         {
             byte[] data = null;
-            if (CODEC2(pg.Pager, pg.Data, pg.ID, 6, data)) return 0;
+            if (CODEC2(ref data, pg.Pager, pg.Data, pg.ID, 6)) return null;
             return data;
         }
 #endif

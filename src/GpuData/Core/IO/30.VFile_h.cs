@@ -93,28 +93,27 @@ namespace Core.IO
             SHM_MAX = 8,
         };
 
-        protected ulong _sectorSize;        // Sector size of the device file is on
-        private byte Type;
+        public byte Type;
         public bool Opened;
-        public VFileSystem Vfs;        // The VFS used to open this file
-        public FileStream S;           // Filestream access to this file
-        // public HANDLE H;             // Handle for accessing the file
-        public LOCK LockType;            // Type of lock currently held on this file
-        public int SharedLockByte;      // Randomly chosen byte used as a shared lock
-        public ulong LastErrorID;         // The Windows errno from the last I/O error
-        public object Shm;             // DUMMY Instance of shared memory on this file
-        public string Path;            // Full pathname of this file
-        public int Chunk;             // Chunk size configured by FCNTL_CHUNK_SIZE
+        //public VFileSystem Vfs;        // The VFS used to open this file
+        //public FileStream S;           // Filestream access to this file
+        //// public HANDLE H;             // Handle for accessing the file
+        //public LOCK LockType;            // Type of lock currently held on this file
+        //public int SharedLockByte;      // Randomly chosen byte used as a shared lock
+        //public ulong LastErrorID;         // The Windows errno from the last I/O error
+        //public object Shm;             // DUMMY Instance of shared memory on this file
+        //public string Path;            // Full pathname of this file
+        //public int Chunk;             // Chunk size configured by FCNTL_CHUNK_SIZE
 
         // For C#
-        public void memset()
-        {
-            S = null;
-            LockType = 0;
-            SharedLockByte = 0;
-            LastErrorID = 0;
-            _sectorSize = 0;
-        }
+        //public void memset()
+        //{
+        //    S = null;
+        //    LockType = 0;
+        //    SharedLockByte = 0;
+        //    LastErrorID = 0;
+        //    _sectorSize = 0;
+        //}
 
         public abstract RC Read(byte[] buffer, int amount, long offset);
         public abstract RC Write(byte[] buffer, int amount, long offset);
@@ -127,17 +126,8 @@ namespace Core.IO
         public virtual RC CheckReservedLock(ref int outRC) { return RC.OK; }
         public virtual RC FileControl(FCNTL op, ref long arg) { return RC.NOTFOUND; }
 
-        public virtual uint SectorSize
-        {
-            get { return (uint)_sectorSize; }
-            set { _sectorSize = value; }
-        }
-
-        public virtual IOCAP get_DeviceCharacteristics()
-        {
-            return 0;
-        }
-
+        public virtual uint SectorSize() { return 0; }
+        public virtual IOCAP get_DeviceCharacteristics() { return 0; }
         public virtual RC ShmLock(int offset, int n, SHM flags) { return RC.OK; }
         public virtual void ShmBarrier() { }
         public virtual RC ShmUnmap(int deleteFlag) { return RC.OK; }
@@ -166,14 +156,56 @@ namespace Core.IO
             return Write(ac, 4, offset);
         }
 
-		public static bool IsMemoryVFile(VFile file)
-		{
-			return true;
-		}
-
-		public static void MemoryVFileOpen(ref VFile file)
-		{
-            file.memset();
-		}
+        // extensions
+#if ENABLE_ATOMIC_WRITE
+        internal static RC JournalVFileOpen(VFileSystem vfs, string name, ref VFile file, VFileSystem.OPEN flags, int bufferLength)
+        {
+            var p = new JournalVFile();
+            if (bufferLength > 0)
+                p.Buffer = SysEx.Alloc(bufferLength, true);
+            else
+            {
+                VFileSystem.OPEN dummy;
+                return vfs.Open(name, p, flags, out dummy);
+            }
+            p.Type = 2;
+            p.BufferLength = bufferLength;
+            p.Flags = flags;
+            p.Journal = name;
+            p.Vfs = vfs;
+            file = p;
+            return RC.OK;
+        }
+        internal static int JournalVFileSize(VFileSystem vfs)
+        {
+            return 0;
+        }
+        internal static RC JournalVFileCreate(VFile file)
+        {
+            if (file.Type != 2)
+                return RC.OK;
+            return ((JournalVFile)file).CreateFile();
+        }
+        internal static bool HasJournalVFile(VFile file)
+        {
+            return (file.Type != 2 || ((JournalVFile)file).Real != null);
+        }
+#else
+		internal static int JournalVFileSize(VFileSystem vfs) { return vfs.SizeOsFile; }
+		internal bool HasJournalVFile(VFile file) { return true; }
+#endif
+        internal static void MemoryVFileOpen(ref VFile file)
+        {
+            file = new MemoryVFile();
+            file.Type = 1;
+        }
+        internal static bool HasMemoryVFile(VFile file)
+        {
+            return (file.Type == 1);
+        }
+        internal static int MemoryVFileSize()
+        {
+            return 0;
+        }
     }
 }

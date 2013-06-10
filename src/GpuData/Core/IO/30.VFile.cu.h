@@ -137,7 +137,6 @@ namespace Core
 		__device__ static void MemoryVFileOpen(VFile *file);
 		__device__ static bool HasMemoryVFile(VFile *file);
 		__device__ static int MemoryVFileSize() ;
-
 	};
 
 	VFile::SYNC inline operator |= (VFile::SYNC a, VFile::SYNC b) { return (VFile::SYNC)(a | b); }

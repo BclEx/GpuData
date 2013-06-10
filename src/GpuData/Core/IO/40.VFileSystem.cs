@@ -44,13 +44,13 @@ namespace Core.IO
 
         static VFileSystem()
         {
-            RegisterVfs(new CoreVFileSystem(), true);
+            //RegisterVfs(new CoreVFileSystem(), true);
         }
 
         public void CopyTo(VFileSystem ct)
         {
-            //ct.szOsFile = this.szOsFile;
-            //ct.mxPathname = this.mxPathname;
+            ct.SizeOsFile = this.SizeOsFile;
+            ct.MaxPathname = this.MaxPathname;
             ct.Next = this.Next;
             ct.Name = this.Name;
             ct.Tag = this.Tag;

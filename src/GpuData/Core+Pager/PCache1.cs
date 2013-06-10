@@ -237,12 +237,12 @@ namespace Core
             }
         }
 
-        private static PgHdr PCache_PageAlloc(int size)
+        public static PgHdr PageAlloc(int size)
         {
             return Alloc(size);
         }
 
-        public static void PCache_PageFree(ref byte[] p)
+        public static void PageFree(ref byte[] p)
         {
             if (p != null)
             {
@@ -250,15 +250,15 @@ namespace Core
                 p = null;
             }
         }
-        public static void PCache_PageFree(ref PgHdr p)
+        public static void PageFree(ref PgHdr p)
         {
             Free(ref p);
         }
 
-        //private bool UnderMemoryPressure()
-        //{
-        //    return (_pcache1.Slots != 0 && SizePage <= _pcache1.SizeSlot ? _pcache1.UnderPressure : SysEx.HeapNearlyFull());
-        //}
+        private bool UnderMemoryPressure()
+        {
+            return (_pcache1.Slots != 0 && SizePage <= _pcache1.SizeSlot ? _pcache1.UnderPressure : SysEx.HeapNearlyFull());
+        }
 
         #endregion
 

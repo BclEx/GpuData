@@ -13,18 +13,18 @@ namespace GpuData
             //Console.ReadKey();
         }
 
-        private static void TestVFS()
-        {
-            var vfs = VFileSystem.FindVfs("win32");
-            if (vfs == null)
-                throw new InvalidOperationException();
-            var file = new CoreVFile();
-            VFileSystem.OPEN flagOut;
-            var rc = vfs.Open(@"Test", file, VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.MAIN_DB, out flagOut);
-            if (rc != RC.OK)
-                throw new InvalidOperationException();
-            file.Close();
-        }
+        //private static void TestVFS()
+        //{
+        //    var vfs = VFileSystem.FindVfs("win32");
+        //    if (vfs == null)
+        //        throw new InvalidOperationException();
+        //    var file = new CoreVFile();
+        //    VFileSystem.OPEN flagOut;
+        //    var rc = vfs.Open(@"Test", file, VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.MAIN_DB, out flagOut);
+        //    if (rc != RC.OK)
+        //        throw new InvalidOperationException();
+        //    file.Close();
+        //}
 
         //private static void TestPager()
         //{

@@ -21,7 +21,7 @@ namespace Core
 
         #endregion
 
-        const int VERSION_NUMBER = 3007016;
+        internal const int VERSION_NUMBER = 3007016;
 
         internal static RC OSError(RC rc, string func, string path)
         {

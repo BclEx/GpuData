@@ -104,7 +104,7 @@ namespace Core
         //    return 4;
         //}
 
-        public void Open(int sizePage, int sizeExtra, bool purgeable, Func<object, PgHdr, RC> stress, object stressArg, PCache p)
+        public static void Open(int sizePage, int sizeExtra, bool purgeable, Func<object, PgHdr, RC> stress, object stressArg, PCache p)
         {
             p.memset();
             p.SizePage = sizePage;
@@ -127,11 +127,11 @@ namespace Core
             SizePage = sizePage;
         }
 
-        private static uint NumberOfCachePages(PCache p)
+        public uint get_CacheSize() // NumberOfCachePages
         {
-            if (p.SizeCache >= 0)
-                return (uint)p.SizeCache;
-            return (uint)((-1024 * (long)p.SizeCache) / (p.SizePage + p.SizeExtra));
+            if (SizeCache >= 0)
+                return (uint)SizeCache;
+            return (uint)((-1024 * (long)SizeCache) / (SizePage + SizeExtra));
         }
 
         public RC Fetch(Pid id, bool createFlag, out PgHdr pageOut)
@@ -141,13 +141,13 @@ namespace Core
             if (Cache == null && createFlag)
             {
                 var p = _pcache.Create(SizePage, SizeExtra + 0, Purgeable);
-                p.Cachesize(NumberOfCachePages(this));
+                p.Cachesize(get_CacheSize());
                 Cache = p;
             }
             ICachePage page = null;
             var create = (createFlag ? 1 : 0) * (1 + ((!Purgeable || Dirty == null) ? 1 : 0));
             if (Cache != null)
-                page = Cache.Fetch(id, create);
+                page = Cache.Fetch(id, create > 0);
             if (page == null && create == 1)
             {
                 // Find a dirty page to write-out and recycle. First try to find a page that does not require a journal-sync (one with PGHDR_NEED_SYNC
@@ -172,7 +172,7 @@ namespace Core
                         return rc;
                     }
                 }
-                page = Cache.Fetch(id, 2);
+                page = Cache.Fetch(id, true);
             }
             PgHdr pgHdr = null;
             if (page != null)
@@ -409,11 +409,11 @@ namespace Core
             return (Cache != null ? Cache.get_Pages() : 0);
         }
 
-        public void SetCachesize(int maxPage)
+        public void set_CacheSize(int maxPage)
         {
             SizeCache = maxPage;
             if (Cache != null)
-                Cache.Cachesize(NumberOfCachePages(this));
+                Cache.Cachesize(get_CacheSize());
         }
 
         public void Shrink()
@@ -435,12 +435,6 @@ namespace Core
 
         #region Test
 #if TEST
-
-        public static uint PCache_testGetCachesize(PCache cache)
-        {
-            return NumberOfCachePages(cache);
-        }
-
 #endif
         #endregion
     }

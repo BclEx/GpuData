@@ -7,9 +7,6 @@ namespace Core
 {
     public partial class IPager
     {
-        // sqliteLimit.h
-        const int MAX_PAGE_SIZE = 65535;
-
         // NOTE: These values must match the corresponding BTREE_ values in btree.h.
         [Flags]
         public enum PAGEROPEN : byte
@@ -56,6 +53,9 @@ namespace Core
 
     public partial class Pager
     {
+        // sqliteLimit.h
+        const int MAX_PAGE_SIZE = 65535;
+
         enum PAGER : byte
         {
             OPEN = 0,
@@ -86,8 +86,8 @@ namespace Core
         VFile.LOCK Lock;             // Current lock held on database file 
         bool ChangeCountDone;        // Set after incrementing the change-counter 
         bool SetMaster;              // True if a m-j name has been written to jrnl 
-        bool DoNotSpill;             // Do not spill the cache when non-zero 
-        bool DoNotSyncSpill;         // Do not do a spill that requires jrnl sync 
+        byte DoNotSpill;             // Do not spill the cache when non-zero 
+        byte DoNotSyncSpill;         // Do not do a spill that requires jrnl sync 
         bool SubjInMemory;           // True to use in-memory sub-journals 
         Pid DBSize;                  // Number of pages in the database 
         Pid DBOrigSize;              // dbSize before the current transaction 

@@ -170,7 +170,7 @@ namespace Core
 				if (rc != RC::OK && rc != RC::BUSY)
 					return rc;
 			}
-			page = Cache->Fetch(id, 2);
+			page = Cache->Fetch(id, true);
 		}
 		PgHdr *pgHdr = nullptr;
 		if (page)
