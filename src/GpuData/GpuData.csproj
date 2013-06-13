@@ -56,6 +56,7 @@
     <Compile Include="Core+Btree\Btree.cs" />
     <Compile Include="Core+Btree\BtreeInt_h.cs" />
     <Compile Include="Core+Btree\Btree_h.cs" />
+    <Compile Include="Core+Btree\Context_h.cs" />
     <Compile Include="Core+Btree\Core+Btree_h.cs" />
     <Compile Include="Core+Pager\Wal_h.cs" />
     <Compile Include="Core+Pager\Core+Pager_h.cs" />

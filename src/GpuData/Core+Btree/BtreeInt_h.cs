@@ -73,21 +73,21 @@ namespace Core
 
         const int EXTRA_SIZE = 0; // No used in C#, since we use create a class; was MemPage.Length;
 
-        public class BtLock
-        {
-            Btree Btree;            // Btree handle holding this lock
-            Pid Table;              // Root page of table
-            byte Lock;              // READ_LOCK or WRITE_LOCK
-            BtLock Next;            // Next in BtShared.pLock list
-        }
-
-        enum LOCK : byte
+        public enum LOCK : byte
         {
             READ = 1,
             WRITE = 2,
         }
 
-        enum TRANS : byte
+        public class BtLock
+        {
+            public Btree Btree;            // Btree handle holding this lock
+            public Pid Table;              // Root page of table
+            public LOCK Lock;              // READ_LOCK or WRITE_LOCK
+            public BtLock Next;            // Next in BtShared.pLock list
+        }
+
+        public enum TRANS : byte
         {
             NONE = 0,
             READ = 1,
@@ -96,9 +96,9 @@ namespace Core
 
         public class Btree
         {
-            public object db;       // The database connection holding this Btree
+            public Context Ctx;     // The database connection holding this Btree
             public BtShared Bt;     // Sharable content of this Btree
-            public TRANS InTrans;    // TRANS_NONE, TRANS_READ or TRANS_WRITE
+            public TRANS InTrans;   // TRANS_NONE, TRANS_READ or TRANS_WRITE
             public bool Sharable;   // True if we can share pBt with another db
             public bool Locked;     // True if db currently has pBt locked
             public int WantToLock;  // Number of nested calls to sqlite3BtreeEnter()
@@ -106,7 +106,7 @@ namespace Core
             public Btree Next;      // List of other sharable Btrees from the same db
             public Btree Prev;      // Back pointer of the same list
 #if !OMIT_SHARED_CACHE
-            BtLock Lock;            // Object used to lock page 1
+            public BtLock Lock;     // Object used to lock page 1
 #endif
         }
 
@@ -123,42 +123,41 @@ namespace Core
 
         public class BtShared
         {
-            public Pager pPager;            // The page cache
-            public object db;               // Database connection currently using this Btree
-            public BtCursor pCursor;        // A list of all open cursors
-            public MemPage pPage1;          // First page of the database
-            public bool readOnly;           // True if the underlying file is readonly
-            public bool pageSizeFixed;      // True if the page size can no longer be changed
-            public bool secureDelete;       // True if secure_delete is enabled
-            public bool initiallyEmpty;     // Database is empty at start of transaction
-            public byte openFlags;            // Flags to sqlite3BtreeOpen()
+            public Pager Pager;             // The page cache
+            public Context Ctx;             // Database connection currently using this Btree
+            public BtCursor Cursor;         // A list of all open cursors
+            public MemPage Page1;           // First page of the database
+            //public bool ReadOnly;           // True if the underlying file is readonly
+            //public bool PageSizeFixed;      // True if the page size can no longer be changed
+            //public bool SecureDelete;       // True if secure_delete is enabled
+            //public bool InitiallyEmpty;     // Database is empty at start of transaction
+            public byte OpenFlags;          // Flags to sqlite3BtreeOpen()
 #if !OMIT_AUTOVACUUM
-            public bool autoVacuum;         // True if auto-vacuum is enabled
-            public bool incrVacuum;         // True if incr-vacuum is enabled
+            public bool AutoVacuum;         // True if auto-vacuum is enabled
+            public bool IncrVacuum;         // True if incr-vacuum is enabled
 #endif
-            public byte inTransaction;        // Transaction state */
-            public bool doNotUseWAL;        // If true, do not open write-ahead-log file
-            public ushort maxLocal;            // Maximum local payload in non-LEAFDATA tables
-            public ushort minLocal;            // Minimum local payload in non-LEAFDATA tables
-            public ushort maxLeaf;             // Maximum local payload in a LEAFDATA table
-            public ushort minLeaf;             // Minimum local payload in a LEAFDATA table
-            public uint pageSize;            // Total number of bytes on a page
-            public uint usableSize;          // Number of usable bytes on each page
-            public int nTransaction;        // Number of open transactions (read + write)
-            public Pid nPage;              // Number of pages in the database
-            public Schema pSchema;          // Pointer to space allocated by sqlite3BtreeSchema()
-            public dxFreeSchema xFreeSchema;// Destructor for BtShared.pSchema
-            public MutexEx mutex;     // Non-recursive mutex required to access this object
-            public Bitvec pHasContent;      // Set of pages moved to free-list this transaction
-#if !SQLITE_OMIT_SHARED_CACHE
-            public int nRef;                // Number of references to this structure
-            public BtShared pNext;          // Next on a list of sharable BtShared structs
-            public BtLock pLock;            // List of locks held on this shared-btree struct
-            public Btree pWriter;           // Btree with currently open write transaction
-            public byte isExclusive;          // True if pWriter has an EXCLUSIVE lock on the db
-            public byte isPending;            // If waiting for read-locks to clear
+            public TRANS InTransaction;      // Transaction state
+            //public bool DoNotUseWAL;        // If true, do not open write-ahead-log file
+            public BTS BtsFlags;			// Boolean parameters.  See BTS_* macros below
+            public ushort MaxLocal;         // Maximum local payload in non-LEAFDATA tables
+            public ushort MinLocal;         // Minimum local payload in non-LEAFDATA tables
+            public ushort MaxLeaf;          // Maximum local payload in a LEAFDATA table
+            public ushort MinLeaf;          // Minimum local payload in a LEAFDATA table
+            public uint PageSize;           // Total number of bytes on a page
+            public uint UsableSize;         // Number of usable bytes on each page
+            public int Transactions;        // Number of open transactions (read + write)
+            public Pid Pages;               // Number of pages in the database
+            public Schema Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
+            public dxFreeSchema FreeSchema; // Destructor for BtShared.pSchema
+            public MutexEx Mutex;           // Non-recursive mutex required to access this object
+            public Bitvec HasContent;       // Set of pages moved to free-list this transaction
+#if !OMIT_SHARED_CACHE
+            public int Refs;                // Number of references to this structure
+            public BtShared Next;           // Next on a list of sharable BtShared structs
+            public BtLock Lock;             // List of locks held on this shared-btree struct
+            public Btree Writer;            // Btree with currently open write transaction
 #endif
-            public byte[] pTmpSpace;        // BtShared.pageSize bytes of space for tmp use
+            public byte[] TmpSpace;         // BtShared.pageSize bytes of space for tmp use
         }
 
         public struct CellInfo

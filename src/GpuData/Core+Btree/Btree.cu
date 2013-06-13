@@ -29,18 +29,13 @@ namespace Core
 
 #ifndef OMIT_SHARED_CACHE
 	BtShared *sqlite3SharedCacheList = nullptr;
-#endif
-
-#ifndef OMIT_SHARED_CACHE
 	bool _sharedCacheEnabled = enable;
 	int sqlite3_enable_shared_cache(int enable)
 	{
 		_sharedCacheEnabled = enable;
 		return RC::OK;
 	}
-#endif
-
-#ifdef OMIT_SHARED_CACHE
+#else
 #define querySharedCacheTableLock(a,b,c) RC::OK
 #define setSharedCacheTableLock(a,b,c) RC::OK
 #define clearAllSharedCacheTableLocks(a)
@@ -55,7 +50,6 @@ namespace Core
 #ifndef OMIT_SHARED_CACHE
 
 #ifdef _DEBUG
-
 	static bool hasSharedCacheTableLock(Btree *btree, Pid root, bool isIndex, LOCK lockType)
 	{
 		// If this database is not shareable, or if the client is reading and has the read-uncommitted flag set, then no lock is required. 
@@ -103,15 +97,14 @@ namespace Core
 				return true;
 		return false;
 	}
-
 #endif
 
-	static int querySharedCacheTableLock(Btree *p, Pid table, LOCK lock)
+	static RC querySharedCacheTableLock(Btree *p, Pid table, LOCK lock)
 	{
 		_assert(sqlite3BtreeHoldsMutex(p));
 		_assert(lock == LOCK::READ || lock == LOCK::WRITE);
-		_assert(p->DB != nullptr);
-		_assert(!(p->DB->Flags & SQLITE_ReadUncommitted) || lock == LOCK::WRITE || table == 1);
+		_assert(p->Ctx != nullptr);
+		_assert(!(p->Ctx->Flags & Context::FLAG::ReadUncommitted) || lock == LOCK::WRITE || table == 1);
 
 		// If requesting a write-lock, then the Btree must have an open write transaction on this file. And, obviously, for this to be so there 
 		// must be an open write transaction on the file itself.
@@ -126,7 +119,7 @@ namespace Core
 		// If some other connection is holding an exclusive lock, the requested lock may not be obtained.
 		if (bt->Writer != p && (bt->BtsFlags & BTS::EXCLUSIVE) != 0)
 		{
-			sqlite3ConnectionBlocked(p->DB, bt->Writer->DB);
+			sqlite3ConnectionBlocked(p->Ctx, bt->Writer->Ctx);
 			return RC::LOCKED_SHAREDCACHE;
 		}
 
@@ -142,7 +135,7 @@ namespace Core
 			_assert(lock == LOCK::READ || iter->Btree == p || iter->Lock == LOCK::READ);
 			if (iter->Btree != p && iter->Table == table && iter->Lock != lock)
 			{
-				sqlite3ConnectionBlocked(p->DB, iter->Btree->DB);
+				sqlite3ConnectionBlocked(p->Ctx, iter->Btree->Ctx);
 				if (lock == LOCK::WRITE)
 				{
 					_assert(p == bt->Writer);
@@ -154,15 +147,15 @@ namespace Core
 		return RC::OK;
 	}
 
-	static int setSharedCacheTableLock(Btree *p, Pid table, LOCK lock)
+	static RC setSharedCacheTableLock(Btree *p, Pid table, LOCK lock)
 	{
 		_assert(sqlite3BtreeHoldsMutex(p));
 		_assert(lock == LOCK::READ || lock == LOCK::WRITE);
-		_assert(p->DB != nullptr);
+		_assert(p->Ctx != nullptr);
 
 		// A connection with the read-uncommitted flag set will never try to obtain a read-lock using this function. The only read-lock obtained
 		// by a connection in read-uncommitted mode is on the sqlite_master table, and that lock is obtained in BtreeBeginTrans().
-		_assert((p->DB->Flags & SQLITE_ReadUncommitted) == 0 || lock == LOCK::WRITE);
+		_assert((p->Ctx->Flags & Context::FLAG::ReadUncommitted) == 0 || lock == LOCK::WRITE);
 
 		// This function should only be called on a sharable b-tree after it has been determined that no other b-tree holds a conflicting lock.
 		_assert(p->Sharable);
@@ -172,83 +165,88 @@ namespace Core
 		BtShared *bt = p->Bt;
 		BtLock *newLock = nullptr;
 		for (BtLock *iter = bt->Lock; iter; iter = iter->Next)
+		{
 			if (iter->Table == table && iter->Btree == p)
 			{
-				pLock = iter;
+				newLock = iter;
 				break;
 			}
+		}
 
-			// If the above search did not find a BtLock struct associating Btree p with table iTable, allocate one and link it into the list.
+		// If the above search did not find a BtLock struct associating Btree p with table iTable, allocate one and link it into the list.
+		if (!newLock)
+		{
+			newLock = (BtLock *)SysEx::Alloc(sizeof(BtLock), true);
 			if (!newLock)
+				return RC::NOMEM;
+			newLock->Table = table;
+			newLock->Btree = p;
+			newLock->Next = bt->Lock;
+			bt->Lock = newLock;
+		}
+
+		// Set the BtLock.eLock variable to the maximum of the current lock and the requested lock. This means if a write-lock was already held
+		// and a read-lock requested, we don't incorrectly downgrade the lock.
+		_assert(LOCK::WRITE > LOCK::READ);
+		if (lock > newLock->Lock)
+			newLock->Lock = lock;
+
+		return RC::OK;
+	}
+
+	static void clearAllSharedCacheTableLocks(Btree *p)
+	{
+		BtShared *bt = p->Bt;
+		BtLock **iter = &bt->Lock;
+
+		_assert(sqlite3BtreeHoldsMutex(p));
+		_assert(p->Sharable || iter == nullptr);
+		_assert(p->InTrans > 0);
+
+		while (*iter)
+		{
+			BtLock *lock = *iter;
+			_assert((bt->BtsFlags & BTS::EXCLUSIVE) == 0 || bt->Writer == lock->Btree);
+			_assert(lock->Btree->InTrans >= lock->Lock);
+			if (lock->Btree == p)
 			{
-				newLock = (BtLock *)SysEx::Alloc(sizeof(BtLock), true);
-				if (!newLock)
-					return RC::NOMEM;
-				newLock->Table = table;
-				newLock->Btree = p;
-				newLock->Next = bt->Lock;
-				bt->Lock = pLock;
+				*iter = lock->Next;
+				_assert(lock->Table != 1 || lock == p.Lock);
+				if (lock->Table != 1)
+					SysEx::Free(lock);
 			}
-
-			// Set the BtLock.eLock variable to the maximum of the current lock and the requested lock. This means if a write-lock was already held
-			// and a read-lock requested, we don't incorrectly downgrade the lock.
-			_assert(LOCK::WRITE > LOCK::READ);
-			if (lock > newLock->Lock)
-				newLock->Lock = lock;
-
-			return RC::OK;
-	}
-
-	static void clearAllSharedCacheTableLocks(Btree *p){
-		BtShared *pBt = p->pBt;
-		BtLock **ppIter = &pBt->pLock;
-
-		assert( sqlite3BtreeHoldsMutex(p) );
-		assert( p->sharable || 0==*ppIter );
-		assert( p->inTrans>0 );
-
-		while( *ppIter ){
-			BtLock *pLock = *ppIter;
-			assert( (pBt->btsFlags & BTS_EXCLUSIVE)==0 || pBt->pWriter==pLock->pBtree );
-			assert( pLock->pBtree->inTrans>=pLock->eLock );
-			if( pLock->pBtree==p ){
-				*ppIter = pLock->pNext;
-				assert( pLock->iTable!=1 || pLock==&p->lock );
-				if( pLock->iTable!=1 ){
-					sqlite3_free(pLock);
-				}
-			}else{
-				ppIter = &pLock->pNext;
-			}
+			else
+				iter = &lock->Next;
 		}
 
-		assert( (pBt->btsFlags & BTS_PENDING)==0 || pBt->pWriter );
-		if( pBt->pWriter==p ){
-			pBt->pWriter = 0;
-			pBt->btsFlags &= ~(BTS_EXCLUSIVE|BTS_PENDING);
-		}else if( pBt->nTransaction==2 ){
-			/* This function is called when Btree p is concluding its 
-			** transaction. If there currently exists a writer, and p is not
-			** that writer, then the number of locks held by connections other
-			** than the writer must be about to drop to zero. In this case
-			** set the BTS_PENDING flag to 0.
-			**
-			** If there is not currently a writer, then BTS_PENDING must
-			** be zero already. So this next line is harmless in that case.
-			*/
-			pBt->btsFlags &= ~BTS_PENDING;
+		_assert((bt->BtsFlags & BTS::PENDING) == 0 || bt->Writer);
+		if (bt->Writer == p)
+		{
+			bt->Writer = 0;
+			bt->BtsFlags &= ~(BTS::EXCLUSIVE | BTS::PENDING);
+		}
+		else if (bt->Transactions == 2)
+		{
+			// This function is called when Btree p is concluding its transaction. If there currently exists a writer, and p is not
+			// that writer, then the number of locks held by connections other than the writer must be about to drop to zero. In this case
+			// set the BTS_PENDING flag to 0.
+			//
+			// If there is not currently a writer, then BTS_PENDING must be zero already. So this next line is harmless in that case.
+			bt->BtsFlags &= ~BTS::PENDING;
 		}
 	}
 
-	static void downgradeAllSharedCacheTableLocks(Btree *p){
-		BtShared *pBt = p->pBt;
-		if( pBt->pWriter==p ){
-			BtLock *pLock;
-			pBt->pWriter = 0;
-			pBt->btsFlags &= ~(BTS_EXCLUSIVE|BTS_PENDING);
-			for(pLock=pBt->pLock; pLock; pLock=pLock->pNext){
-				assert( pLock->eLock==READ_LOCK || pLock->pBtree==p );
-				pLock->eLock = READ_LOCK;
+	static void downgradeAllSharedCacheTableLocks(Btree *p)
+	{
+		BtShared *bt = p->Bt;
+		if (bt->Writer == p)
+		{
+			bt->Writer = nullptr;
+			bt->BtsFlags &= ~(BTS::EXCLUSIVE | BTS::PENDING);
+			for (BtLock *lock = bt->Lock; lock; lock = lock->Next)
+			{
+				_assert(lock->Lock==LOCK::READ || lock->Btree == p);
+				lock->Lock = LOCK::READ;
 			}
 		}
 	}
@@ -6689,48 +6687,22 @@ cleardatabasepage_out:
 
 #pragma region Meta
 
-	/*
-	** Return the full pathname of the underlying database file.  Return
-	** an empty string if the database is in-memory or a TEMP database.
-	**
-	** The pager filename is invariant as long as the pager is
-	** open so it is safe to access without the BtShared mutex.
-	*/
 	const char *sqlite3BtreeGetFilename(Btree *p){
 		assert( p->pBt->pPager!=0 );
 		return sqlite3PagerFilename(p->pBt->pPager, 1);
 	}
 
-	/*
-	** Return the pathname of the journal file for this database. The return
-	** value of this routine is the same regardless of whether the journal file
-	** has been created or not.
-	**
-	** The pager journal filename is invariant as long as the pager is
-	** open so it is safe to access without the BtShared mutex.
-	*/
 	const char *sqlite3BtreeGetJournalname(Btree *p){
 		assert( p->pBt->pPager!=0 );
 		return sqlite3PagerJournalname(p->pBt->pPager);
 	}
 
-	/*
-	** Return non-zero if a transaction is active.
-	*/
 	int sqlite3BtreeIsInTrans(Btree *p){
 		assert( p==0 || sqlite3_mutex_held(p->db->mutex) );
 		return (p && (p->inTrans==TRANS_WRITE));
 	}
 
-#ifndef SQLITE_OMIT_WAL
-	/*
-	** Run a checkpoint on the Btree passed as the first argument.
-	**
-	** Return SQLITE_LOCKED if this or any other connection has an open 
-	** transaction on the shared-cache the argument Btree is connected to.
-	**
-	** Parameter eMode is one of SQLITE_CHECKPOINT_PASSIVE, FULL or RESTART.
-	*/
+#ifndef OMIT_WAL
 	int sqlite3BtreeCheckpoint(Btree *p, int eMode, int *pnLog, int *pnCkpt){
 		int rc = SQLITE_OK;
 		if( p ){
@@ -6747,9 +6719,6 @@ cleardatabasepage_out:
 	}
 #endif
 
-	/*
-	** Return non-zero if a read (or write) transaction is active.
-	*/
 	int sqlite3BtreeIsInReadTrans(Btree *p){
 		assert( p );
 		assert( sqlite3_mutex_held(p->db->mutex) );
@@ -6762,26 +6731,6 @@ cleardatabasepage_out:
 		return p->nBackup!=0;
 	}
 
-	/*
-	** This function returns a pointer to a blob of memory associated with
-	** a single shared-btree. The memory is used by client code for its own
-	** purposes (for example, to store a high-level schema associated with 
-	** the shared-btree). The btree layer manages reference counting issues.
-	**
-	** The first time this is called on a shared-btree, nBytes bytes of memory
-	** are allocated, zeroed, and returned to the caller. For each subsequent 
-	** call the nBytes parameter is ignored and a pointer to the same blob
-	** of memory returned. 
-	**
-	** If the nBytes parameter is 0 and the blob of memory has not yet been
-	** allocated, a null pointer is returned. If the blob has already been
-	** allocated, it is returned as normal.
-	**
-	** Just before the shared-btree is closed, the function passed as the 
-	** xFree argument when the memory allocation was made is invoked on the 
-	** blob of allocated memory. The xFree function should not call sqlite3_free()
-	** on the memory, the btree layer does that.
-	*/
 	void *sqlite3BtreeSchema(Btree *p, int nBytes, void(*xFree)(void *)){
 		BtShared *pBt = p->pBt;
 		sqlite3BtreeEnter(p);
@@ -6793,11 +6742,6 @@ cleardatabasepage_out:
 		return pBt->pSchema;
 	}
 
-	/*
-	** Return SQLITE_LOCKED_SHAREDCACHE if another user of the same shared 
-	** btree as the argument handle holds an exclusive lock on the 
-	** sqlite_master table. Otherwise SQLITE_OK.
-	*/
 	int sqlite3BtreeSchemaLocked(Btree *p){
 		int rc;
 		assert( sqlite3_mutex_held(p->db->mutex) );
@@ -6809,12 +6753,7 @@ cleardatabasepage_out:
 	}
 
 
-#ifndef SQLITE_OMIT_SHARED_CACHE
-	/*
-	** Obtain a lock on the table whose root page is iTab.  The
-	** lock is a write lock if isWritelock is true or a read lock
-	** if it is false.
-	*/
+#ifndef OMIT_SHARED_CACHE
 	int sqlite3BtreeLockTable(Btree *p, int iTab, u8 isWriteLock){
 		int rc = SQLITE_OK;
 		assert( p->inTrans!=TRANS_NONE );
@@ -6834,17 +6773,7 @@ cleardatabasepage_out:
 	}
 #endif
 
-#ifndef SQLITE_OMIT_INCRBLOB
-	/*
-	** Argument pCsr must be a cursor opened for writing on an 
-	** INTKEY table currently pointing at a valid table entry. 
-	** This function modifies the data stored as part of that entry.
-	**
-	** Only the data content may only be modified, it is not possible to 
-	** change the length of the data stored. If this function is called with
-	** parameters that attempt to write past the end of the existing data,
-	** no modifications are made and SQLITE_CORRUPT is returned.
-	*/
+#ifndef OMIT_INCRBLOB
 	int sqlite3BtreePutData(BtCursor *pCsr, u32 offset, u32 amt, void *z){
 		int rc;
 		assert( cursorHoldsMutex(pCsr) );
@@ -6879,16 +6808,6 @@ cleardatabasepage_out:
 		return accessPayload(pCsr, offset, amt, (unsigned char *)z, 1);
 	}
 
-	/* 
-	** Set a flag on this cursor to cache the locations of pages from the 
-	** overflow list for the current row. This is used by cursors opened
-	** for incremental blob IO only.
-	**
-	** This function sets a flag only. The actual page location cache
-	** (stored in BtCursor.aOverflow[]) is allocated and used by function
-	** accessPayload() (the worker function for sqlite3BtreeData() and
-	** sqlite3BtreePutData()).
-	*/
 	void sqlite3BtreeCacheOverflow(BtCursor *pCur){
 		assert( cursorHoldsMutex(pCur) );
 		assert( sqlite3_mutex_held(pCur->pBtree->db->mutex) );
@@ -6897,11 +6816,6 @@ cleardatabasepage_out:
 	}
 #endif
 
-	/*
-	** Set both the "read version" (single byte at byte offset 18) and 
-	** "write version" (single byte at byte offset 19) fields in the database
-	** header to iVersion.
-	*/
 	int sqlite3BtreeSetVersion(Btree *pBtree, int iVersion){
 		BtShared *pBt = pBtree->pBt;
 		int rc;                         /* Return code */
@@ -6933,12 +6847,10 @@ cleardatabasepage_out:
 		return rc;
 	}
 
-	/*
-	** set the mask of hint flags for cursor pCsr. Currently the only valid
-	** values are 0 and BTREE_BULKLOAD.
-	*/
 	void sqlite3BtreeCursorHints(BtCursor *pCsr, unsigned int mask){
 		assert( mask==BTREE_BULKLOAD || mask==0 );
 		pCsr->hints = mask;
 	}
+
+#pragma endregion
 }

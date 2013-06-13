@@ -45,18 +45,18 @@ namespace Core
 
 #define EXTRA_SIZE sizeof(MemPage)
 
+	enum LOCK : uint8
+	{
+		READ = 1,
+		WRITE = 2,
+	};
+
 	struct BtLock
 	{
 		Btree *Btree;			// Btree handle holding this lock
 		Pid Table;				// Root page of table
-		uint8 Lock;				// READ_LOCK or WRITE_LOCK
+		LOCK Lock;				// READ_LOCK or WRITE_LOCK
 		BtLock *Next;			// Next in BtShared.pLock list
-	};
-
-	enum LOCK : char
-	{
-		READ = 1,
-		WRITE = 2,
 	};
 
 	enum TRANS : uint8
@@ -99,15 +99,15 @@ namespace Core
 		Context *Ctx;			// Database connection currently using this Btree
 		BtCursor *Cursor;		// A list of all open cursors
 		MemPage *Page1;			// First page of the database
-		byte openFlags;			// Flags to sqlite3BtreeOpen()
+		byte OpenFlags;			// Flags to sqlite3BtreeOpen()
 #ifndef OMIT_AUTOVACUUM
-		bool autoVacuum;		// True if auto-vacuum is enabled
-		bool incrVacuum;		// True if incr-vacuum is enabled
-		bool bDoTruncate;		// True to truncate db on commit
+		bool AutoVacuum;		// True if auto-vacuum is enabled
+		bool IncrVacuum;		// True if incr-vacuum is enabled
+		bool DoTruncate;		// True to truncate db on commit
 #endif
-		uint8 InTransaction;	// Transaction state
+		TRANS InTransaction;	// Transaction state
 		uint8 Max1bytePayload;	// Maximum first byte of cell for a 1-byte payload
-		BTS BtsFlags;		// Boolean parameters.  See BTS_* macros below
+		BTS BtsFlags;			// Boolean parameters.  See BTS_* macros below
 		uint16 MaxLocal;		// Maximum local payload in non-LEAFDATA tables
 		uint16 MinLocal;		// Minimum local payload in non-LEAFDATA tables
 		uint16 MaxLeaf;			// Maximum local payload in a LEAFDATA table

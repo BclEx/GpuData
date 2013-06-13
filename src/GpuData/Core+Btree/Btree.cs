@@ -1,12 +1,13 @@
+using Pid = System.UInt32;
+using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
 using System.Text;
 
 namespace Core
 {
-
-  public partial class Btree
-  {
+    public partial class Btree
+    {
 #if DEBUG
         static bool PagerTrace = false;
         static void PAGERTRACE(string x, params object[] args) { if (PagerTrace) Console.WriteLine("p:" + string.Format(x, args)); }
@@ -14,396 +15,258 @@ namespace Core
         static void PAGERTRACE(string x, params object[] args) { }
 #endif
 
-              static byte[] _magicHeader = Encoding.UTF8.GetBytes(FILE_HEADER);
+        #region Struct
 
-static int get2byteNotZero( byte[] X, int offset )
-{
-  return ( ( ( ( (int)get2byte( X, offset ) ) - 1 ) & 0xffff ) + 1 );
-}
+        static byte[] _magicHeader = Encoding.UTF8.GetBytes(FILE_HEADER);
+
+        static int get2byteNotZero(byte[] X, int offset)
+        {
+            return (((((int)get2byte(X, offset)) - 1) & 0xffff) + 1);
+        }
 
 #if !OMIT_SHARED_CACHE
-#if SQLITE_TEST
-BtShared *SQLITE_WSD sqlite3SharedCacheList = 0;
+        static BtShared sqlite3SharedCacheList = null;
+        bool _sharedCacheEnabled = false;
+        RC sqlite3_enable_shared_cache(int enable)
+        {
+            _sharedCacheEnabled = enable;
+            return RC.OK;
+        }
 #else
-static BtShared *SQLITE_WSD sqlite3SharedCacheList = 0;
-#endif
-int sqlite3_enable_shared_cache(int enable){
-sqlite3GlobalConfig.sharedCacheEnabled = enable;
-return SQLITE_OK;
-}
-#endif
-
-
-
-#if SQLITE_OMIT_SHARED_CACHE
-/*
-** The functions querySharedCacheTableLock(), setSharedCacheTableLock(),
-** and clearAllSharedCacheTableLocks()
-** manipulate entries in the BtShared.pLock linked list used to store
-** shared-cache table level locks. If the library is compiled with the
-** shared-cache feature disabled, then there is only ever one user
-** of each BtShared structure and so this locking is not necessary.
-** So define the lock related functions as no-ops.
-*/
-//#define querySharedCacheTableLock(a,b,c) SQLITE_OK
 static int querySharedCacheTableLock( Btree p, Pgno iTab, u8 eLock )
 {
   return SQLITE_OK;
 }
 
-//#define setSharedCacheTableLock(a,b,c) SQLITE_OK
-//#define clearAllSharedCacheTableLocks(a)
 static void clearAllSharedCacheTableLocks( Btree a )
 {
 }
-//#define downgradeAllSharedCacheTableLocks(a)
 static void downgradeAllSharedCacheTableLocks( Btree a )
 {
 }
-//#define hasSharedCacheTableLock(a,b,c,d) 1
 static bool hasSharedCacheTableLock( Btree a, Pgno b, int c, int d )
 {
   return true;
 }
-//#define hasReadConflicts(a, b) 0
 static bool hasReadConflicts( Btree a, Pgno b )
 {
   return false;
 }
 #endif
 
-#if !SQLITE_OMIT_SHARED_CACHE
+        #endregion
 
-#if SQLITE_DEBUG
-/*
-**** This function is only used as part of an assert() statement. ***
-**
-** Check to see if pBtree holds the required locks to read or write to the 
-** table with root page iRoot.   Return 1 if it does and 0 if not.
-**
-** For example, when writing to a table with root-page iRoot via 
-** Btree connection pBtree:
-**
-**    assert( hasSharedCacheTableLock(pBtree, iRoot, 0, WRITE_LOCK) );
-**
-** When writing to an index that resides in a sharable database, the 
-** caller should have first obtained a lock specifying the root page of
-** the corresponding table. This makes things a bit more complicated,
-** as this module treats each table as a separate structure. To determine
-** the table corresponding to the index being written, this
-** function has to search through the database schema.
-**
-** Instead of a lock on the table/index rooted at page iRoot, the caller may
-** hold a write-lock on the schema table (root page 1). This is also
-** acceptable.
-*/
-static int hasSharedCacheTableLock(
-Btree pBtree,         /* Handle that must hold lock */
-Pgno iRoot,            /* Root page of b-tree */
-int isIndex,           /* True if iRoot is the root of an index b-tree */
-int eLockType          /* Required lock type (READ_LOCK or WRITE_LOCK) */
-){
-Schema pSchema = (Schema *)pBtree.pBt.pSchema;
-Pgno iTab = 0;
-BtLock pLock;
+        #region Shared Code1
+#if !OMIT_SHARED_CACHE
 
-/* If this database is not shareable, or if the client is reading
-** and has the read-uncommitted flag set, then no lock is required. 
-** Return true immediately.
-*/
-if( (pBtree.sharable==null)
-|| (eLockType==READ_LOCK && (pBtree.db.flags & SQLITE_ReadUncommitted))
-){
-return 1;
-}
+#if DEBUG
+        static bool hasSharedCacheTableLock(Btree btree, Pid root, bool isIndex, LOCK lockType)
+        {
+            // If this database is not shareable, or if the client is reading and has the read-uncommitted flag set, then no lock is required. 
+            // Return true immediately.
+            if (!btree.Sharable || (lockType == LOCK.READ && (btree.Ctx.Flags & Context.FLAG.ReadUncommitted) != 0))
+                return true;
 
-/* If the client is reading  or writing an index and the schema is
-** not loaded, then it is too difficult to actually check to see if
-** the correct locks are held.  So do not bother - just return true.
-** This case does not come up very often anyhow.
-*/
-if( isIndex && (!pSchema || (pSchema->flags&DB_SchemaLoaded)==0) ){
-return 1;
-}
+            // If the client is reading  or writing an index and the schema is not loaded, then it is too difficult to actually check to see if
+            // the correct locks are held.  So do not bother - just return true. This case does not come up very often anyhow.
+            var schema = (Schema)btree.Bt.Schema;
+            if (isIndex && (!schema || (schema->Flags & DB_SchemaLoaded) == 0))
+                return true;
 
-/* Figure out the root-page that the lock should be held on. For table
-** b-trees, this is just the root page of the b-tree being read or
-** written. For index b-trees, it is the root page of the associated
-** table.  */
-if( isIndex ){
-HashElem p;
-for(p=sqliteHashFirst(pSchema.idxHash); p!=null; p=sqliteHashNext(p)){
-Index pIdx = (Index *)sqliteHashData(p);
-if( pIdx.tnum==(int)iRoot ){
-iTab = pIdx.pTable.tnum;
-}
-}
-}else{
-iTab = iRoot;
-}
+            // Figure out the root-page that the lock should be held on. For table b-trees, this is just the root page of the b-tree being read or
+            // written. For index b-trees, it is the root page of the associated table.
+            Pid table = 0;
+            if (isIndex)
+                for (var p = sqliteHashFirst(schema.IdxHash); p != null; p = sqliteHashNext(p))
+                {
+                    var idx = (Index)sqliteHashData(p);
+                    if (idx.TID == (int)root)
+                        table = idx.Table.TID;
+                }
+            else
+                table = root;
 
-/* Search for the required lock. Either a write-lock on root-page iTab, a
-** write-lock on the schema table, or (if the client is reading) a
-** read-lock on iTab will suffice. Return 1 if any of these are found.  */
-for(pLock=pBtree.pBt.pLock; pLock; pLock=pLock.pNext){
-if( pLock.pBtree==pBtree
-&& (pLock.iTable==iTab || (pLock.eLock==WRITE_LOCK && pLock.iTable==1))
-&& pLock.eLock>=eLockType
-){
-return 1;
-}
-}
+            // Search for the required lock. Either a write-lock on root-page iTab, a write-lock on the schema table, or (if the client is reading) a
+            // read-lock on iTab will suffice. Return 1 if any of these are found.
+            for (var lock_ = btree.Bt.Lock; lock_ != null; lock_ = lock_.Next)
+                if (lock_.Btree == btree &&
+                    (lock_.Table == table || (lock_.Lock == LOCK.WRITE && lock_.Table == 1)) &&
+                    lock_.Lock >= lockType)
+                    return true;
 
-/* Failed to find the required lock. */
-return 0;
-}
+            // Failed to find the required lock.
+            return false;
+        }
 
-#endif //* SQLITE_DEBUG */
+        static bool hasReadConflicts(Btree btree, Pid root)
+        {
+            for (var p = btree.Bt.Cursor; p != null; p = p.Next)
+                if (p.IDRoot == root &&
+                    p.Btree != btree &&
+                    (p.Btree.Ctx.Flags & Context.FLAG.ReadUncommitted) == 0)
+                    return true;
+            return false;
+        }
+#endif
 
-#if SQLITE_DEBUG
-/*
-** This function may be used as part of assert() statements only. ****
-**
-** Return true if it would be illegal for pBtree to write into the
-** table or index rooted at iRoot because other shared connections are
-** simultaneously reading that same table or index.
-**
-** It is illegal for pBtree to write if some other Btree object that
-** shares the same BtShared object is currently reading or writing
-** the iRoot table.  Except, if the other Btree object has the
-** read-uncommitted flag set, then it is OK for the other object to
-** have a read cursor.
-**
-** For example, before writing to any part of the table or index
-** rooted at page iRoot, one should call:
-**
-**    assert( !hasReadConflicts(pBtree, iRoot) );
-*/
-static int hasReadConflicts(Btree pBtree, Pgno iRoot){
-BtCursor p;
-for(p=pBtree.pBt.pCursor; p!=null; p=p.pNext){
-if( p.pgnoRoot==iRoot
-&& p.pBtree!=pBtree
-&& 0==(p.pBtree.db.flags & SQLITE_ReadUncommitted)
-){
-return 1;
-}
-}
-return 0;
-}
-#endif    //* #if SQLITE_DEBUG */
+        static RC querySharedCacheTableLock(Btree p, Pid table, LOCK lockType)
+        {
+            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(lockType == LOCK.READ || lockType == LOCK.WRITE);
+            Debug.Assert(p.Ctx != null);
+            Debug.Assert((p.Ctx.Flags & Context.FLAG.ReadUncommitted) == 0 || lockType == LOCK.WRITE || table == 1);
 
-/*
-** Query to see if Btree handle p may obtain a lock of type eLock
-** (READ_LOCK or WRITE_LOCK) on the table with root-page iTab. Return
-** SQLITE_OK if the lock may be obtained (by calling
-** setSharedCacheTableLock()), or SQLITE_LOCKED if not.
-*/
-static int querySharedCacheTableLock(Btree p, Pgno iTab, u8 eLock){
-BtShared pBt = p.pBt;
-BtLock pIter;
+            // If requesting a write-lock, then the Btree must have an open write transaction on this file. And, obviously, for this to be so there
+            // must be an open write transaction on the file itself.
+            var bt = p.Bt;
+            Debug.Assert(lockType == LOCK.READ || (p == bt.Writer && p.InTrans == TRANS.WRITE));
+            Debug.Assert(lockType == LOCK.READ || bt.InTransaction == TRANS.WRITE);
 
-Debug.Assert( sqlite3BtreeHoldsMutex(p) );
-Debug.Assert( eLock==READ_LOCK || eLock==WRITE_LOCK );
-Debug.Assert( p.db!=null );
-Debug.Assert( !(p.db.flags&SQLITE_ReadUncommitted)||eLock==WRITE_LOCK||iTab==1 );
+            // This routine is a no-op if the shared-cache is not enabled
+            if (!p.Sharable)
+                return RC.OK;
 
-/* If requesting a write-lock, then the Btree must have an open write
-** transaction on this file. And, obviously, for this to be so there
-** must be an open write transaction on the file itself.
-*/
-Debug.Assert( eLock==READ_LOCK || (p==pBt.pWriter && p.inTrans==TRANS_WRITE) );
-Debug.Assert( eLock==READ_LOCK || pBt.inTransaction==TRANS_WRITE );
+            // If some other connection is holding an exclusive lock, the requested lock may not be obtained.
+            if (bt.Writer != p && bt.IsExclusive)
+            {
+                sqlite3ConnectionBlocked(p.Ctx, bt.Writer.Ctx);
+                return RC.LOCKED_SHAREDCACHE;
+            }
 
-/* This routine is a no-op if the shared-cache is not enabled */
-if( !p.sharable ){
-return SQLITE_OK;
-}
+            for (var iter = bt.Lock; iter != null; iter = iter.Next)
+            {
+                // The condition (pIter->eLock!=eLock) in the following if(...) statement is a simplification of:
+                //
+                //   (eLock==WRITE_LOCK || pIter->eLock==WRITE_LOCK)
+                //
+                // since we know that if eLock==WRITE_LOCK, then no other connection may hold a WRITE_LOCK on any table in this file (since there can
+                // only be a single writer).
+                Debug.Assert(iter.Lock == LOCK.READ || iter.Lock == LOCK.WRITE);
+                Debug.Assert(lockType == LOCK.READ || iter.Btree == p || iter.Lock == LOCK.READ);
+                if (iter.Btree != p && iter.Table == table && iter.Lock != lockType)
+                {
+                    sqlite3ConnectionBlocked(p.Ctx, iter.Btree.Ctx);
+                    if (lockType == LOCK.WRITE)
+                    {
+                        Debug.Assert(p == bt.Writer);
+                        bt.IsPending = 1;
+                    }
+                    return RC.LOCKED_SHAREDCACHE;
+                }
+            }
+            return RC.OK;
+        }
 
-/* If some other connection is holding an exclusive lock, the
-** requested lock may not be obtained.
-*/
-if( pBt.pWriter!=p && pBt.isExclusive ){
-sqlite3ConnectionBlocked(p.db, pBt.pWriter.db);
-return SQLITE_LOCKED_SHAREDCACHE;
-}
+        static RC setSharedCacheTableLock(Btree p, Pid table, LOCK lock_)
+        {
+            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(lock_ == LOCK.READ || lock_ == LOCK.WRITE);
+            Debug.Assert(p.Ctx != null);
 
-for(pIter=pBt.pLock; pIter; pIter=pIter.pNext){
-/* The condition (pIter.eLock!=eLock) in the following if(...)
-** statement is a simplification of:
-**
-**   (eLock==WRITE_LOCK || pIter.eLock==WRITE_LOCK)
-**
-** since we know that if eLock==WRITE_LOCK, then no other connection
-** may hold a WRITE_LOCK on any table in this file (since there can
-** only be a single writer).
-*/
-Debug.Assert( pIter.eLock==READ_LOCK || pIter.eLock==WRITE_LOCK );
-Debug.Assert( eLock==READ_LOCK || pIter.pBtree==p || pIter.eLock==READ_LOCK);
-if( pIter.pBtree!=p && pIter.iTable==iTab && pIter.eLock!=eLock ){
-sqlite3ConnectionBlocked(p.db, pIter.pBtree.db);
-if( eLock==WRITE_LOCK ){
-Debug.Assert( p==pBt.pWriter );
-pBt.isPending = 1;
-}
-return SQLITE_LOCKED_SHAREDCACHE;
-}
-}
-return SQLITE_OK;
-}
-#endif //* !SQLITE_OMIT_SHARED_CACHE */
+            // A connection with the read-uncommitted flag set will never try to obtain a read-lock using this function. The only read-lock obtained
+            // by a connection in read-uncommitted mode is on the sqlite_master table, and that lock is obtained in BtreeBeginTrans().
+            Debug.Assert((p.Ctx.Flags & Context.FLAG.ReadUncommitted) == 0 || lock_ == LOCK.WRITE);
 
-#if !SQLITE_OMIT_SHARED_CACHE
-/*
-** Add a lock on the table with root-page iTable to the shared-btree used
-** by Btree handle p. Parameter eLock must be either READ_LOCK or 
-** WRITE_LOCK.
-**
-** This function assumes the following:
-**
-**   (a) The specified Btree object p is connected to a sharable
-**       database (one with the BtShared.sharable flag set), and
-**
-**   (b) No other Btree objects hold a lock that conflicts
-**       with the requested lock (i.e. querySharedCacheTableLock() has
-**       already been called and returned SQLITE_OK).
-**
-** SQLITE_OK is returned if the lock is added successfully. SQLITE_NOMEM 
-** is returned if a malloc attempt fails.
-*/
-static int setSharedCacheTableLock(Btree p, Pgno iTable, u8 eLock){
-BtShared pBt = p.pBt;
-BtLock pLock = 0;
-BtLock pIter;
+            // This function should only be called on a sharable b-tree after it has been determined that no other b-tree holds a conflicting lock.
+            var bt = p.Bt;
 
-Debug.Assert( sqlite3BtreeHoldsMutex(p) );
-Debug.Assert( eLock==READ_LOCK || eLock==WRITE_LOCK );
-Debug.Assert( p.db!=null );
+            Debug.Assert(p.Sharable);
+            Debug.Assert(RC.OK == querySharedCacheTableLock(p, table, lock_));
 
-/* A connection with the read-uncommitted flag set will never try to
-** obtain a read-lock using this function. The only read-lock obtained
-** by a connection in read-uncommitted mode is on the sqlite_master
-** table, and that lock is obtained in BtreeBeginTrans().  */
-Debug.Assert( 0==(p.db.flags&SQLITE_ReadUncommitted) || eLock==WRITE_LOCK );
+            // First search the list for an existing lock on this table.
+            BtLock newLock = null;
+            for (var iter = bt.Lock; iter != null; iter = iter.Next)
+                if (iter.Table == table && iter.Btree == p)
+                {
+                    newLock = iter;
+                    break;
+                }
 
-/* This function should only be called on a sharable b-tree after it
-** has been determined that no other b-tree holds a conflicting lock.  */
-Debug.Assert( p.sharable );
-Debug.Assert( SQLITE_OK==querySharedCacheTableLock(p, iTable, eLock) );
+            // If the above search did not find a BtLock struct associating Btree p with table iTable, allocate one and link it into the list.
+            if (newLock == null)
+            {
+                newLock = new BtLock();
+                newLock.Table = table;
+                newLock.Btree = p;
+                newLock.Next = bt.Lock;
+                bt.Lock = newLock;
+            }
 
-/* First search the list for an existing lock on this table. */
-for(pIter=pBt.pLock; pIter; pIter=pIter.pNext){
-if( pIter.iTable==iTable && pIter.pBtree==p ){
-pLock = pIter;
-break;
-}
-}
+            // Set the BtLock.eLock variable to the maximum of the current lock and the requested lock. This means if a write-lock was already held
+            // and a read-lock requested, we don't incorrectly downgrade the lock.
+            Debug.Assert(LOCK.WRITE > LOCK.READ);
+            if (lock_ > newLock.Lock)
+                newLock.Lock = lock_;
 
-/* If the above search did not find a BtLock struct associating Btree p
-** with table iTable, allocate one and link it into the list.
-*/
-if( !pLock ){
-pLock = (BtLock *)sqlite3MallocZero(sizeof(BtLock));
-if( !pLock ){
-return SQLITE_NOMEM;
-}
-pLock.iTable = iTable;
-pLock.pBtree = p;
-pLock.pNext = pBt.pLock;
-pBt.pLock = pLock;
-}
+            return RC.OK;
+        }
 
-/* Set the BtLock.eLock variable to the maximum of the current lock
-** and the requested lock. This means if a write-lock was already held
-** and a read-lock requested, we don't incorrectly downgrade the lock.
-*/
-Debug.Assert( WRITE_LOCK>READ_LOCK );
-if( eLock>pLock.eLock ){
-pLock.eLock = eLock;
-}
+        static void clearAllSharedCacheTableLocks(Btree p)
+        {
+            var bt = p.Bt;
+            var iter = bt.Lock;
 
-return SQLITE_OK;
-}
-#endif //* !SQLITE_OMIT_SHARED_CACHE */
+            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(p.Sharable || iter == null);
+            Debug.Assert(p.InTrans > 0);
 
-#if !SQLITE_OMIT_SHARED_CACHE
-/*
-** Release all the table locks (locks obtained via calls to
-** the setSharedCacheTableLock() procedure) held by Btree object p.
-**
-** This function assumes that Btree p has an open read or write 
-** transaction. If it does not, then the BtShared.isPending variable
-** may be incorrectly cleared.
-*/
-static void clearAllSharedCacheTableLocks(Btree p){
-BtShared pBt = p.pBt;
-BtLock **ppIter = &pBt.pLock;
+            while (iter != null)
+            {
+                BtLock lock_ = iter;
+                Debug.Assert((bt.BtsFlags & BTS.EXCLUSIVE) == 0 || bt.Writer == lock_.Btree);
+                Debug.Assert(lock_.Btree.InTrans >= lock_.Lock);
+                if (lock_.Btree == p)
+                {
+                    iter = lock_.Next;
+                    Debug.Assert(lock_.Table != 1 || lock_ == p.Lock);
+                    if (lock_.Table != 1)
+                        lock_ = null;
+                }
+                else
+                    iter = lock_.Next;
+            }
 
-Debug.Assert( sqlite3BtreeHoldsMutex(p) );
-Debug.Assert( p.sharable || 0==*ppIter );
-Debug.Assert( p.inTrans>0 );
+            Debug.Assert((bt.BtsFlags & BTS.PENDING) == 0 || bt.Writer != null);
+            if (bt.Writer == p)
+            {
+                bt.Writer = null;
+                bt.BtsFlags &= ~(BTS.EXCLUSIVE | BTS.PENDING);
+            }
+            else if (bt.Transactions == 2)
+            {
+                // This function is called when Btree p is concluding its transaction. If there currently exists a writer, and p is not
+                // that writer, then the number of locks held by connections other than the writer must be about to drop to zero. In this case
+                // set the BTS_PENDING flag to 0.
+                //
+                // If there is not currently a writer, then BTS_PENDING must be zero already. So this next line is harmless in that case.
+                bt.BtsFlags &= ~BTS.PENDING;
+            }
+        }
 
-while( ppIter ){
-BtLock pLock = ppIter;
-Debug.Assert( pBt.isExclusive==null || pBt.pWriter==pLock.pBtree );
-Debug.Assert( pLock.pBtree.inTrans>=pLock.eLock );
-if( pLock.pBtree==p ){
-ppIter = pLock.pNext;
-Debug.Assert( pLock.iTable!=1 || pLock==&p.lock );
-if( pLock.iTable!=1 ){
-pLock=null;//sqlite3_free(ref pLock);
-}
-}else{
-ppIter = &pLock.pNext;
-}
-}
+        static void downgradeAllSharedCacheTableLocks(Btree p)
+        {
+            var bt = p.Bt;
+            if (bt.Writer == p)
+            {
+                bt.Writer = null;
+                bt.BtsFlags &= ~(BTS.EXCLUSIVE | BTS.PENDING);
+                for (var lock_ = bt.Lock; lock_ != null; lock_ = lock_.Next)
+                {
+                    Debug.Assert(lock_.Lock == LOCK.READ || lock_.Btree == p);
+                    lock_.Lock = LOCK.READ;
+                }
+            }
+        }
 
-Debug.Assert( pBt.isPending==null || pBt.pWriter );
-if( pBt.pWriter==p ){
-pBt.pWriter = 0;
-pBt.isExclusive = 0;
-pBt.isPending = 0;
-}else if( pBt.nTransaction==2 ){
-/* This function is called when Btree p is concluding its 
-** transaction. If there currently exists a writer, and p is not
-** that writer, then the number of locks held by connections other
-** than the writer must be about to drop to zero. In this case
-** set the isPending flag to 0.
-**
-** If there is not currently a writer, then BtShared.isPending must
-** be zero already. So this next line is harmless in that case.
-*/
-pBt.isPending = 0;
-}
-}
+#endif
+#endregion
 
-/*
-** This function changes all write-locks held by Btree p into read-locks.
-*/
-static void downgradeAllSharedCacheTableLocks(Btree p){
-BtShared pBt = p.pBt;
-if( pBt.pWriter==p ){
-BtLock pLock;
-pBt.pWriter = 0;
-pBt.isExclusive = 0;
-pBt.isPending = 0;
-for(pLock=pBt.pLock; pLock; pLock=pLock.pNext){
-Debug.Assert( pLock.eLock==READ_LOCK || pLock.pBtree==p );
-pLock.eLock = READ_LOCK;
-}
-}
-}
-
-#endif //* SQLITE_OMIT_SHARED_CACHE */
+        ///////////////////////////////////////////////////////////////////////////////
+#if false
 
 //static void releasePage(MemPage pPage);  /* Forward reference */
 
-/*
-***** This routine is used inside of assert() only ****
-**
-** Verify that the cursor holds the mutex on its BtShared
-*/
-#if SQLITE_DEBUG
+#if DEBUG
 static bool cursorHoldsMutex( BtCursor p )
 {
   return sqlite3_mutex_held( p.pBt.mutex );
@@ -413,7 +276,7 @@ static bool cursorHoldsMutex(BtCursor p) { return true; }
 #endif
 
 
-#if !SQLITE_OMIT_INCRBLOB
+#if !OMIT_INCRBLOB
 /*
 ** Invalidate the overflow page-list cache for cursor pCur, if any.
 */
@@ -9485,5 +9348,8 @@ static int sqlite3BtreeSetVersion( Btree pBtree, int iVersion )
   pBt.doNotUseWAL = false;
   return rc;
 }
-  }
+#endif
+        //#endregion
+
+    }
 }
