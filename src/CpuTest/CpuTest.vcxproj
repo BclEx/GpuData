@@ -82,6 +82,9 @@
     <ClCompile Include="Program.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\GpuData\Core+Btree\Btree.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Btree\BtreeInt.cu.h" />
+    <ClInclude Include="..\GpuData\Core+Btree\Core+Btree.cu.h" />
     <ClInclude Include="..\GpuData\Core+Pager\Core+Pager.cu.h" />
     <ClInclude Include="..\GpuData\Core+Pager\Pager.cu.h" />
     <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h" />
@@ -141,6 +144,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core\IO\25.JournalVFile.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core+Btree\Btree.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>

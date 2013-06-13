@@ -1,13 +1,12 @@
 ﻿// pager.c
 #include "Core+Pager.cu.h"
-using namespace Core;
 #define PAGER Pager::PAGER
 
 namespace Core
 {
 #if _DEBUG
 	bool PagerTrace = true;
-#define PAGERTRACE(X, ...) if (OSTrace) { printf(X, __VA_ARGS__); }
+#define PAGERTRACE(X, ...) if (PagerTrace) { printf(X, __VA_ARGS__); }
 #else
 #define PAGERTRACE(X, ...)
 #endif

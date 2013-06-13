@@ -1,5 +1,4 @@
 ﻿// journal.c
-// 
 namespace Core
 {
 

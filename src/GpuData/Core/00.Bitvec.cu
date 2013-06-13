@@ -1,6 +1,5 @@
 ﻿//bitvec.c
 #include "Core.cu.h"
-using namespace Core;
 
 namespace Core
 {

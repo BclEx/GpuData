@@ -1,6 +1,5 @@
 ﻿#include "Core.cu.h"
 #include <stdarg.h>
-using namespace Core;
 
 namespace Core
 {

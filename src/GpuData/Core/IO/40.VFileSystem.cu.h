@@ -1,5 +1,5 @@
 ﻿// sqlite.h
-namespace Core
+namespace Core { namespace IO
 {
 	typedef class VFile VFile;
 
@@ -53,4 +53,4 @@ namespace Core
 	};
 
 	VFileSystem::OPEN inline operator |= (VFileSystem::OPEN a, VFileSystem::OPEN b) { return (VFileSystem::OPEN)(a | b); }
-}
+}}

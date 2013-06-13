@@ -1,6 +1,5 @@
 ﻿// wal.c
 #include "Core+Pager.cu.h"
-using namespace Core;
 
 #ifndef OMIT_WAL
 namespace Core

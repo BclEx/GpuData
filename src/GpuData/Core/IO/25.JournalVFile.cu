@@ -1,9 +1,8 @@
 ﻿// journal.c
 #include "../Core.cu.h"
-using namespace Core;
 #ifdef ENABLE_ATOMIC_WRITE
 
-namespace Core
+namespace Core { namespace IO
 {
 	class JournalVFile : public VFile
 	{
@@ -148,10 +147,6 @@ namespace Core
 	{
 		return (vfs->SizeOsFile + sizeof(JournalVFile));
 	}
-}
+}}
 
 #endif
-
-
-
-

@@ -10,6 +10,9 @@
     <Filter Include="Core+Pager">
       <UniqueIdentifier>{7f5cb337-faf1-46be-ad93-b617e19cc7f6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core+Btree">
+      <UniqueIdentifier>{b414d516-9e04-405a-8531-c81e57f47a7e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core\50.SysEx.cu">
@@ -51,6 +54,9 @@
     </ClCompile>
     <ClCompile Include="..\GpuData\Core\IO\25.JournalVFile.cu">
       <Filter>Core\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core+Btree\Btree.cu">
+      <Filter>Core+Btree</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -96,6 +102,15 @@
     </ClInclude>
     <ClInclude Include="..\GpuData\Core+Pager\Wal.cu.h">
       <Filter>Core+Pager</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\Btree.cu.h">
+      <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\BtreeInt.cu.h">
+      <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\Core+Btree.cu.h">
+      <Filter>Core+Btree</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

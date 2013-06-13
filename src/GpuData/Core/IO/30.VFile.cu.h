@@ -1,5 +1,5 @@
 ﻿// sqlite3.h
-namespace Core
+namespace Core { namespace IO
 {
 #define PENDING_BYTE 0x40000000
 
@@ -140,4 +140,4 @@ namespace Core
 	};
 
 	VFile::SYNC inline operator |= (VFile::SYNC a, VFile::SYNC b) { return (VFile::SYNC)(a | b); }
-}
+}}

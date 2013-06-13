@@ -53,11 +53,20 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Core+Btree\Btree.cs" />
+    <Compile Include="Core+Btree\BtreeInt_h.cs" />
+    <Compile Include="Core+Btree\Btree_h.cs" />
+    <Compile Include="Core+Btree\Core+Btree_h.cs" />
     <Compile Include="Core+Pager\Wal_h.cs" />
     <Compile Include="Core+Pager\Core+Pager_h.cs" />
     <Compile Include="Core+Pager\Pager_h.cs" />
     <Compile Include="Core+Pager\Pager.cs" />
     <Compile Include="Core+Pager\PCache_h.cs" />
+    <None Include="Core+Btree\Btree.cu" />
+    <Content Include="Core+Btree\Btree.cu.h" />
+    <Content Include="Core+Btree\BtreeInt.cu.h" />
+    <Content Include="Core+Btree\Context.cu.h" />
+    <Content Include="Core+Btree\Core+Btree.cu.h" />
     <Content Include="Core+Pager\Pager.cu.h" />
     <Content Include="Core+Pager\PCache.cu.h" />
     <Compile Include="Core+Pager\PCache.cs">
@@ -107,5 +116,6 @@
     <None Include="Core\IO\25.JournalVFile.cu" />
     <Compile Include="Core\IO\25.JournalVFile.cs" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>
