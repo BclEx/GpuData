@@ -2997,7 +2997,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         }
 
 #if DEBUG
-        public static bool IsPageWriteable(IPage pg)
+        public static bool Iswriteable(IPage pg)
         {
             return ((pg.Flags & PgHdr.PGHDR.DIRTY) != 0);
         }

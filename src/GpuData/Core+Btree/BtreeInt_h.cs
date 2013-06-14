@@ -162,26 +162,26 @@ namespace Core
 
         public struct CellInfo
         {
-            public int iCell;     // Offset to start of cell content -- Needed for C#
-            public byte[] pCell;  // Pointer to the start of cell content
-            public long nKey;      // The key for INTKEY tables, or number of bytes in key
-            public uint nData;     // Number of bytes of data
-            public uint nPayload;  // Total amount of payload
-            public ushort nHeader;   // Size of the cell content header in bytes
-            public ushort nLocal;    // Amount of payload held locally
-            public ushort iOverflow; // Offset to overflow page number.  Zero if no overflow
-            public ushort nSize;     // Size of the cell content on the main b-tree page
+            public int CellIdx;     // Offset to start of cell content -- Needed for C#
+            public long Key;        // The key for INTKEY tables, or number of bytes in key
+            public byte[] Cell;     // Pointer to the start of cell content
+            public uint Data;       // Number of bytes of data
+            public uint Payload;    // Total amount of payload
+            public ushort Header;   // Size of the cell content header in bytes
+            public ushort Local;    // Amount of payload held locally
+            public ushort Overflow; // Offset to overflow page number.  Zero if no overflow
+            public ushort Size;     // Size of the cell content on the main b-tree page
             public bool Equals(CellInfo ci)
             {
-                if (ci.iCell >= ci.pCell.Length || iCell >= this.pCell.Length)
+                if (ci.CellIdx >= ci.Cells.Length || CellIdx >= this.Cells.Length)
                     return false;
-                if (ci.pCell[ci.iCell] != this.pCell[iCell])
+                if (ci.Cells[ci.CellIdx] != this.Cells[CellIdx])
                     return false;
-                if (ci.nKey != this.nKey || ci.nData != this.nData || ci.nPayload != this.nPayload)
+                if (ci.Key != this.Key || ci.Data != this.Data || ci.Payload != this.Payload)
                     return false;
-                if (ci.nHeader != this.nHeader || ci.nLocal != this.nLocal)
+                if (ci.Header != this.Header || ci.Local != this.Local)
                     return false;
-                if (ci.iOverflow != this.iOverflow || ci.nSize != this.nSize)
+                if (ci.Overflow != this.Overflow || ci.Size != this.Size)
                     return false;
                 return true;
             }
@@ -199,43 +199,44 @@ namespace Core
 
         public class BtCursor
         {
-            public Btree Btree;            // The Btree to which this cursor belongs
-            public BtShared Bt;            // The BtShared this cursor points to
-            public BtCursor Next;
-            public BtCursor Prev;          // Forms a linked list of all cursors
-            public KeyInfo KeyInfo;        // Argument passed to comparison function
-            public Pid IDRoot;            // The root page of this tree
-            public long CachedRowid; // Next rowid cache.  0 means not valid
-            public CellInfo Info = new CellInfo();           // A parse of the cell we are pointing at
-            public byte[] pKey;             // Saved key that was cursor's last known position
-            public long nKey;                // Size of pKey, or last integer key
-            public int SkipNext;            // Prev() is noop if negative. Next() is noop if positive
-            public byte WrFlag;               // True if writable
-            public byte AtLast;               // VdbeCursor pointing to the last entry
-            public bool ValidNKey;          // True if info.nKey is valid
-            public CURSOR State;              // One of the CURSOR_XXX constants (see below)
+            public Btree Btree;             // The Btree to which this cursor belongs
+            public BtShared Bt;             // The BtShared this cursor points to
+            public BtCursor Next, Prev;     // Forms a linked list of all cursors
+            public KeyInfo KeyInfo;         // Argument passed to comparison function
 #if !OMIT_INCRBLOB
             public Pid[] Overflows;         // Cache of overflow page locations
+#endif
+            public Pid IDRoot;              // The root page of this tree
+            public long CachedRowID;        // Next rowid cache.  0 means not valid
+            public CellInfo Info = new CellInfo();           // A parse of the cell we are pointing at
+            public long KeyLength;          // Size of pKey, or last integer key
+            public byte[] Key;              // Saved key that was cursor's last known position
+            public int SkipNext;            // Prev() is noop if negative. Next() is noop if positive
+            public bool WrFlag;             // True if writable
+            public byte AtLast;             // VdbeCursor pointing to the last entry
+            public bool ValidNKey;          // True if info.nKey is valid
+            public CURSOR State;            // One of the CURSOR_XXX constants (see below)
+#if !OMIT_INCRBLOB
             public bool IsIncrblobHandle;   // True if this cursor is an incr. io handle
 #endif
-            public short PageIdx;                                          // Index of current page in apPage
-            public ushort[] aiIdx = new ushort[BTCURSOR_MAX_DEPTH];           // Current index in apPage[i]
-            public MemPage[] apPage = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
+            public byte Hints;			    // As configured by CursorSetHints()
+            public short PageIdx;           // Index of current page in apPage
+            public ushort[] Idxs = new ushort[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
+            public MemPage[] Pages = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 
             public void Clear()
             {
-                Next = null;
-                Prev = null;
+                Next = Prev = null;
                 KeyInfo = null;
                 IDRoot = 0;
-                CachedRowid = 0;
+                CachedRowID = 0;
                 Info = new CellInfo();
-                WrFlag = 0;
+                WrFlag = false;
                 AtLast = 0;
                 ValidNKey = false;
                 State = 0;
-                pKey = null;
-                nKey = 0;
+                KeyLength = 0;
+                Key = null;
                 SkipNext = 0;
 #if !OMIT_INCRBLOB
                 IsIncrblobHandle = false;
@@ -245,7 +246,7 @@ namespace Core
             }
             public BtCursor Copy()
             {
-                BtCursor cp = (BtCursor)MemberwiseClone();
+                var cp = (BtCursor)MemberwiseClone();
                 return cp;
             }
         }

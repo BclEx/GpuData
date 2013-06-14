@@ -5,6 +5,14 @@
 #include "..\packages\gpustructs.1.0.0\Runtime.src\Runtime.cpu.h"
 #endif
 
+#if defined(__GNUC__) && 0
+#define likely(X)    __builtin_expect((X),1)
+#define unlikely(X)  __builtin_expect((X),0)
+#else
+#define likely(X) !!(X)
+#define unlikely(X) !!(X)
+#endif
+
 #if defined(__PTRDIFF_TYPE__)  // This case should work for GCC
 # define INT_TO_PTR(X)  ((void*)(__PTRDIFF_TYPE__)(X))
 # define PTR_TO_INT(X)  ((int)(__PTRDIFF_TYPE__)(X))

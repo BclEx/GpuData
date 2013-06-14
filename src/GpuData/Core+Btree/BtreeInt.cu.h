@@ -138,7 +138,7 @@ namespace Core
 		uint32 Payload;			// Total amount of payload
 		uint16 Header;			// Size of the cell content header in bytes
 		uint16 Local;			// Amount of payload held locally
-		uint16 OverflowIndex;	// Offset to overflow page number.  Zero if no overflow
+		uint16 Overflow;	// Offset to overflow page number.  Zero if no overflow
 		uint16 Size;			// Size of the cell content on the main b-tree page
 	};
 
@@ -164,8 +164,8 @@ namespace Core
 		Pid IDRoot;				// The root page of this tree
 		int64 CachedRowID;		// Next rowid cache.  0 means not valid
 		CellInfo Info;          // A parse of the cell we are pointing at
-		int64 nKey;				// Size of pKey, or last integer key
-		void *pKey;				// Saved key that was cursor's last known position
+		int64 KeyLength;		// Size of pKey, or last integer key
+		void *Key;				// Saved key that was cursor's last known position
 		int SkipNext;			// Prev() is noop if negative. Next() is noop if positive
 		bool WrFlag;			// True if writable
 		uint8 AtLast;			// Cursor pointing to the last entry
@@ -174,10 +174,10 @@ namespace Core
 #ifndef OMIT_INCRBLOB
 		bool IsIncrblobHandle;  // True if this cursor is an incr. io handle
 #endif
-		uint8 Hints;                             // As configured by CursorSetHints()
-		int16 PageIdx;                            // Index of current page in apPage
-		uint16 aiIdx[BTCURSOR_MAX_DEPTH];        // Current index in apPage[i]
-		MemPage *apPage[BTCURSOR_MAX_DEPTH];  // Pages from root to current page
+		uint8 Hints;			// As configured by CursorSetHints()
+		int16 PageIdx;			// Index of current page in apPage
+		uint16 Idxs[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
+		MemPage *Pages[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 	};
 
 #define PENDING_BYTE_PAGE(pBt) PAGER_MJ_PGNO(pBt)
@@ -220,4 +220,6 @@ namespace Core
 #define get4byte sqlite3Get4byte
 #define put4byte sqlite3Put4byte
 
+	BTS inline operator |= (BTS a, BTS b) { return (BTS)(a | b); }
+	BTS inline operator &= (BTS a, BTS b) { return (BTS)(a & b); }
 }

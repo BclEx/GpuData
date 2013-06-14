@@ -35,7 +35,7 @@ namespace Core
 	int sqlite3BtreeSetPageSize(Btree *p, int nPagesize, int nReserve, int eFix);
 	int sqlite3BtreeGetPageSize(Btree*);
 	int sqlite3BtreeMaxPageCount(Btree*,int);
-	u32 sqlite3BtreeLastPage(Btree*);
+	uint32 sqlite3BtreeLastPage(Btree*);
 	int sqlite3BtreeSecureDelete(Btree*,int);
 	int sqlite3BtreeGetReserve(Btree*);
 #if defined(SQLITE_HAS_CODEC) || defined(SQLITE_DEBUG)
@@ -55,7 +55,7 @@ namespace Core
 	int sqlite3BtreeIsInBackup(Btree*);
 	void *sqlite3BtreeSchema(Btree *, int, void(*)(void *));
 	int sqlite3BtreeSchemaLocked(Btree *pBtree);
-	int sqlite3BtreeLockTable(Btree *pBtree, int iTab, u8 isWriteLock);
+	int sqlite3BtreeLockTable(Btree *pBtree, int iTab, uint8 isWriteLock);
 	int sqlite3BtreeSavepoint(Btree *, int, int);
 
 	const char *sqlite3BtreeGetFilename(Btree *);
@@ -71,8 +71,8 @@ namespace Core
 	int sqlite3BtreeClearTable(Btree*, int, int*);
 	void sqlite3BtreeTripAllCursors(Btree*, int);
 
-	void sqlite3BtreeGetMeta(Btree *pBtree, int idx, u32 *pValue);
-	int sqlite3BtreeUpdateMeta(Btree*, int idx, u32 value);
+	void sqlite3BtreeGetMeta(Btree *pBtree, int idx, uint32 *pValue);
+	int sqlite3BtreeUpdateMeta(Btree*, int idx, uint32 value);
 
 	int sqlite3BtreeNewDb(Btree *p);
 
@@ -101,13 +101,13 @@ namespace Core
 	int sqlite3BtreeMovetoUnpacked(
 		BtCursor*,
 		UnpackedRecord *pUnKey,
-		i64 intKey,
+		int64 intKey,
 		int bias,
 		int *pRes
 		);
 	int sqlite3BtreeCursorHasMoved(BtCursor*, int*);
 	int sqlite3BtreeDelete(BtCursor*);
-	int sqlite3BtreeInsert(BtCursor*, const void *pKey, i64 nKey,
+	int sqlite3BtreeInsert(BtCursor*, const void *pKey, int64 nKey,
 		const void *pData, int nData,
 		int nZero, int bias, int seekResult);
 	int sqlite3BtreeFirst(BtCursor*, int *pRes);
@@ -115,19 +115,19 @@ namespace Core
 	int sqlite3BtreeNext(BtCursor*, int *pRes);
 	int sqlite3BtreeEof(BtCursor*);
 	int sqlite3BtreePrevious(BtCursor*, int *pRes);
-	int sqlite3BtreeKeySize(BtCursor*, i64 *pSize);
-	int sqlite3BtreeKey(BtCursor*, u32 offset, u32 amt, void*);
+	int sqlite3BtreeKeySize(BtCursor*, int64 *pSize);
+	int sqlite3BtreeKey(BtCursor*, uint32 offset, uint32 amt, void*);
 	const void *sqlite3BtreeKeyFetch(BtCursor*, int *pAmt);
 	const void *sqlite3BtreeDataFetch(BtCursor*, int *pAmt);
-	int sqlite3BtreeDataSize(BtCursor*, u32 *pSize);
-	int sqlite3BtreeData(BtCursor*, u32 offset, u32 amt, void*);
-	void sqlite3BtreeSetCachedRowid(BtCursor*, sqlite3_int64);
-	sqlite3_int64 sqlite3BtreeGetCachedRowid(BtCursor*);
+	int sqlite3BtreeDataSize(BtCursor*, uint32 *pSize);
+	int sqlite3BtreeData(BtCursor*, uint32 offset, uint32 amt, void*);
+	void sqlite3BtreeSetCachedRowid(BtCursor*, int64);
+	int64 sqlite3BtreeGetCachedRowid(BtCursor*);
 
 	char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
 	struct Pager *sqlite3BtreePager(Btree*);
 
-	int sqlite3BtreePutData(BtCursor*, u32 offset, u32 amt, void*);
+	int sqlite3BtreePutData(BtCursor*, uint32 offset, uint32 amt, void*);
 	void sqlite3BtreeCacheOverflow(BtCursor *);
 	void sqlite3BtreeClearCursor(BtCursor *);
 	int sqlite3BtreeSetVersion(Btree *pBt, int iVersion);
@@ -138,7 +138,7 @@ namespace Core
 #endif
 
 #ifndef SQLITE_OMIT_BTREECOUNT
-	int sqlite3BtreeCount(BtCursor *, i64 *);
+	int sqlite3BtreeCount(BtCursor *, int64 *);
 #endif
 
 #ifdef SQLITE_TEST
@@ -152,7 +152,7 @@ namespace Core
 
 #ifndef OMIT_SHARED_CACHE
 	void sqlite3BtreeEnter(Btree*);
-	void sqlite3BtreeEnterAll(sqlite3*);
+	void sqlite3BtreeEnterAll(Context*);
 #else
 # define sqlite3BtreeEnter(X) 
 # define sqlite3BtreeEnterAll(X)
@@ -182,4 +182,5 @@ namespace Core
 #define sqlite3BtreeHoldsAllMutexes(X) 1
 #define sqlite3SchemaMutexHeld(X,Y,Z) 1
 #endif
+
 }
