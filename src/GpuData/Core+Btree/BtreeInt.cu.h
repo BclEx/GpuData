@@ -2,8 +2,8 @@
 namespace Core
 {
 
-#define MX_CELL_SIZE(pBt)  ((int)(pBt->pageSize-8))
-#define MX_CELL(pBt) ((pBt->pageSize-8)/6)
+#define MX_CELL_SIZE(bt)  ((int)(bt->PageSize-8))
+#define MX_CELL(bt) ((bt->PageSize-8)/6)
 
 	typedef struct MemPage MemPage;
 	typedef struct BtLock BtLock;
@@ -64,22 +64,6 @@ namespace Core
 		NONE = 0,
 		READ = 1,
 		WRITE = 2,
-	};
-
-	struct Btree
-	{
-		Context *Ctx;			// The database connection holding this btree
-		BtShared *Bt;			// Sharable content of this btree
-		TRANS InTrans;			// TRANS_NONE, TRANS_READ or TRANS_WRITE
-		bool Sharable;			// True if we can share pBt with another db
-		bool Locked;			// True if db currently has pBt locked
-		int WantToLock;			// Number of nested calls to sqlite3BtreeEnter()
-		int Backups;			// Number of backup operations reading this btree
-		Btree *Next;			// List of other sharable Btrees from the same db
-		Btree *Prev;			// Back pointer of the same list
-#ifndef OMIT_SHARED_CACHE
-		BtLock Lock;			// Object used to lock page 1
-#endif
 	};
 
 	enum BTS : uint16
@@ -193,8 +177,8 @@ namespace Core
 #define PTRMAP_BTREE 5
 
 #define btreeIntegrity(p) \
-	assert( p->pBt->inTransaction!=TRANS_NONE || p->pBt->nTransaction==0 ); \
-	assert( p->pBt->inTransaction>=p->inTrans ); 
+	_assert(p->Bt->InTransaction != TRANS::NONE || p->Bt->Transactions == 0); \
+	_assert(p->Bt->InTransaction >= p->InTrans); 
 
 #ifndef OMIT_AUTOVACUUM
 #define ISAUTOVACUUM (pBt->autoVacuum)
@@ -214,11 +198,6 @@ namespace Core
 		int mallocFailed; // A memory allocation error has occurred
 		StrAccum errMsg;  // Accumulate the error message text here
 	};
-
-#define get2byte(x)   ((x)[0]<<8 | (x)[1])
-#define put2byte(p,v) ((p)[0] = (u8)((v)>>8), (p)[1] = (u8)(v))
-#define get4byte sqlite3Get4byte
-#define put4byte sqlite3Put4byte
 
 	BTS inline operator |= (BTS a, BTS b) { return (BTS)(a | b); }
 	BTS inline operator &= (BTS a, BTS b) { return (BTS)(a & b); }

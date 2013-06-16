@@ -15,7 +15,7 @@
     <DebugType>full</DebugType>
     <Optimize>False</Optimize>
     <OutputPath>bin\Debug</OutputPath>
-    <DefineConstants>DEBUG;OMIT_WAL EXPENSIVE_ASSERT TEST CHECK_PAGES ENABLE_MEMORY_MANAGEMENT ENABLE_ATOMIC_WRITE HAS_CODEC</DefineConstants>
+    <DefineConstants>DEBUG;THREADSAFE OMIT_WAL EXPENSIVE_ASSERT TEST CHECK_PAGES ENABLE_MEMORY_MANAGEMENT ENABLE_ATOMIC_WRITE HAS_CODEC ENABLE_OVERSIZE_CELL_CHECK</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <PlatformTarget>x86</PlatformTarget>
@@ -78,9 +78,10 @@
     </Compile>
     <Compile Include="Core+Pager\Wal.cs" />
     <Compile Include="Core\00.Bitvec.cs" />
-    <Compile Include="Core\20.MutexEx.cs" />
+    <Compile Include="Core\20.MutexEx_h.cs" />
     <Compile Include="Core\10.ConvertEx.cs" />
     <Compile Include="Core\40.StatusEx.cs" />
+    <Compile Include="Core\cs.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Core\50.SysEx.cs" />
     <Compile Include="Core\30.RC.cs" />

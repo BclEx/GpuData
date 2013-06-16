@@ -3,6 +3,7 @@ using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
 using System.Text;
+using Core.IO;
 
 namespace Core
 {
@@ -19,13 +20,8 @@ namespace Core
 
         static byte[] _magicHeader = Encoding.UTF8.GetBytes(FILE_HEADER);
 
-        static int get2byteNotZero(byte[] X, int offset)
-        {
-            return (((((int)get2byte(X, offset)) - 1) & 0xffff) + 1);
-        }
-
 #if !OMIT_SHARED_CACHE
-        static BtShared sqlite3SharedCacheList = null;
+        static BtShared _sharedCacheList = null;
         bool _sharedCacheEnabled = false;
         RC sqlite3_enable_shared_cache(bool enable)
         {
@@ -724,20 +720,20 @@ namespace Core
             var data = page.Data; // The page data
             var hdr = page.HdrOffset; // Offset to the page header
             var cellOffset = page.CellOffset; // Offset to the cell pointer array
-            int cells = page.Cells; // Number of cells on the page
+            var cells = page.Cells; // Number of cells on the page
             Debug.Assert(cells == ConvertEx.Get2(data, hdr + 3));
             var usableSize = (int)page.Bt.UsableSize; // Number of usable bytes on a page
-            int cbrk = ConvertEx.Get2(data, hdr + 5); // Offset to the cell content area
+            var cbrk = (int)ConvertEx.Get2(data, hdr + 5); // Offset to the cell content area
             Buffer.BlockCopy(data, cbrk, temp, cbrk, usableSize - cbrk); // memcpy(temp[cbrk], ref data[cbrk], usableSize - cbrk);
             cbrk = usableSize;
-            int cellFirst = cellOffset + 2 * cells; // First allowable cell index
-            int cellLast = usableSize - 4; // Last possible cell index
-            int addr = 0;  // The i-th cell pointer
+            var cellFirst = cellOffset + 2 * cells; // First allowable cell index
+            var cellLast = usableSize - 4; // Last possible cell index
+            var addr = 0;  // The i-th cell pointer
             for (var i = 0; i < cells; i++)
             {
                 addr = cellOffset + i * 2;
                 int pc = ConvertEx.Get2(data, addr); // Address of a i-th cell
-#if !(ENABLE_OVERSIZE_CELL_CHECK)
+#if !ENABLE_OVERSIZE_CELL_CHECK
                 // These conditions have already been verified in btreeInitPage() if ENABLE_OVERSIZE_CELL_CHECK is defined
                 if (pc < cellFirst || pc > cellLast)
                     return SysEx.CORRUPT_BKPT();
@@ -745,9 +741,9 @@ namespace Core
                 Debug.Assert(pc >= cellFirst && pc <= cellLast);
                 int size = cellSizePtr(page, temp, pc); // Size of a cell
                 cbrk -= size;
-#if (ENABLE_OVERSIZE_CELL_CHECK)
-            if (cbrk < cellFirst || pc + size > usableSize)
-              return SysEx.CORRUPT_BKPT();
+#if ENABLE_OVERSIZE_CELL_CHECK
+                if (cbrk < cellFirst || pc + size > usableSize)
+                    return SysEx.CORRUPT_BKPT();
 #else
                 if (cbrk < cellFirst || pc + size > usableSize)
                     return SysEx.CORRUPT_BKPT();
@@ -777,15 +773,15 @@ namespace Core
             Debug.Assert(bytes >= 0);  // Minimum cell size is 4
             Debug.Assert(page.Frees >= bytes);
             Debug.Assert(page.OverflowsUsed == 0);
-            uint usableSize = page.Bt.UsableSize; // Usable size of the page
+            var usableSize = page.Bt.UsableSize; // Usable size of the page
             Debug.Assert(bytes < usableSize - 8);
 
-            int hdr = page.HdrOffset;  // Local cache of pPage.hdrOffset
+            var hdr = page.HdrOffset;  // Local cache of pPage.hdrOffset
             var data = page.Data;    // Local cache of pPage.aData
-            int frags = data[hdr + 7]; // Number of fragmented bytes on pPage
+            var frags = data[hdr + 7]; // Number of fragmented bytes on pPage
             Debug.Assert(page.CellOffset == hdr + 12 - 4 * page.Leaf);
-            int gap = page.CellOffset + 2 * page.Cells; // First byte of gap between cell pointers and cell content
-            int top = get2byteNotZero(data, hdr + 5); // First byte of cell content area
+            var gap = page.CellOffset + 2 * page.Cells; // First byte of gap between cell pointers and cell content
+            var top = ConvertEx.Get2nz(data, hdr + 5); // First byte of cell content area
             if (gap > top) return SysEx.CORRUPT_BKPT();
 
             RC rc;
@@ -794,7 +790,7 @@ namespace Core
                 // Always defragment highly fragmented pages
                 rc = defragmentPage(page);
                 if (rc != RC.OK) return rc;
-                top = get2byteNotZero(data, hdr + 5);
+                top = ConvertEx.Get2nz(data, hdr + 5);
             }
             else if (gap + 2 <= top)
             {
@@ -831,7 +827,7 @@ namespace Core
             {
                 rc = defragmentPage(page);
                 if (rc != RC.OK) return rc;
-                top = get2byteNotZero(data, hdr + 5);
+                top = ConvertEx.Get2nz(data, hdr + 5);
                 Debug.Assert(gap + bytes <= top);
             }
 
@@ -839,7 +835,7 @@ namespace Core
             // validated the freelist.  Given that the freelist is valid, there is no way that the allocation can extend off the end of the page.
             // The assert() below verifies the previous sentence.
             top -= bytes;
-            put2byte(data, hdr + 5, top);
+            ConvertEx.Put2(data, hdr + 5, top);
             Debug.Assert(top + bytes <= (int)page.Bt.UsableSize);
             idx = top;
             return RC.OK;
@@ -868,7 +864,7 @@ namespace Core
             int last = (int)page.Bt.UsableSize - 4; // Largest possible freeblock offset
             Debug.Assert(start <= last);
             int pbegin;
-            while ((pbegin = get2byte(data, addr)) < start && pbegin > 0)
+            while ((pbegin = ConvertEx.Get2(data, addr)) < start && pbegin > 0)
             {
                 if (pbegin < addr + 4)
                     return SysEx.CORRUPT_BKPT();
@@ -877,14 +873,14 @@ namespace Core
             if (pbegin > last)
                 return SysEx.CORRUPT_BKPT();
             Debug.Assert(pbegin > addr || pbegin == 0);
-            put2byte(data, addr, start);
-            put2byte(data, start, pbegin);
-            put2byte(data, start + 2, size);
+            ConvertEx.Put2(data, addr, start);
+            ConvertEx.Put2(data, start, pbegin);
+            ConvertEx.Put2(data, start + 2, size);
             page.Frees = (ushort)(page.Frees + size);
 
             // Coalesce adjacent free blocks
             addr = hdr + 1;
-            while ((pbegin = get2byte(data, addr)) > 0)
+            while ((pbegin = ConvertEx.Get2(data, addr)) > 0)
             {
                 Debug.Assert(pbegin > addr);
                 Debug.Assert(pbegin <= (int)page.Bt.UsableSize - 4);
@@ -966,7 +962,7 @@ namespace Core
                 int usableSize = (int)bt.UsableSize; // Amount of usable space on each page
                 ushort cellOffset; // Offset from start of page to first cell pointer
                 page.CellOffset = (cellOffset = (ushort)(hdr + 12 - 4 * page.Leaf));
-                int top = get2byteNotZero(data, hdr + 5); // First byte of the cell content area
+                int top = ConvertEx.Get2nz(data, hdr + 5); // First byte of the cell content area
                 page.Cells = (ushort)(ConvertEx.Get2(data, hdr + 3));
                 if (page.Cells > MX_CELL(bt))
                     // To many cells for a single page.  The page must be corrupt
@@ -991,7 +987,7 @@ namespace Core
                         if (pc + sz > usableSize)
                             return SysEx.CORRUPT_BKPT();
                     }
-                    if (page.leaf == 0) cellLast++;
+                    if (page.Leaf == 0) cellLast++;
                 }
 #endif
 
@@ -1055,1256 +1051,876 @@ namespace Core
 
         #endregion
 
+        #region Page
+
+        static MemPage btreePageFromDbPage(IPage dbPage, Pid id, BtShared bt)
+        {
+            MemPage page = (MemPage)Pager.GetExtra(dbPage);
+            page.Data = Pager.GetData(dbPage);
+            page.DBPage = dbPage;
+            page.Bt = bt;
+            page.ID = id;
+            page.HdrOffset = (byte)(page.ID == 1 ? 100 : 0);
+            return page;
+        }
+
+        static RC btreeGetPage(BtShared bt, Pid id, ref MemPage page, bool noContent)
+        {
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+            IPage dbPage = null;
+            var rc = bt.Pager.Acquire(id, ref dbPage, noContent);
+            if (rc != RC.OK) return rc;
+            page = btreePageFromDbPage(dbPage, id, bt);
+            return RC.OK;
+        }
+
+        static MemPage btreePageLookup(BtShared bt, Pid id)
+        {
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+            var dbPage = bt.Pager.Lookup(id);
+            return (dbPage != null ? btreePageFromDbPage(dbPage, id, bt) : null);
+        }
+
+        static Pid btreePagecount(BtShared bt)
+        {
+            return bt.Pages;
+        }
+
+        public Pid LastPage()
+        {
+            Debug.Assert(HoldsMutex());
+            Debug.Assert(((Bt.Pages) & 0x8000000) == 0);
+            return (Pid)btreePagecount(Bt);
+        }
+
+        static RC getAndInitPage(BtShared bt, Pid id, ref MemPage page)
+        {
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+
+            RC rc;
+            if (id > btreePagecount(bt))
+                rc = SysEx.CORRUPT_BKPT();
+            else
+            {
+                rc = btreeGetPage(bt, id, ref page, false);
+                if (rc == RC.OK)
+                {
+                    rc = btreeInitPage(page);
+                    if (rc != RC.OK)
+                        releasePage(page);
+                }
+            }
+
+            Debug.Assert(id != 0 || rc == RC.CORRUPT);
+            return rc;
+        }
+
+        static void releasePage(MemPage page)
+        {
+            if (page != null)
+            {
+                Debug.Assert(page.Data != null);
+                Debug.Assert(page.Bt != null);
+                Debug.Assert(Pager.GetExtra(page.DBPage) == page);
+                Debug.Assert(Pager.GetData(page.DBPage) == page.Data);
+                Debug.Assert(MutexEx.Held(page.Bt.Mutex));
+                Pager.Unref(page.DBPage);
+            }
+        }
+
+        static void pageReinit(IPage dbPage)
+        {
+            MemPage page = Pager.GetExtra(dbPage);
+            Debug.Assert(Pager.get_PageRefs(dbPage) > 0);
+            if (page.IsInit)
+            {
+                Debug.Assert(MutexEx.Held(page.Bt.Mutex));
+                page.IsInit = false;
+                if (Pager.get_PageRefs(dbPage) > 1)
+                {
+                    // pPage might not be a btree page;  it might be an overflow page or ptrmap page or a free page.  In those cases, the following
+                    // call to btreeInitPage() will likely return SQLITE_CORRUPT. But no harm is done by this.  And it is very important that
+                    // btreeInitPage() be called on every btree page so we make the call for every page that comes in for re-initing.
+                    btreeInitPage(page);
+                }
+            }
+        }
+
+        #endregion
+
+        #region Open / Close
+
+        static int btreeInvokeBusyHandler(object arg)
+        {
+            var bt = (BtShared)arg;
+            Debug.Assert(bt.Ctx != null);
+            Debug.Assert(MutexEx.Held(bt.Ctx.Mutex));
+            return sqlite3InvokeBusyHandler(bt.Ctx.BusyHandler);
+        }
+
+        static RC Open(VFileSystem vfs, string filename, Context ctx, ref Btree btree, OPEN flags, VFileSystem.OPEN vfsFlags)
+        {
+            // True if opening an ephemeral, temporary database
+            bool tempDB = string.IsNullOrEmpty(filename);
+
+            // Set the variable isMemdb to true for an in-memory database, or false for a file-based database.
+            bool memoryDB = (filename == ":memory:") ||
+                (tempDB && sqlite3TempInMemory(ctx)) ||
+                (vfsFlags & VFileSystem.OPEN.MEMORY) != 0;
+
+            Debug.Assert(ctx != null);
+            Debug.Assert(vfs != null);
+            Debug.Assert(MutexEx.Held(ctx.Mutex));
+            Debug.Assert(((int)flags & 0xff) == (int)flags); // flags fit in 8 bits
+
+            // Only a BTREE_SINGLE database can be BTREE_UNORDERED
+            Debug.Assert((flags & OPEN.UNORDERED) == 0 || (flags & OPEN.SINGLE) != 0);
+
+            // A BTREE_SINGLE database is always a temporary and/or ephemeral
+            Debug.Assert((flags & OPEN.SINGLE) == 0 || tempDB);
+
+            if (memoryDB)
+                flags |= OPEN.MEMORY;
+            if ((vfsFlags & VFileSystem.OPEN.MAIN_DB) != 0 && (memoryDB || tempDB))
+                vfsFlags = (vfsFlags & ~VFileSystem.OPEN.MAIN_DB) | VFileSystem.OPEN.TEMP_DB;
+            var p = new Btree(); // Handle to return
+            p.InTrans = TRANS.NONE;
+            p.Ctx = ctx;
+#if !OMIT_SHARED_CACHE
+            p.Lock.Btree = p;
+            p.Lock.Table = 1;
+#endif
+
+            RC rc = RC.OK; // Result code from this function
+            BtShared bt = null; // Shared part of btree structure
+            MutexEx mutexOpen;
+#if !OMIT_SHARED_CACHE && !OMIT_DISKIO
+            // If this Btree is a candidate for shared cache, try to find an existing BtShared object that we can share with
+            if (!tempDB && (!memoryDB || (vfsFlags & VFileSystem.OPEN.URI) != 0))
+                if ((vfsFlags & VFileSystem.OPEN.SHAREDCACHE) != 0)
+                {
+                    string fullPathname;
+                    p.Sharable = true;
+                    if (memoryDB)
+                        fullPathname = filename;
+                    else
+                        vfs.FullPathname(filename, out fullPathname);
+                    MutexEx mutexShared;
+#if THREADSAFE
+                    mutexOpen = MutexEx.Alloc(MutexEx.MUTEX.STATIC_OPEN); // Prevents a race condition. Ticket #3537
+                    MutexEx.Enter(mutexOpen);
+                    mutexShared = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
+                    MutexEx.Enter(mutexShared);
+#endif
+                    for (bt = _sharedCacheList; bt != null; bt = bt.Next)
+                    {
+                        Debug.Assert(bt.Refs > 0);
+                        if (fullPathname == bt.Pager.get_Filename(false) && bt.Pager.get_Vfs() == vfs)
+                        {
+                            for (var i = ctx.DBs.Length - 1; i >= 0; i--)
+                            {
+                                var existing = ctx.DBs[i].Bt;
+                                if (existing && existing.Bt == bt)
+                                {
+                                    MutexEx.Leave(mutexShared);
+                                    MutexEx.Leave(mutexOpen);
+                                    fullPathname = null;
+                                    p = null;
+                                    return RC.CONSTRAINT;
+                                }
+                            }
+                            p.Bt = bt;
+                            bt.Refs++;
+                            break;
+                        }
+                    }
+                    MutexEx.Leave(mutexShared);
+                    fullPathname = null;
+                }
+#if DEBUG
+                else
+                    // In debug mode, we mark all persistent databases as sharable even when they are not.  This exercises the locking code and
+                    // gives more opportunity for asserts(sqlite3_mutex_held()) statements to find locking problems.
+                    p.Sharable = true;
+#endif
+#endif
+
+            byte reserves; // Byte of unused space on each page
+            var dbHeader = new byte[100]; // Database header content
+            if (bt == null)
+            {
+                // The following asserts make sure that structures used by the btree are the right size.  This is to guard against size changes that result
+                // when compiling on a different architecture.
+                Debug.Assert(sizeof(long) == 8 || sizeof(long) == 4);
+                Debug.Assert(sizeof(ulong) == 8 || sizeof(ulong) == 4);
+                Debug.Assert(sizeof(uint) == 4);
+                Debug.Assert(sizeof(ushort) == 2);
+                Debug.Assert(sizeof(Pid) == 4);
+
+                bt = new BtShared();
+                rc = Pager.Open(vfs, out bt.Pager, filename, EXTRA_SIZE, (IPager.PAGEROPEN)flags, vfsFlags, pageReinit);
+                if (rc == RC.OK)
+                    rc = bt.Pager.ReadFileHeader(dbHeader.Length, dbHeader);
+                if (rc != RC.OK)
+                    goto btree_open_out;
+                bt.OpenFlags = flags;
+                bt.Ctx = ctx;
+                bt.Pager.SetBusyHandler(btreeInvokeBusyHandler, bt);
+                p.Bt = bt;
+
+                bt.Cursor = null;
+                bt.Page1 = null;
+                if (Pager.Isreadonly(bt.Pager)) bt.BtsFlags |= BTS.READ_ONLY;
+#if SECURE_DELETE
+                bt.BtsFlags |= BTS.SECURE_DELETE;
+#endif
+                bt.PageSize = (Pid)((dbHeader[16] << 8) | (dbHeader[17] << 16));
+                if (bt.PageSize < 512 || bt.PageSize > MAX_PAGE_SIZE || ((bt.PageSize - 1) & bt.PageSize) != 0)
+                {
+                    bt.PageSize = 0;
+#if !OMIT_AUTOVACUUM
+                    // If the magic name ":memory:" will create an in-memory database, then leave the autoVacuum mode at 0 (do not auto-vacuum), even if
+                    // SQLITE_DEFAULT_AUTOVACUUM is true. On the other hand, if SQLITE_OMIT_MEMORYDB has been defined, then ":memory:" is just a
+                    // regular file-name. In this case the auto-vacuum applies as per normal.
+                    if (filename != null && !memoryDB)
+                    {
+                        bt.AutoVacuum = (DEFAULT_AUTOVACUUM != 0);
+                        bt.IncrVacuum = (DEFAULT_AUTOVACUUM == AUTOVACUUM.INCR);
+                    }
+#endif
+                    reserves = 0;
+                }
+                else
+                {
+                    reserves = dbHeader[20];
+                    bt.BtsFlags |= BTS.PAGESIZE_FIXED;
+#if !OMIT_AUTOVACUUM
+                    bt.AutoVacuum = (ConvertEx.Get4(dbHeader, 36 + 4 * 4) != 0);
+                    bt.IncrVacuum = (ConvertEx.Get4(dbHeader, 36 + 7 * 4) != 0);
+#endif
+                }
+                rc = bt.Pager.SetPageSize(ref bt.PageSize, reserves);
+                if (rc != RC.OK) goto btree_open_out;
+                bt.UsableSize = (ushort)(bt.PageSize - reserves);
+                Debug.Assert((bt.PageSize & 7) == 0); // 8-byte alignment of pageSize
+
+#if !SHARED_CACHE && !OMIT_DISKIO
+                // Add the new BtShared object to the linked list sharable BtShareds.
+                if (p.Sharable)
+                {
+                    bt.Refs = 1;
+                    MutexEx mutexShared;
+#if THREADSAFE
+                    mutexShared = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
+                    bt.Mutex = MutexEx.Alloc(MutexEx.MUTEX.FAST);
+                    //if (bt.Mutex == null)
+                    //{
+                    //    rc = RC.NOMEM;
+                    //    ctx.MallocFailed = 0;
+                    //    goto btree_open_out;
+                    //}
+#endif
+                    MutexEx.Enter(mutexShared);
+                    bt.Next = _sharedCacheList;
+                    _sharedCacheList = bt;
+                    MutexEx.Leave(mutexShared);
+                }
+#endif
+            }
+
+#if !OMIT_SHARED_CACHE && !OMIT_DISKIO
+            // If the new Btree uses a sharable pBtShared, then link the new Btree into the list of all sharable Btrees for the same connection.
+            // The list is kept in ascending order by pBt address.
+            if (p.Sharable)
+            {
+                Btree sib;
+                for (var i = 0; i < ctx.DBs.Length; i++)
+                    if ((sib = ctx.DBs[i].pBt) != null && sib.Sharable)
+                    {
+                        while (sib.Prev != null) { sib = sib.Prev; }
+                        if (p.Bt < sib.Bt)
+                        {
+                            p.Next = sib;
+                            p.Prev = null;
+                            sib.Prev = p;
+                        }
+                        else
+                        {
+                            while (sib.Next && sib.Next.Bt < p.Bt)
+                                sib = sib.Next;
+                            p.Next = sib.Next;
+                            p.Prev = sib;
+                            if (p.Next != null)
+                                p.Next.Prev = p;
+                            sib.Next = p;
+                        }
+                        break;
+                    }
+            }
+#endif
+            btree = p;
+
+        btree_open_out:
+            if (rc != RC.OK)
+            {
+                if (bt != null && bt.Pager != null)
+                    bt.Pager.Close();
+                bt = null;
+                p = null;
+                btree = null;
+            }
+            else
+                // If the B-Tree was successfully opened, set the pager-cache size to the default value. Except, when opening on an existing shared pager-cache,
+                // do not change the pager-cache size.
+                if (Schema(p, 0, null) == null)
+                    p.Bt.Pager.SetCacheSize(DEFAULT_CACHE_SIZE);
+#if THREADSAFE
+            Debug.Assert(MutexEx.Held(mutexOpen));
+            MutexEx.Leave(mutexOpen);
+#endif
+            return rc;
+        }
+
+        static bool removeFromSharingList(BtShared bt)
+        {
+#if !OMIT_SHARED_CACHE
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+#if THREADSAFE
+            var master = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
+#endif
+            var removed = false;
+            MutexEx.Enter(master);
+            bt.Refs--;
+            if (bt.Refs <= 0)
+            {
+                if (_sharedCacheList == bt)
+                    _sharedCacheList = bt.Next;
+                else
+                {
+                    var list = _sharedCacheList;
+                    while (SysEx.ALWAYS(list != null) && list.Next != bt)
+                        list = list.Next;
+                    if (SysEx.ALWAYS(list != null))
+                        list.Next = bt.Next;
+                }
+#if THREADSAFE
+                MutexEx.Free(bt.Mutex);
+#endif
+                removed = true;
+            }
+            MutexEx.Leave(master);
+            return removed;
+#else
+            return true;
+#endif
+        }
+
+        static void allocateTempSpace(BtShared bt)
+        {
+            if (bt.TmpSpace == null)
+                bt.TmpSpace = SysEx.Alloc(bt.PageSize);
+        }
+
+        static void freeTempSpace(BtShared bt)
+        {
+            sqlite3PageFree(ref bt.TmpSpace);
+        }
+
+        public RC Close()
+        {
+            // Close all cursors opened via this handle.
+            Debug.Assert(MutexEx.Held(Ctx.Mutex));
+            Enter();
+            var bt = Bt;
+            var cur = bt.Cursor;
+            while (cur != null)
+            {
+                var tmp = cur;
+                cur = cur.Next;
+                if (tmp.Btree == this)
+                    CloseCursor(tmp);
+            }
+
+            // Rollback any active transaction and free the handle structure. The call to sqlite3BtreeRollback() drops any table-locks held by this handle.
+            Rollback();
+            Leave();
+
+            // If there are still other outstanding references to the shared-btree structure, return now. The remainder of this procedure cleans up the shared-btree.
+            Debug.Assert(WantToLock == 0 && !Locked);
+            if (!Sharable || removeFromSharingList(bt))
+            {
+                // The pBt is no longer on the sharing list, so we can access it without having to hold the mutex.
+                //
+                // Clean out and delete the BtShared object.
+                Debug.Assert(bt.Cursor == null);
+                bt.Pager.Close();
+                if (bt.FreeSchema != null && bt.Schema != null)
+                    bt.FreeSchema(bt.Schema);
+                bt.Schema = null;
+                freeTempSpace(bt);
+                bt = null;
+            }
+
+#if !OMIT_SHARED_CACHE
+            Debug.Assert(WantToLock == null && Locked == null);
+            if (Prev) Prev.pNext = Next;
+            if (Next) Next.pPrev = Prev;
+#endif
+
+            return RC.OK;
+        }
+
+        #endregion
+
+        #region Settings
+
+        public RC SetCacheSize(int maxPage)
+        {
+            Debug.Assert(MutexEx.Held(Ctx.Mutex));
+            Enter();
+            Bt.Pager.SetCacheSize(maxPage);
+            Leave();
+            return RC.OK;
+        }
+
+#if !OMIT_PAGER_PRAGMAS
+        public RC SetSafetyLevel(int level, bool fullSync, bool ckptFullSync)
+        {
+            Debug.Assert(MutexEx.Held(Ctx.Mutex));
+            Debug.Assert(level >= 1 && level <= 3);
+            Enter();
+            Bt.Pager.SetSafetyLevel(level, fullSync, ckptFullSync);
+            Leave();
+            return RC.OK;
+        }
+#endif
+
+        public bool SyncDisabled()
+        {
+            Debug.Assert(MutexEx.Held(Ctx.Mutex));
+            Enter();
+            Debug.Assert(Bt != null && Bt.Pager != null);
+            var rc = Bt.Pager.get_NoSync();
+            Leave();
+            return rc;
+        }
+
+        public RC SetPageSize(int pageSize, int reserves, bool fix)
+        {
+            Debug.Assert(reserves >= -1 && reserves <= 255);
+            Enter();
+            BtShared bt = Bt;
+            if ((bt.BtsFlags & BTS.PAGESIZE_FIXED) != 0)
+            {
+                Leave();
+                return RC.READONLY;
+            }
+            if (reserves < 0)
+                reserves = (int)(bt.PageSize - bt.UsableSize);
+            Debug.Assert(reserves >= 0 && reserves <= 255);
+            if (pageSize >= 512 && pageSize <= MAX_PAGE_SIZE && ((pageSize - 1) & pageSize) == 0)
+            {
+                Debug.Assert((pageSize & 7) == 0);
+                Debug.Assert(bt.Page1 == null && bt.Cursor == null);
+                bt.PageSize = (uint)pageSize;
+                freeTempSpace(bt);
+            }
+            var rc = bt.Pager.SetPageSize(ref bt.PageSize, reserves);
+            bt.UsableSize = (ushort)(bt.PageSize - reserves);
+            if (fix) bt.BtsFlags |= BTS.PAGESIZE_FIXED;
+            Leave();
+            return rc;
+        }
+
+        public int GetPageSize()
+        {
+            return (int)Bt.PageSize;
+        }
+
+#if HAS_CODEC || _DEBUG
+        public int GetReserveNoMutex()
+        {
+            Debug.Assert(MutexEx.Held(Bt.Mutex));
+            return (int)(Bt.PageSize - Bt.UsableSize);
+        }
+#endif
+
+#if !OMIT_PAGER_PRAGMAS || !OMIT_VACUUM
+        public int GetReserve()
+        {
+            Enter();
+            var n = (int)(Bt.PageSize - Bt.UsableSize);
+            Leave();
+            return n;
+        }
+
+        public int MaxPageCount(int maxPage)
+        {
+            Enter();
+            var n = (int)Bt.Pager.MaxPages(maxPage);
+            Leave();
+            return n;
+        }
+
+        public bool SecureDelete(bool newFlag)
+        {
+            Enter();
+            Bt.BtsFlags &= ~BTS.SECURE_DELETE;
+            if (newFlag) Bt.BtsFlags |= BTS.SECURE_DELETE;
+            bool b = (Bt.BtsFlags & BTS.SECURE_DELETE) != 0;
+            Leave();
+            return b;
+        }
+#endif
+
+        public RC SetAutoVacuum(AUTOVACUUM autoVacuum)
+        {
+#if OMIT_AUTOVACUUM
+            return RC.READONLY;
+#else
+            var rc = RC.OK;
+            Enter();
+            var bt = Bt;
+            if ((bt.BtsFlags & BTS.PAGESIZE_FIXED) != 0 && (autoVacuum != 0) != bt.AutoVacuum)
+                rc = RC.READONLY;
+            else
+            {
+                bt.AutoVacuum = (autoVacuum != 0);
+                bt.IncrVacuum = (autoVacuum == AUTOVACUUM.INCR);
+            }
+            Leave();
+            return rc;
+#endif
+        }
+
+        public AUTOVACUUM GetAutoVacuum()
+        {
+#if OMIT_AUTOVACUUM
+            return AUTOVACUUM.NONE;
+#else
+            Enter();
+            var bt = Bt;
+            var rc = (!bt.AutoVacuum ? AUTOVACUUM.NONE :
+                !bt.IncrVacuum ? AUTOVACUUM.FULL :
+                AUTOVACUUM.INCR);
+            Leave();
+            return rc;
+#endif
+        }
+
+        #endregion
+
+        #region Lock / Unlock
+
+        static RC lockBtree(BtShared bt)
+        {
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+            Debug.Assert(bt.Page1 == null);
+            var rc = bt.Pager.SharedLock();
+            if (rc != RC.OK) return rc;
+            MemPage page1 = null; // Page 1 of the database file
+            rc = btreeGetPage(bt, 1, ref page1, false);
+            if (rc != RC.OK) return rc;
+
+            // Do some checking to help insure the file we opened really is a valid database file. 
+            Pid pagesHeader; // Number of pages in the database according to hdr
+            Pid pages = pagesHeader = ConvertEx.Get4(page1.Data, 28); // Number of pages in the database
+            Pid pagesFile = 0; // Number of pages in the database file
+            bt.Pager.Pages(out pagesFile);
+            if (pages == 0 || cs.memcmp(page1.Data, 24, page1.Data, 92, 4) != 0)
+                pages = pagesFile;
+            if (pages > 0)
+            {
+                var page1Data = page1.Data;
+                rc = RC.NOTADB;
+                if (cs.memcmp(page1Data, _magicHeader, 16) != 0)
+                    goto page1_init_failed;
+
+#if OMIT_WAL
+                if (page1Data[18] > 1)
+                    bt.BtsFlags |= BTS.READ_ONLY;
+                if (page1Data[19] > 1)
+                    goto page1_init_failed;
+#else
+                if (page1Data[18] > 2)
+                    bt.BtsFlags |= BTS.READ_ONLY;
+                if (page1Data[19] > 2)
+                    goto page1_init_failed;
+
+                // return SQLITE_OK and return without populating BtShared.pPage1. The caller detects this and calls this function again. This is
+                // required as the version of page 1 currently in the page1 buffer may not be the latest version - there may be a newer one in the log file.
+                if (page1Data[19] == 2 && (bt.BtsFlags & BTS.NO_WAL) == 0)
+                {
+                    int isOpen = 0;
+                    rc = bt.Pager.OpenWal(ref isOpen);
+                    if (rc != RC.OK)
+                        goto page1_init_failed;
+                    else if (isOpen == 0)
+                    {
+                        releasePage(page1);
+                        return RC.OK;
+                    }
+                    rc = RC.NOTADB;
+                }
+#endif
+
+                // The maximum embedded fraction must be exactly 25%.  And the minimum embedded fraction must be 12.5% for both leaf-data and non-leaf-data.
+                // The original design allowed these amounts to vary, but as of version 3.6.0, we require them to be fixed.
+                if (cs.memcmp(page1Data, 21, "\x0040\x0020\x0020", 3) != 0) // "\100\040\040"
+                    goto page1_init_failed;
+                uint pageSize = (uint)((page1Data[16] << 8) | (page1Data[17] << 16));
+                if (((pageSize - 1) & pageSize) != 0 ||
+                    pageSize > MAX_PAGE_SIZE ||
+                    pageSize <= 256)
+                    goto page1_init_failed;
+                Debug.Assert((pageSize & 7) == 0);
+                uint usableSize = pageSize - page1Data[20];
+                if (pageSize != bt.PageSize)
+                {
+                    // After reading the first page of the database assuming a page size of BtShared.pageSize, we have discovered that the page-size is
+                    // actually pageSize. Unlock the database, leave pBt->pPage1 at zero and return SQLITE_OK. The caller will call this function
+                    // again with the correct page-size.
+                    releasePage(page1);
+                    bt.UsableSize = usableSize;
+                    bt.PageSize = pageSize;
+                    freeTempSpace(bt);
+                    rc = bt.Pager.SetPageSize(ref bt.PageSize, (int)(pageSize - usableSize));
+                    return rc;
+                }
+                if ((bt.Ctx.Flags & Context.FLAG.RecoveryMode) == 0 && pages > pagesFile)
+                {
+                    rc = SysEx.CORRUPT_BKPT();
+                    goto page1_init_failed;
+                }
+                if (usableSize < 480)
+                    goto page1_init_failed;
+                bt.PageSize = pageSize;
+                bt.UsableSize = usableSize;
+#if !OMIT_AUTOVACUUM
+                bt.AutoVacuum = (ConvertEx.Get4(page1Data, 36 + 4 * 4) != 0);
+                bt.IncrVacuum = (ConvertEx.Get4(page1Data, 36 + 7 * 4) != 0);
+#endif
+            }
+
+            // maxLocal is the maximum amount of payload to store locally for a cell.  Make sure it is small enough so that at least minFanout
+            // cells can will fit on one page.  We assume a 10-byte page header. Besides the payload, the cell must store:
+            //     2-byte pointer to the cell
+            //     4-byte child pointer
+            //     9-byte nKey value
+            //     4-byte nData value
+            //     4-byte overflow page pointer
+            // So a cell consists of a 2-byte pointer, a header which is as much as 17 bytes long, 0 to N bytes of payload, and an optional 4 byte overflow
+            // page pointer.
+            bt.MaxLocal = (ushort)((bt.UsableSize - 12) * 64 / 255 - 23);
+            bt.MinLocal = (ushort)((bt.UsableSize - 12) * 32 / 255 - 23);
+            bt.MaxLeaf = (ushort)(bt.UsableSize - 35);
+            bt.MinLeaf = (ushort)((bt.UsableSize - 12) * 32 / 255 - 23);
+            Debug.Assert(bt.MaxLeaf + 23 <= MX_CELL_SIZE(bt));
+            bt.Page1 = page1;
+            bt.Pages = pages;
+            return RC.OK;
+
+        page1_init_failed:
+            releasePage(page1);
+            bt.Page1 = null;
+            return rc;
+        }
+
+        static void unlockBtreeIfUnused(BtShared bt)
+        {
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+            Debug.Assert(bt.Cursor == null || bt.InTransaction > TRANS.NONE);
+            if (bt.InTransaction == TRANS.NONE && bt.Page1 != null)
+            {
+                Debug.Assert(bt.Page1.Data != null);
+                Debug.Assert(bt.Pager.get_Refs() == 1);
+                releasePage(bt.Page1);
+                bt.Page1 = null;
+            }
+        }
+
+        #endregion
+
+        #region NewDB
+
+        static RC newDatabase(BtShared bt)
+        {
+            Debug.Assert(MutexEx.Held(bt.Mutex));
+            if (bt.Pages > 0)
+                return RC.OK;
+            var p1 = bt.Page1;
+            Debug.Assert(p1 != null);
+            var data = p1.Data;
+            var rc = Pager.Write(p1.DBPage);
+            if (rc != RC.OK) return rc;
+            Buffer.BlockCopy(_magicHeader, 0, data, 0, _magicHeader.Length);
+            Debug.Assert(_magicHeader.Length == 16);
+            data[16] = (byte)((bt.PageSize >> 8) & 0xff);
+            data[17] = (byte)((bt.PageSize >> 16) & 0xff);
+            data[18] = 1;
+            data[19] = 1;
+            Debug.Assert(bt.UsableSize <= bt.PageSize && bt.UsableSize + 255 >= bt.PageSize);
+            data[20] = (byte)(bt.PageSize - bt.UsableSize);
+            data[21] = 64;
+            data[22] = 32;
+            data[23] = 32;
+            //_memset(&data[24], 0, 100 - 24);
+            zeroPage(p1, PTF_INTKEY | PTF_LEAF | PTF_LEAFDATA);
+            bt.BtsFlags |= BTS.PAGESIZE_FIXED;
+#if !SQLITE_OMIT_AUTOVACUUM
+            ConvertEx.Put4(data, 36 + 4 * 4, bt.AutoVacuum ? 1 : 0);
+            ConvertEx.Put4(data, 36 + 7 * 4, bt.IncrVacuum ? 1 : 0);
+#endif
+            bt.Pages = 1;
+            data[31] = 1;
+            return RC.OK;
+        }
+
+        public RC NewDb()
+        {
+            Enter();
+            Bt.Pages = 0;
+            RC rc = newDatabase(Bt);
+            Leave();
+            return rc;
+        }
+
+        #endregion
+
+        #region Transactions
+
+        public int BeginTrans(int wrflag)
+        {
+            Enter();
+            btreeIntegrity(this);
+
+            // If the btree is already in a write-transaction, or it is already in a read-transaction and a read-transaction
+            // is requested, this is a no-op.
+            var bt = Bt;
+            if (InTrans == TRANS.WRITE || (InTrans == TRANS.READ && wrflag == 0))
+                goto trans_begun;
+            Debug.Assert(IfNotOmitAV(Bt.DoTruncate) == 0);
+
+            // Write transactions are not possible on a read-only database
+            RC rc = RC.OK;
+            if ((bt.BtsFlags & BTS.READ_ONLY) != 0 && wrflag != 0)
+            {
+                rc = RC.READONLY;
+                goto trans_begun;
+            }
+
+#if !OMIT_SHARED_CACHE
+            // If another database handle has already opened a write transaction on this shared-btree structure and a second write transaction is
+            // requested, return SQLITE_LOCKED.
+            Context blockingCtx = null;
+            if ((wrflag && bt.InTransaction == TRANS.WRITE) || (bt.BtsFlags & BTS.PENDING) != 0)
+                blockingCtx = bt.Writer.Ctx;
+            else if (wrflag > 1)
+            {
+                for (var iter = bt.Lock; iter != null; iter = iter.Next)
+                    if (iter.Btree != this)
+                    {
+                        blockingCtx = iter.Btree.Ctx;
+                        break;
+                    }
+            }
+
+            if (blockingCtx != null)
+            {
+                sqlite3ConnectionBlocked(Ctx, blockingCtx);
+                rc = RC.LOCKED_SHAREDCACHE;
+                goto trans_begun;
+            }
+#endif
+
+            // Any read-only or read-write transaction implies a read-lock on page 1. So if some other shared-cache client already has a write-lock 
+            // on page 1, the transaction cannot be opened. */
+            rc = querySharedCacheTableLock(this, MASTER_ROOT, LOCK.READ);
+            if (rc != RC.OK) goto trans_begun;
+
+            bt.BtsFlags &= ~BTS.INITIALLY_EMPTY;
+            if (bt.Pages == 0) bt.BtsFlags |= BTS.INITIALLY_EMPTY;
+            do
+            {
+                // Call lockBtree() until either pBt->pPage1 is populated or lockBtree() returns something other than SQLITE_OK. lockBtree()
+                // may return SQLITE_OK but leave pBt->pPage1 set to 0 if after reading page 1 it discovers that the page-size of the database 
+                // file is not pBt->pageSize. In this case lockBtree() will update pBt->pageSize to the page-size of the file on disk.
+                while (bt.Page1 == null && (rc = lockBtree(bt)) == RC.OK) ;
+
+                if (rc == RC.OK && wrflag != 0)
+                {
+                    if ((bt.BtsFlags & BTS.READ_ONLY) != 0)
+                        rc = RC.READONLY;
+                    else
+                    {
+                        rc = bt.Pager.Begin(wrflag > 1, sqlite3TempInMemory(Ctx));
+                        if (rc == RC.OK)
+                            rc = newDatabase(bt);
+                    }
+                }
+
+                if (rc != RC.OK)
+                    unlockBtreeIfUnused(bt);
+            } while ((rc & 0xFF) == RC.BUSY && bt.InTransaction == TRANS.NONE && btreeInvokeBusyHandler(bt) != 0);
+
+            if (rc == RC.OK)
+            {
+                if (InTrans == TRANS.NONE)
+                {
+                    bt.Transactions++;
+#if !OMIT_SHARED_CACHE
+                    if (Sharable)
+                    {
+                        Debug.Assert(Lock.Btree == this && Lock.Table == 1);
+                        Lock.Lock = LOCK.READ;
+                        Lock.Next = bt.Lock;
+                        bt.Lock = &Lock;
+                    }
+#endif
+                }
+                InTrans = (wrflag != 0 ? TRANS.WRITE : TRANS.READ);
+                if (InTrans > bt.InTransaction)
+                    bt.InTransaction = InTrans;
+                if (wrflag != 0)
+                {
+                    var page1 = bt.Page1;
+#if !OMIT_SHARED_CACHE
+                    Debug.Assert(!bt.Writer);
+                    bt.Writer = this;
+                    bt.BtsFlags &= ~BTS.EXCLUSIVE;
+                    if (wrflag > 1) bt.BtsFlags |= BTS.EXCLUSIVE;
+#endif
+
+                    // If the db-size header field is incorrect (as it may be if an old client has been writing the database file), update it now. Doing
+                    // this sooner rather than later means the database size can safely re-read the database size from page 1 if a savepoint or transaction
+                    // rollback occurs within the transaction.
+                    if (bt.Pages != ConvertEx.Get4(page1.Data, 28))
+                    {
+                        rc = Pager.Write(page1.DBPage);
+                        if (rc == RC.OK)
+                            ConvertEx.Put4(page1.Data, 28, bt.Pages);
+                    }
+                }
+            }
+
+        trans_begun:
+            if (rc == RC.OK && wrflag != 0)
+            {
+                // This call makes sure that the pager has the correct number of open savepoints. If the second parameter is greater than 0 and
+                // the sub-journal is not already open, then it will be opened here.
+                rc = sqlite3PagerOpenSavepoint(pBt.pPager, p.db.nSavepoint);
+            }
+
+            btreeIntegrity(this);
+            Leave();
+            return rc;
+        }
+
+        #endregion
+
 #if false
 
-static MemPage btreePageFromDbPage( DbPage pDbPage, Pgno pgno, BtShared pBt )
-{
-  MemPage pPage = (MemPage)sqlite3PagerGetExtra( pDbPage );
-  pPage.aData = sqlite3PagerGetData( pDbPage );
-  pPage.pDbPage = pDbPage;
-  pPage.pBt = pBt;
-  pPage.pgno = pgno;
-  pPage.hdrOffset = (u8)( pPage.pgno == 1 ? 100 : 0 );
-  return pPage;
-}
-
-/*
-** Get a page from the pager.  Initialize the MemPage.pBt and
-** MemPage.aData elements if needed.
-**
-** If the noContent flag is set, it means that we do not care about
-** the content of the page at this time.  So do not go to the disk
-** to fetch the content.  Just fill in the content with zeros for now.
-** If in the future we call sqlite3PagerWrite() on this page, that
-** means we have started to be concerned about content and the disk
-** read should occur at that point.
-*/
-static int btreeGetPage(
-BtShared pBt,        /* The btree */
-Pgno pgno,           /* Number of the page to fetch */
-ref MemPage ppPage,  /* Return the page in this parameter */
-int noContent        /* Do not load page content if true */
-)
-{
-  int rc;
-  DbPage pDbPage = null;
-
-  Debug.Assert( sqlite3_mutex_held( pBt.mutex ) );
-  rc = sqlite3PagerAcquire( pBt.pPager, pgno, ref pDbPage, (u8)noContent );
-  if ( rc != 0 )
-    return rc;
-  ppPage = btreePageFromDbPage( pDbPage, pgno, pBt );
-  return SQLITE_OK;
-}
-
-/*
-** Retrieve a page from the pager cache. If the requested page is not
-** already in the pager cache return NULL. Initialize the MemPage.pBt and
-** MemPage.aData elements if needed.
-*/
-static MemPage btreePageLookup( BtShared pBt, Pgno pgno )
-{
-  DbPage pDbPage;
-  Debug.Assert( sqlite3_mutex_held( pBt.mutex ) );
-  pDbPage = sqlite3PagerLookup( pBt.pPager, pgno );
-  if ( pDbPage )
-  {
-    return btreePageFromDbPage( pDbPage, pgno, pBt );
-  }
-  return null;
-}
-
-/*
-** Return the size of the database file in pages. If there is any kind of
-** error, return ((unsigned int)-1).
-*/
-static Pgno btreePagecount( BtShared pBt )
-{
-  return pBt.nPage;
-}
-static Pgno sqlite3BtreeLastPage( Btree p )
-{
-  Debug.Assert( sqlite3BtreeHoldsMutex( p ) );
-  Debug.Assert( ( ( p.pBt.nPage ) & 0x8000000 ) == 0 );
-  return (Pgno)btreePagecount( p.pBt );
-}
-
-
-
-/*
-** Get a page from the pager and initialize it.  This routine is just a
-** convenience wrapper around separate calls to btreeGetPage() and
-** btreeInitPage().
-**
-** If an error occurs, then the value ppPage is set to is undefined. It
-** may remain unchanged, or it may be set to an invalid value.
-*/
-static int getAndInitPage(
-BtShared pBt,          /* The database file */
-Pgno pgno,             /* Number of the page to get */
-ref MemPage ppPage     /* Write the page pointer here */
-)
-{
-  int rc;
-  Debug.Assert( sqlite3_mutex_held( pBt.mutex ) );
-
-  if ( pgno > btreePagecount( pBt ) )
-  {
-    rc = SQLITE_CORRUPT_BKPT();
-  }
-  else
-  {
-    rc = btreeGetPage( pBt, pgno, ref ppPage, 0 );
-    if ( rc == SQLITE_OK )
-    {
-      rc = btreeInitPage( ppPage );
-      if ( rc != SQLITE_OK )
-      {
-        releasePage( ppPage );
-      }
-    }
-  }
-
-  testcase( pgno == 0 );
-  Debug.Assert( pgno != 0 || rc == SQLITE_CORRUPT );
-
-  return rc;
-}
-
-/*
-** Release a MemPage.  This should be called once for each prior
-** call to btreeGetPage.
-*/
-static void releasePage( MemPage pPage )
-{
-  if ( pPage != null )
-  {
-    Debug.Assert( pPage.aData != null );
-    Debug.Assert( pPage.pBt != null );
-    //TODO -- find out why corrupt9 & diskfull fail on this tests 
-    //Debug.Assert( sqlite3PagerGetExtra( pPage.pDbPage ) == pPage );
-    //Debug.Assert( sqlite3PagerGetData( pPage.pDbPage ) == pPage.aData );
-    Debug.Assert( sqlite3_mutex_held( pPage.pBt.mutex ) );
-    sqlite3PagerUnref( pPage.pDbPage );
-  }
-}
-
-/*
-** During a rollback, when the pager reloads information into the cache
-** so that the cache is restored to its original state at the start of
-** the transaction, for each page restored this routine is called.
-**
-** This routine needs to reset the extra data section at the end of the
-** page to agree with the restored data.
-*/
-static void pageReinit( DbPage pData )
-{
-  MemPage pPage;
-  pPage = sqlite3PagerGetExtra( pData );
-  Debug.Assert( sqlite3PagerPageRefcount( pData ) > 0 );
-  if ( pPage.isInit != 0 )
-  {
-    Debug.Assert( sqlite3_mutex_held( pPage.pBt.mutex ) );
-    pPage.isInit = 0;
-    if ( sqlite3PagerPageRefcount( pData ) > 1 )
-    {
-      /* pPage might not be a btree page;  it might be an overflow page
-      ** or ptrmap page or a free page.  In those cases, the following
-      ** call to btreeInitPage() will likely return SQLITE_CORRUPT.
-      ** But no harm is done by this.  And it is very important that
-      ** btreeInitPage() be called on every btree page so we make
-      ** the call for every page that comes in for re-initing. */
-      btreeInitPage( pPage );
-    }
-  }
-}
-
-/*
-** Invoke the busy handler for a btree.
-*/
-static int btreeInvokeBusyHandler( object pArg )
-{
-  BtShared pBt = (BtShared)pArg;
-  Debug.Assert( pBt.db != null );
-  Debug.Assert( sqlite3_mutex_held( pBt.db.mutex ) );
-  return sqlite3InvokeBusyHandler( pBt.db.busyHandler );
-}
-
-/*
-** Open a database file.
-** 
-** zFilename is the name of the database file.  If zFilename is NULL
-** then an ephemeral database is created.  The ephemeral database might
-** be exclusively in memory, or it might use a disk-based memory cache.
-** Either way, the ephemeral database will be automatically deleted 
-** when sqlite3BtreeClose() is called.
-**
-** If zFilename is ":memory:" then an in-memory database is created
-** that is automatically destroyed when it is closed.
-**
-** The "flags" parameter is a bitmask that might contain bits
-** BTREE_OMIT_JOURNAL and/or BTREE_NO_READLOCK.  The BTREE_NO_READLOCK
-** bit is also set if the SQLITE_NoReadlock flags is set in db->flags.
-** These flags are passed through into sqlite3PagerOpen() and must
-** be the same values as PAGER_OMIT_JOURNAL and PAGER_NO_READLOCK.
-**
-** If the database is already opened in the same database connection
-** and we are in shared cache mode, then the open will fail with an
-** SQLITE_CONSTRAINT error.  We cannot allow two or more BtShared
-** objects in the same database connection since doing so will lead
-** to problems with locking.
-*/
-static int sqlite3BtreeOpen(
-sqlite3_vfs pVfs,       /* VFS to use for this b-tree */
-string zFilename,       /* Name of the file containing the BTree database */
-sqlite3 db,             /* Associated database handle */
-ref Btree ppBtree,      /* Pointer to new Btree object written here */
-int flags,              /* Options */
-int vfsFlags            /* Flags passed through to sqlite3_vfs.xOpen() */
-)
-{
-  BtShared pBt = null;          /* Shared part of btree structure */
-  Btree p;                      /* Handle to return */
-  sqlite3_mutex mutexOpen = null;  /* Prevents a race condition. Ticket #3537 */
-  int rc = SQLITE_OK;            /* Result code from this function */
-  u8 nReserve;                   /* Byte of unused space on each page */
-  byte[] zDbHeader = new byte[100]; /* Database header content */
-
-  /* True if opening an ephemeral, temporary database */
-  bool isTempDb = String.IsNullOrEmpty( zFilename );//zFilename==0 || zFilename[0]==0;
-
-  /* Set the variable isMemdb to true for an in-memory database, or 
-  ** false for a file-based database.
-  */
-#if SQLITE_OMIT_MEMORYDB
-bool isMemdb = false;
-#else
-  bool isMemdb = ( zFilename == ":memory:" )
-  || ( isTempDb && sqlite3TempInMemory( db ) );
-
-#endif
-
-  Debug.Assert( db != null );
-  Debug.Assert( pVfs != null );
-  Debug.Assert( sqlite3_mutex_held( db.mutex ) );
-  Debug.Assert( ( flags & 0xff ) == flags );   /* flags fit in 8 bits */
-
-  /* Only a BTREE_SINGLE database can be BTREE_UNORDERED */
-  Debug.Assert( ( flags & BTREE_UNORDERED ) == 0 || ( flags & BTREE_SINGLE ) != 0 );
-
-  /* A BTREE_SINGLE database is always a temporary and/or ephemeral */
-  Debug.Assert( ( flags & BTREE_SINGLE ) == 0 || isTempDb );
-
-  if ( ( db.flags & SQLITE_NoReadlock ) != 0 )
-  {
-    flags |= BTREE_NO_READLOCK;
-  }
-  if ( isMemdb )
-  {
-    flags |= BTREE_MEMORY;
-  }
-  if ( ( vfsFlags & SQLITE_OPEN_MAIN_DB ) != 0 && ( isMemdb || isTempDb ) )
-  {
-    vfsFlags = ( vfsFlags & ~SQLITE_OPEN_MAIN_DB ) | SQLITE_OPEN_TEMP_DB;
-  }
-
-  p = new Btree();//sqlite3MallocZero(sizeof(Btree));
-  //if( !p ){
-  //  return SQLITE_NOMEM;
-  //}
-  p.inTrans = TRANS_NONE;
-  p.db = db;
-#if !SQLITE_OMIT_SHARED_CACHE
-p.lock.pBtree = p;
-p.lock.iTable = 1;
-#endif
-
-#if !(SQLITE_OMIT_SHARED_CACHE) && !(SQLITE_OMIT_DISKIO)
-/*
-** If this Btree is a candidate for shared cache, try to find an
-** existing BtShared object that we can share with
-*/
-if( !isMemdb && !isTempDb ){
-if( vfsFlags & SQLITE_OPEN_SHAREDCACHE ){
-int nFullPathname = pVfs.mxPathname+1;
-string zFullPathname = sqlite3Malloc(nFullPathname);
-sqlite3_mutex *mutexShared;
-p.sharable = 1;
-if( !zFullPathname ){
-p = null;//sqlite3_free(ref p);
-return SQLITE_NOMEM;
-}
-sqlite3OsFullPathname(pVfs, zFilename, nFullPathname, zFullPathname);
-mutexOpen = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_OPEN);
-sqlite3_mutex_enter(mutexOpen);
-mutexShared = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
-sqlite3_mutex_enter(mutexShared);
-for(pBt=GLOBAL(BtShared*,sqlite3SharedCacheList); pBt; pBt=pBt.pNext){
-Debug.Assert( pBt.nRef>0 );
-if( 0==strcmp(zFullPathname, sqlite3PagerFilename(pBt.pPager))
-&& sqlite3PagerVfs(pBt.pPager)==pVfs ){
-int iDb;
-for(iDb=db.nDb-1; iDb>=0; iDb--){
-Btree pExisting = db.aDb[iDb].pBt;
-if( pExisting && pExisting.pBt==pBt ){
-sqlite3_mutex_leave(mutexShared);
-sqlite3_mutex_leave(mutexOpen);
-zFullPathname = null;//sqlite3_free(ref zFullPathname);
-p=null;//sqlite3_free(ref p);
-return SQLITE_CONSTRAINT;
-}
-}
-p.pBt = pBt;
-pBt.nRef++;
-break;
-}
-}
-sqlite3_mutex_leave(mutexShared);
-zFullPathname=null;//sqlite3_free(ref zFullPathname);
-}
-#if SQLITE_DEBUG
-else{
-/* In debug mode, we mark all persistent databases as sharable
-** even when they are not.  This exercises the locking code and
-** gives more opportunity for asserts(sqlite3_mutex_held())
-** statements to find locking problems.
-*/
-p.sharable = 1;
-}
-#endif
-}
-#endif
-  if ( pBt == null )
-  {
-    /*
-    ** The following asserts make sure that structures used by the btree are
-    ** the right size.  This is to guard against size changes that result
-    ** when compiling on a different architecture.
-    */
-    Debug.Assert( sizeof( i64 ) == 8 || sizeof( i64 ) == 4 );
-    Debug.Assert( sizeof( u64 ) == 8 || sizeof( u64 ) == 4 );
-    Debug.Assert( sizeof( u32 ) == 4 );
-    Debug.Assert( sizeof( u16 ) == 2 );
-    Debug.Assert( sizeof( Pgno ) == 4 );
-
-    pBt = new BtShared();//sqlite3MallocZero( sizeof(pBt) );
-    //if( pBt==null ){
-    //  rc = SQLITE_NOMEM;
-    //  goto btree_open_out;
-    //}
-    rc = sqlite3PagerOpen( pVfs, out pBt.pPager, zFilename,
-    EXTRA_SIZE, flags, vfsFlags, pageReinit );
-    if ( rc == SQLITE_OK )
-    {
-      rc = sqlite3PagerReadFileheader( pBt.pPager, zDbHeader.Length, zDbHeader );
-    }
-    if ( rc != SQLITE_OK )
-    {
-      goto btree_open_out;
-    }
-    pBt.openFlags = (u8)flags;
-    pBt.db = db;
-    sqlite3PagerSetBusyhandler( pBt.pPager, btreeInvokeBusyHandler, pBt );
-    p.pBt = pBt;
-
-    pBt.pCursor = null;
-    pBt.pPage1 = null;
-    pBt.readOnly = sqlite3PagerIsreadonly( pBt.pPager );
-#if SQLITE_SECURE_DELETE
-pBt.secureDelete = true;
-#endif
-    pBt.pageSize = (u32)( ( zDbHeader[16] << 8 ) | ( zDbHeader[17] << 16 ) );
-    if ( pBt.pageSize < 512 || pBt.pageSize > SQLITE_MAX_PAGE_SIZE
-    || ( ( pBt.pageSize - 1 ) & pBt.pageSize ) != 0 )
-    {
-      pBt.pageSize = 0;
-#if !SQLITE_OMIT_AUTOVACUUM
-      /* If the magic name ":memory:" will create an in-memory database, then
-** leave the autoVacuum mode at 0 (do not auto-vacuum), even if
-** SQLITE_DEFAULT_AUTOVACUUM is true. On the other hand, if
-** SQLITE_OMIT_MEMORYDB has been defined, then ":memory:" is just a
-** regular file-name. In this case the auto-vacuum applies as per normal.
-*/
-      if ( zFilename != "" && !isMemdb )
-      {
-        pBt.autoVacuum = ( SQLITE_DEFAULT_AUTOVACUUM != 0 );
-        pBt.incrVacuum = ( SQLITE_DEFAULT_AUTOVACUUM == 2 );
-      }
-#endif
-      nReserve = 0;
-    }
-    else
-    {
-      nReserve = zDbHeader[20];
-      pBt.pageSizeFixed = true;
-#if !SQLITE_OMIT_AUTOVACUUM
-      pBt.autoVacuum = sqlite3Get4byte( zDbHeader, 36 + 4 * 4 ) != 0;
-      pBt.incrVacuum = sqlite3Get4byte( zDbHeader, 36 + 7 * 4 ) != 0;
-#endif
-    }
-    rc = sqlite3PagerSetPagesize( pBt.pPager, ref pBt.pageSize, nReserve );
-    if ( rc != 0 )
-      goto btree_open_out;
-    pBt.usableSize = (u16)( pBt.pageSize - nReserve );
-    Debug.Assert( ( pBt.pageSize & 7 ) == 0 );  /* 8-byte alignment of pageSize */
-
-#if !(SQLITE_OMIT_SHARED_CACHE) && !(SQLITE_OMIT_DISKIO)
-/* Add the new BtShared object to the linked list sharable BtShareds.
-*/
-if( p.sharable ){
-sqlite3_mutex *mutexShared;
-pBt.nRef = 1;
-mutexShared = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
-if( SQLITE_THREADSAFE && sqlite3GlobalConfig.bCoreMutex ){
-pBt.mutex = sqlite3MutexAlloc(SQLITE_MUTEX_FAST);
-if( pBt.mutex==null ){
-rc = SQLITE_NOMEM;
-db.mallocFailed = 0;
-goto btree_open_out;
-}
-}
-sqlite3_mutex_enter(mutexShared);
-pBt.pNext = GLOBAL(BtShared*,sqlite3SharedCacheList);
-GLOBAL(BtShared*,sqlite3SharedCacheList) = pBt;
-sqlite3_mutex_leave(mutexShared);
-}
-#endif
-  }
-
-#if !(SQLITE_OMIT_SHARED_CACHE) && !(SQLITE_OMIT_DISKIO)
-/* If the new Btree uses a sharable pBtShared, then link the new
-** Btree into the list of all sharable Btrees for the same connection.
-** The list is kept in ascending order by pBt address.
-*/
-if( p.sharable ){
-int i;
-Btree pSib;
-for(i=0; i<db.nDb; i++){
-if( (pSib = db.aDb[i].pBt)!=null && pSib.sharable ){
-while( pSib.pPrev ){ pSib = pSib.pPrev; }
-if( p.pBt<pSib.pBt ){
-p.pNext = pSib;
-p.pPrev = 0;
-pSib.pPrev = p;
-}else{
-while( pSib.pNext && pSib.pNext.pBt<p.pBt ){
-pSib = pSib.pNext;
-}
-p.pNext = pSib.pNext;
-p.pPrev = pSib;
-if( p.pNext ){
-p.pNext.pPrev = p;
-}
-pSib.pNext = p;
-}
-break;
-}
-}
-}
-#endif
-  ppBtree = p;
-
-btree_open_out:
-  if ( rc != SQLITE_OK )
-  {
-    if ( pBt != null && pBt.pPager != null )
-    {
-      sqlite3PagerClose( pBt.pPager );
-    }
-    pBt = null; //    sqlite3_free(ref pBt);
-    p = null; //    sqlite3_free(ref p);
-    ppBtree = null;
-  }
-  else
-  {
-    /* If the B-Tree was successfully opened, set the pager-cache size to the
-    ** default value. Except, when opening on an existing shared pager-cache,
-    ** do not change the pager-cache size.
-    */
-    if ( sqlite3BtreeSchema( p, 0, null ) == null )
-    {
-      sqlite3PagerSetCachesize( p.pBt.pPager, SQLITE_DEFAULT_CACHE_SIZE );
-    }
-
-  }
-  if ( mutexOpen != null )
-  {
-    Debug.Assert( sqlite3_mutex_held( mutexOpen ) );
-    sqlite3_mutex_leave( mutexOpen );
-  }
-  return rc;
-}
-
-/*
-** Decrement the BtShared.nRef counter.  When it reaches zero,
-** remove the BtShared structure from the sharing list.  Return
-** true if the BtShared.nRef counter reaches zero and return
-** false if it is still positive.
-*/
-static bool removeFromSharingList( BtShared pBt )
-{
-#if !SQLITE_OMIT_SHARED_CACHE
-sqlite3_mutex pMaster;
-BtShared pList;
-bool removed = false;
-
-Debug.Assert( sqlite3_mutex_notheld(pBt.mutex) );
-pMaster = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
-sqlite3_mutex_enter(pMaster);
-pBt.nRef--;
-if( pBt.nRef<=0 ){
-if( GLOBAL(BtShared*,sqlite3SharedCacheList)==pBt ){
-GLOBAL(BtShared*,sqlite3SharedCacheList) = pBt.pNext;
-}else{
-pList = GLOBAL(BtShared*,sqlite3SharedCacheList);
-while( ALWAYS(pList) && pList.pNext!=pBt ){
-pList=pList.pNext;
-}
-if( ALWAYS(pList) ){
-pList.pNext = pBt.pNext;
-}
-}
-if( SQLITE_THREADSAFE ){
-sqlite3_mutex_free(pBt.mutex);
-}
-removed = true;
-}
-sqlite3_mutex_leave(pMaster);
-return removed;
-#else
-  return true;
-#endif
-}
-
-/*
-** Make sure pBt.pTmpSpace points to an allocation of
-** MX_CELL_SIZE(pBt) bytes.
-*/
-static void allocateTempSpace( BtShared pBt )
-{
-  if ( null == pBt.pTmpSpace )
-  {
-    pBt.pTmpSpace = sqlite3Malloc( pBt.pageSize );
-  }
-}
-
-/*
-** Free the pBt.pTmpSpace allocation
-*/
-static void freeTempSpace( BtShared pBt )
-{
-  sqlite3PageFree( ref pBt.pTmpSpace );
-}
-
-/*
-** Close an open database and invalidate all cursors.
-*/
-static int sqlite3BtreeClose( ref Btree p )
-{
-  BtShared pBt = p.pBt;
-  BtCursor pCur;
-
-  /* Close all cursors opened via this handle.  */
-  Debug.Assert( sqlite3_mutex_held( p.db.mutex ) );
-  sqlite3BtreeEnter( p );
-  pCur = pBt.pCursor;
-  while ( pCur != null )
-  {
-    BtCursor pTmp = pCur;
-    pCur = pCur.pNext;
-    if ( pTmp.pBtree == p )
-    {
-      sqlite3BtreeCloseCursor( pTmp );
-    }
-  }
-
-  /* Rollback any active transaction and free the handle structure.
-  ** The call to sqlite3BtreeRollback() drops any table-locks held by
-  ** this handle.
-  */
-  sqlite3BtreeRollback( p );
-  sqlite3BtreeLeave( p );
-
-  /* If there are still other outstanding references to the shared-btree
-  ** structure, return now. The remainder of this procedure cleans
-  ** up the shared-btree.
-  */
-  Debug.Assert( p.wantToLock == 0 && !p.locked );
-  if ( !p.sharable || removeFromSharingList( pBt ) )
-  {
-    /* The pBt is no longer on the sharing list, so we can access
-    ** it without having to hold the mutex.
-    **
-    ** Clean out and delete the BtShared object.
-    */
-    Debug.Assert( null == pBt.pCursor );
-    sqlite3PagerClose( pBt.pPager );
-    if ( pBt.xFreeSchema != null && pBt.pSchema != null )
-    {
-      pBt.xFreeSchema( pBt.pSchema );
-    }
-    pBt.pSchema = null;// sqlite3DbFree(0, pBt->pSchema);
-    //freeTempSpace(pBt);
-    pBt = null; //sqlite3_free(ref pBt);
-  }
-
-#if !SQLITE_OMIT_SHARED_CACHE
-Debug.Assert( p.wantToLock==null );
-Debug.Assert( p.locked==null );
-if( p.pPrev ) p.pPrev.pNext = p.pNext;
-if( p.pNext ) p.pNext.pPrev = p.pPrev;
-#endif
-
-  //sqlite3_free(ref p);
-  return SQLITE_OK;
-}
-
-/*
-** Change the limit on the number of pages allowed in the cache.
-**
-** The maximum number of cache pages is set to the absolute
-** value of mxPage.  If mxPage is negative, the pager will
-** operate asynchronously - it will not stop to do fsync()s
-** to insure data is written to the disk surface before
-** continuing.  Transactions still work if synchronous is off,
-** and the database cannot be corrupted if this program
-** crashes.  But if the operating system crashes or there is
-** an abrupt power failure when synchronous is off, the database
-** could be left in an inconsistent and unrecoverable state.
-** Synchronous is on by default so database corruption is not
-** normally a worry.
-*/
-static int sqlite3BtreeSetCacheSize( Btree p, int mxPage )
-{
-  BtShared pBt = p.pBt;
-  Debug.Assert( sqlite3_mutex_held( p.db.mutex ) );
-  sqlite3BtreeEnter( p );
-  sqlite3PagerSetCachesize( pBt.pPager, mxPage );
-  sqlite3BtreeLeave( p );
-  return SQLITE_OK;
-}
-
-/*
-** Change the way data is synced to disk in order to increase or decrease
-** how well the database resists damage due to OS crashes and power
-** failures.  Level 1 is the same as asynchronous (no syncs() occur and
-** there is a high probability of damage)  Level 2 is the default.  There
-** is a very low but non-zero probability of damage.  Level 3 reduces the
-** probability of damage to near zero but with a write performance reduction.
-*/
-#if !SQLITE_OMIT_PAGER_PRAGMAS
-static int sqlite3BtreeSetSafetyLevel(
-Btree p,               /* The btree to set the safety level on */
-int level,             /* PRAGMA synchronous.  1=OFF, 2=NORMAL, 3=FULL */
-int fullSync,          /* PRAGMA fullfsync. */
-int ckptFullSync       /* PRAGMA checkpoint_fullfync */
-)
-{
-  BtShared pBt = p.pBt;
-  Debug.Assert( sqlite3_mutex_held( p.db.mutex ) );
-  Debug.Assert( level >= 1 && level <= 3 );
-  sqlite3BtreeEnter( p );
-  sqlite3PagerSetSafetyLevel( pBt.pPager, level, fullSync, ckptFullSync );
-  sqlite3BtreeLeave( p );
-  return SQLITE_OK;
-}
-#endif
-
-/*
-** Return TRUE if the given btree is set to safety level 1.  In other
-** words, return TRUE if no sync() occurs on the disk files.
-*/
-static int sqlite3BtreeSyncDisabled( Btree p )
-{
-  BtShared pBt = p.pBt;
-  int rc;
-  Debug.Assert( sqlite3_mutex_held( p.db.mutex ) );
-  sqlite3BtreeEnter( p );
-  Debug.Assert( pBt != null && pBt.pPager != null );
-  rc = sqlite3PagerNosync( pBt.pPager ) ? 1 : 0;
-  sqlite3BtreeLeave( p );
-  return rc;
-}
-
-/*
-** Change the default pages size and the number of reserved bytes per page.
-** Or, if the page size has already been fixed, return SQLITE_READONLY
-** without changing anything.
-**
-** The page size must be a power of 2 between 512 and 65536.  If the page
-** size supplied does not meet this constraint then the page size is not
-** changed.
-**
-** Page sizes are constrained to be a power of two so that the region
-** of the database file used for locking (beginning at PENDING_BYTE,
-** the first byte past the 1GB boundary, 0x40000000) needs to occur
-** at the beginning of a page.
-**
-** If parameter nReserve is less than zero, then the number of reserved
-** bytes per page is left unchanged.
-**
-** If iFix!=0 then the pageSizeFixed flag is set so that the page size
-** and autovacuum mode can no longer be changed.
-*/
-static int sqlite3BtreeSetPageSize( Btree p, int pageSize, int nReserve, int iFix )
-{
-  int rc = SQLITE_OK;
-  BtShared pBt = p.pBt;
-  Debug.Assert( nReserve >= -1 && nReserve <= 255 );
-  sqlite3BtreeEnter( p );
-  if ( pBt.pageSizeFixed )
-  {
-    sqlite3BtreeLeave( p );
-    return SQLITE_READONLY;
-  }
-  if ( nReserve < 0 )
-  {
-    nReserve = (int)( pBt.pageSize - pBt.usableSize );
-  }
-  Debug.Assert( nReserve >= 0 && nReserve <= 255 );
-  if ( pageSize >= 512 && pageSize <= SQLITE_MAX_PAGE_SIZE &&
-  ( ( pageSize - 1 ) & pageSize ) == 0 )
-  {
-    Debug.Assert( ( pageSize & 7 ) == 0 );
-    Debug.Assert( null == pBt.pPage1 && null == pBt.pCursor );
-    pBt.pageSize = (u32)pageSize;
-    //        freeTempSpace(pBt);
-  }
-  rc = sqlite3PagerSetPagesize( pBt.pPager, ref pBt.pageSize, nReserve );
-  pBt.usableSize = (u16)( pBt.pageSize - nReserve );
-  if ( iFix != 0 )
-    pBt.pageSizeFixed = true;
-  sqlite3BtreeLeave( p );
-  return rc;
-}
-
-/*
-** Return the currently defined page size
-*/
-static int sqlite3BtreeGetPageSize( Btree p )
-{
-  return (int)p.pBt.pageSize;
-}
-
-#if !(SQLITE_OMIT_PAGER_PRAGMAS) || !(SQLITE_OMIT_VACUUM)
-/*
-** Return the number of bytes of space at the end of every page that
-** are intentually left unused.  This is the "reserved" space that is
-** sometimes used by extensions.
-*/
-static int sqlite3BtreeGetReserve( Btree p )
-{
-  int n;
-  sqlite3BtreeEnter( p );
-  n = (int)( p.pBt.pageSize - p.pBt.usableSize );
-  sqlite3BtreeLeave( p );
-  return n;
-}
-
-/*
-** Set the maximum page count for a database if mxPage is positive.
-** No changes are made if mxPage is 0 or negative.
-** Regardless of the value of mxPage, return the maximum page count.
-*/
-static Pgno sqlite3BtreeMaxPageCount( Btree p, int mxPage )
-{
-  Pgno n;
-  sqlite3BtreeEnter( p );
-  n = sqlite3PagerMaxPageCount( p.pBt.pPager, mxPage );
-  sqlite3BtreeLeave( p );
-  return n;
-}
-
-/*
-** Set the secureDelete flag if newFlag is 0 or 1.  If newFlag is -1,
-** then make no changes.  Always return the value of the secureDelete
-** setting after the change.
-*/
-static int sqlite3BtreeSecureDelete( Btree p, int newFlag )
-{
-  int b;
-  if ( p == null )
-    return 0;
-  sqlite3BtreeEnter( p );
-  if ( newFlag >= 0 )
-  {
-    p.pBt.secureDelete = ( newFlag != 0 );
-  }
-  b = p.pBt.secureDelete ? 1 : 0;
-  sqlite3BtreeLeave( p );
-  return b;
-}
-#endif //* !(SQLITE_OMIT_PAGER_PRAGMAS) || !(SQLITE_OMIT_VACUUM) */
-
-/*
-** Change the 'auto-vacuum' property of the database. If the 'autoVacuum'
-** parameter is non-zero, then auto-vacuum mode is enabled. If zero, it
-** is disabled. The default value for the auto-vacuum property is
-** determined by the SQLITE_DEFAULT_AUTOVACUUM macro.
-*/
-static int sqlite3BtreeSetAutoVacuum( Btree p, int autoVacuum )
-{
-#if SQLITE_OMIT_AUTOVACUUM
-return SQLITE_READONLY;
-#else
-  BtShared pBt = p.pBt;
-  int rc = SQLITE_OK;
-  u8 av = (u8)autoVacuum;
-
-  sqlite3BtreeEnter( p );
-  if ( pBt.pageSizeFixed && ( av != 0 ) != pBt.autoVacuum )
-  {
-    rc = SQLITE_READONLY;
-  }
-  else
-  {
-    pBt.autoVacuum = av != 0;
-    pBt.incrVacuum = av == 2;
-  }
-  sqlite3BtreeLeave( p );
-  return rc;
-#endif
-}
-
-/*
-** Return the value of the 'auto-vacuum' property. If auto-vacuum is
-** enabled 1 is returned. Otherwise 0.
-*/
-static int sqlite3BtreeGetAutoVacuum( Btree p )
-{
-#if SQLITE_OMIT_AUTOVACUUM
-return BTREE_AUTOVACUUM_NONE;
-#else
-  int rc;
-  sqlite3BtreeEnter( p );
-  rc = (
-  ( !p.pBt.autoVacuum ) ? BTREE_AUTOVACUUM_NONE :
-  ( !p.pBt.incrVacuum ) ? BTREE_AUTOVACUUM_FULL :
-  BTREE_AUTOVACUUM_INCR
-  );
-  sqlite3BtreeLeave( p );
-  return rc;
-#endif
-}
-
-
-/*
-** Get a reference to pPage1 of the database file.  This will
-** also acquire a readlock on that file.
-**
-** SQLITE_OK is returned on success.  If the file is not a
-** well-formed database file, then SQLITE_CORRUPT is returned.
-** SQLITE_BUSY is returned if the database is locked.  SQLITE_NOMEM
-** is returned if we run out of memory.
-*/
-static int lockBtree( BtShared pBt )
-{
-  int rc;                /* Result code from subfunctions */
-  MemPage pPage1 = null; /* Page 1 of the database file */
-  Pgno nPage;            /* Number of pages in the database */
-  Pgno nPageFile = 0;    /* Number of pages in the database file */
-  ////Pgno nPageHeader;      /* Number of pages in the database according to hdr */
-
-  Debug.Assert( sqlite3_mutex_held( pBt.mutex ) );
-  Debug.Assert( pBt.pPage1 == null );
-  rc = sqlite3PagerSharedLock( pBt.pPager );
-  if ( rc != SQLITE_OK )
-    return rc;
-  rc = btreeGetPage( pBt, 1, ref pPage1, 0 );
-  if ( rc != SQLITE_OK )
-    return rc;
-
-  /* Do some checking to help insure the file we opened really is
-  ** a valid database file.
-  */
-  nPage = sqlite3Get4byte( pPage1.aData, 28 );//get4byte(28+(u8*)pPage1->aData);
-  sqlite3PagerPagecount( pBt.pPager, out nPageFile );
-  if ( nPage == 0 || memcmp( pPage1.aData, 24, pPage1.aData, 92, 4 ) != 0 )//memcmp(24 + (u8*)pPage1.aData, 92 + (u8*)pPage1.aData, 4) != 0)
-  {
-    nPage = nPageFile;
-  }
-  if ( nPage > 0 )
-  {
-    u32 pageSize;
-    u32 usableSize;
-    u8[] page1 = pPage1.aData;
-    rc = SQLITE_NOTADB;
-    if ( memcmp( page1, zMagicHeader, 16 ) != 0 )
-    {
-      goto page1_init_failed;
-    }
-
-#if SQLITE_OMIT_WAL
-    if ( page1[18] > 1 )
-    {
-      pBt.readOnly = true;
-    }
-    if ( page1[19] > 1 )
-    {
-      pBt.pSchema.file_format = page1[19];
-      goto page1_init_failed;
-    }
-#else
-if( page1[18]>2 ){
-pBt.readOnly = true;
-}
-if( page1[19]>2 ){
-goto page1_init_failed;
-}
-
-/* If the write version is set to 2, this database should be accessed
-** in WAL mode. If the log is not already open, open it now. Then 
-** return SQLITE_OK and return without populating BtShared.pPage1.
-** The caller detects this and calls this function again. This is
-** required as the version of page 1 currently in the page1 buffer
-** may not be the latest version - there may be a newer one in the log
-** file.
-*/
-if( page1[19]==2 && pBt.doNotUseWAL==false ){
-int isOpen = 0;
-rc = sqlite3PagerOpenWal(pBt.pPager, ref isOpen);
-if( rc!=SQLITE_OK ){
-goto page1_init_failed;
-}else if( isOpen==0 ){
-releasePage(pPage1);
-return SQLITE_OK;
-}
-rc = SQLITE_NOTADB;
-}
-#endif
-
-    /* The maximum embedded fraction must be exactly 25%.  And the minimum
-** embedded fraction must be 12.5% for both leaf-data and non-leaf-data.
-** The original design allowed these amounts to vary, but as of
-** version 3.6.0, we require them to be fixed.
-*/
-    if ( memcmp( page1, 21, "\x0040\x0020\x0020", 3 ) != 0 )//   "\100\040\040"
-    {
-      goto page1_init_failed;
-    }
-    pageSize = (u32)( ( page1[16] << 8 ) | ( page1[17] << 16 ) );
-    if ( ( ( pageSize - 1 ) & pageSize ) != 0
-    || pageSize > SQLITE_MAX_PAGE_SIZE
-    || pageSize <= 256
-    )
-    {
-      goto page1_init_failed;
-    }
-    Debug.Assert( ( pageSize & 7 ) == 0 );
-    usableSize = pageSize - page1[20];
-    if ( pageSize != pBt.pageSize )
-    {
-      /* After reading the first page of the database assuming a page size
-      ** of BtShared.pageSize, we have discovered that the page-size is
-      ** actually pageSize. Unlock the database, leave pBt.pPage1 at
-      ** zero and return SQLITE_OK. The caller will call this function
-      ** again with the correct page-size.
-      */
-      releasePage( pPage1 );
-      pBt.usableSize = usableSize;
-      pBt.pageSize = pageSize;
-      //          freeTempSpace(pBt);
-      rc = sqlite3PagerSetPagesize( pBt.pPager, ref pBt.pageSize,
-      (int)( pageSize - usableSize ) );
-      return rc;
-    }
-    if ( ( pBt.db.flags & SQLITE_RecoveryMode ) == 0 && nPage > nPageFile )
-    {
-      rc = SQLITE_CORRUPT_BKPT();
-      goto page1_init_failed;
-    }
-    if ( usableSize < 480 )
-    {
-      goto page1_init_failed;
-    }
-    pBt.pageSize = pageSize;
-    pBt.usableSize = usableSize;
-#if !SQLITE_OMIT_AUTOVACUUM
-    pBt.autoVacuum = ( sqlite3Get4byte( page1, 36 + 4 * 4 ) != 0 );
-    pBt.incrVacuum = ( sqlite3Get4byte( page1, 36 + 7 * 4 ) != 0 );
-#endif
-  }
-
-  /* maxLocal is the maximum amount of payload to store locally for
-  ** a cell.  Make sure it is small enough so that at least minFanout
-  ** cells can will fit on one page.  We assume a 10-byte page header.
-  ** Besides the payload, the cell must store:
-  **     2-byte pointer to the cell
-  **     4-byte child pointer
-  **     9-byte nKey value
-  **     4-byte nData value
-  **     4-byte overflow page pointer
-  ** So a cell consists of a 2-byte pointer, a header which is as much as
-  ** 17 bytes long, 0 to N bytes of payload, and an optional 4 byte overflow
-  ** page pointer.
-  */
-  pBt.maxLocal = (u16)( ( pBt.usableSize - 12 ) * 64 / 255 - 23 );
-  pBt.minLocal = (u16)( ( pBt.usableSize - 12 ) * 32 / 255 - 23 );
-  pBt.maxLeaf = (u16)( pBt.usableSize - 35 );
-  pBt.minLeaf = (u16)( ( pBt.usableSize - 12 ) * 32 / 255 - 23 );
-  Debug.Assert( pBt.maxLeaf + 23 <= MX_CELL_SIZE( pBt ) );
-  pBt.pPage1 = pPage1;
-  pBt.nPage = nPage;
-  return SQLITE_OK;
-
-page1_init_failed:
-  releasePage( pPage1 );
-  pBt.pPage1 = null;
-  return rc;
-}
-
-/*
-** If there are no outstanding cursors and we are not in the middle
-** of a transaction but there is a read lock on the database, then
-** this routine unrefs the first page of the database file which
-** has the effect of releasing the read lock.
-**
-** If there is a transaction in progress, this routine is a no-op.
-*/
-static void unlockBtreeIfUnused( BtShared pBt )
-{
-  Debug.Assert( sqlite3_mutex_held( pBt.mutex ) );
-  Debug.Assert( pBt.pCursor == null || pBt.inTransaction > TRANS_NONE );
-  if ( pBt.inTransaction == TRANS_NONE && pBt.pPage1 != null )
-  {
-    Debug.Assert( pBt.pPage1.aData != null );
-    //Debug.Assert( sqlite3PagerRefcount( pBt.pPager ) == 1 );
-    releasePage( pBt.pPage1 );
-    pBt.pPage1 = null;
-  }
-}
-
-/*
-** If pBt points to an empty file then convert that empty file
-** into a new empty database by initializing the first page of
-** the database.
-*/
-static int newDatabase( BtShared pBt )
-{
-  MemPage pP1;
-  byte[] data;
-  int rc;
-
-  Debug.Assert( sqlite3_mutex_held( pBt.mutex ) );
-  if ( pBt.nPage > 0 )
-  {
-    return SQLITE_OK;
-  }
-  pP1 = pBt.pPage1;
-  Debug.Assert( pP1 != null );
-  data = pP1.aData;
-  rc = sqlite3PagerWrite( pP1.pDbPage );
-  if ( rc != 0 )
-    return rc;
-  Buffer.BlockCopy( zMagicHeader, 0, data, 0, 16 );// memcpy(data, zMagicHeader, sizeof(zMagicHeader));
-  Debug.Assert( zMagicHeader.Length == 16 );
-  data[16] = (u8)( ( pBt.pageSize >> 8 ) & 0xff );
-  data[17] = (u8)( ( pBt.pageSize >> 16 ) & 0xff );
-  data[18] = 1;
-  data[19] = 1;
-  Debug.Assert( pBt.usableSize <= pBt.pageSize && pBt.usableSize + 255 >= pBt.pageSize );
-  data[20] = (u8)( pBt.pageSize - pBt.usableSize );
-  data[21] = 64;
-  data[22] = 32;
-  data[23] = 32;
-  //memset(&data[24], 0, 100-24);
-  zeroPage( pP1, PTF_INTKEY | PTF_LEAF | PTF_LEAFDATA );
-  pBt.pageSizeFixed = true;
-#if !SQLITE_OMIT_AUTOVACUUM
-  Debug.Assert( pBt.autoVacuum == true || pBt.autoVacuum == false );
-  Debug.Assert( pBt.incrVacuum == true || pBt.incrVacuum == false );
-  sqlite3Put4byte( data, 36 + 4 * 4, pBt.autoVacuum ? 1 : 0 );
-  sqlite3Put4byte( data, 36 + 7 * 4, pBt.incrVacuum ? 1 : 0 );
-#endif
-  pBt.nPage = 1;
-  data[31] = 1;
-  return SQLITE_OK;
-}
-
-/*
-** Attempt to start a new transaction. A write-transaction
-** is started if the second argument is nonzero, otherwise a read-
-** transaction.  If the second argument is 2 or more and exclusive
-** transaction is started, meaning that no other process is allowed
-** to access the database.  A preexisting transaction may not be
-** upgraded to exclusive by calling this routine a second time - the
-** exclusivity flag only works for a new transaction.
-**
-** A write-transaction must be started before attempting any
-** changes to the database.  None of the following routines
-** will work unless a transaction is started first:
-**
-**      sqlite3BtreeCreateTable()
-**      sqlite3BtreeCreateIndex()
-**      sqlite3BtreeClearTable()
-**      sqlite3BtreeDropTable()
-**      sqlite3BtreeInsert()
-**      sqlite3BtreeDelete()
-**      sqlite3BtreeUpdateMeta()
-**
-** If an initial attempt to acquire the lock fails because of lock contention
-** and the database was previously unlocked, then invoke the busy handler
-** if there is one.  But if there was previously a read-lock, do not
-** invoke the busy handler - just return SQLITE_BUSY.  SQLITE_BUSY is
-** returned when there is already a read-lock in order to avoid a deadlock.
-**
-** Suppose there are two processes A and B.  A has a read lock and B has
-** a reserved lock.  B tries to promote to exclusive but is blocked because
-** of A's read lock.  A tries to promote to reserved but is blocked by B.
-** One or the other of the two processes must give way or there can be
-** no progress.  By returning SQLITE_BUSY and not invoking the busy callback
-** when A already has a read lock, we encourage A to give up and let B
-** proceed.
-*/
-static int sqlite3BtreeBeginTrans( Btree p, int wrflag )
-{
-  BtShared pBt = p.pBt;
-  int rc = SQLITE_OK;
-
-  sqlite3BtreeEnter( p );
-  btreeIntegrity( p );
-
-  /* If the btree is already in a write-transaction, or it
-  ** is already in a read-transaction and a read-transaction
-  ** is requested, this is a no-op.
-  */
-  if ( p.inTrans == TRANS_WRITE || ( p.inTrans == TRANS_READ && 0 == wrflag ) )
-  {
-    goto trans_begun;
-  }
-
-  /* Write transactions are not possible on a read-only database */
-  if ( pBt.readOnly && wrflag != 0 )
-  {
-    rc = SQLITE_READONLY;
-    goto trans_begun;
-  }
-
-#if !SQLITE_OMIT_SHARED_CACHE
-/* If another database handle has already opened a write transaction
-** on this shared-btree structure and a second write transaction is
-** requested, return SQLITE_LOCKED.
-*/
-if( (wrflag && pBt.inTransaction==TRANS_WRITE) || pBt.isPending ){
-sqlite3 pBlock = pBt.pWriter.db;
-}else if( wrflag>1 ){
-BtLock pIter;
-for(pIter=pBt.pLock; pIter; pIter=pIter.pNext){
-if( pIter.pBtree!=p ){
-pBlock = pIter.pBtree.db;
-break;
-}
-}
-}
-if( pBlock ){
-sqlite3ConnectionBlocked(p.db, pBlock);
-rc = SQLITE_LOCKED_SHAREDCACHE;
-goto trans_begun;
-}
-#endif
-
-  /* Any read-only or read-write transaction implies a read-lock on
-** page 1. So if some other shared-cache client already has a write-lock
-** on page 1, the transaction cannot be opened. */
-  rc = querySharedCacheTableLock( p, MASTER_ROOT, READ_LOCK );
-  if ( SQLITE_OK != rc )
-    goto trans_begun;
-
-  pBt.initiallyEmpty = pBt.nPage == 0;
-  do
-  {
-    /* Call lockBtree() until either pBt.pPage1 is populated or
-    ** lockBtree() returns something other than SQLITE_OK. lockBtree()
-    ** may return SQLITE_OK but leave pBt.pPage1 set to 0 if after
-    ** reading page 1 it discovers that the page-size of the database
-    ** file is not pBt.pageSize. In this case lockBtree() will update
-    ** pBt.pageSize to the page-size of the file on disk.
-    */
-    while ( pBt.pPage1 == null && SQLITE_OK == ( rc = lockBtree( pBt ) ) )
-      ;
-
-    if ( rc == SQLITE_OK && wrflag != 0 )
-    {
-      if ( pBt.readOnly )
-      {
-        rc = SQLITE_READONLY;
-      }
-      else
-      {
-        rc = sqlite3PagerBegin( pBt.pPager, wrflag > 1, sqlite3TempInMemory( p.db ) ? 1 : 0 );
-        if ( rc == SQLITE_OK )
-        {
-          rc = newDatabase( pBt );
-        }
-      }
-    }
-
-    if ( rc != SQLITE_OK )
-    {
-      unlockBtreeIfUnused( pBt );
-    }
-  } while ( ( rc & 0xFF ) == SQLITE_BUSY && pBt.inTransaction == TRANS_NONE &&
-  btreeInvokeBusyHandler( pBt ) != 0 );
-
-  if ( rc == SQLITE_OK )
-  {
-    if ( p.inTrans == TRANS_NONE )
-    {
-      pBt.nTransaction++;
-#if !SQLITE_OMIT_SHARED_CACHE
-if( p.sharable ){
-Debug.Assert( p.lock.pBtree==p && p.lock.iTable==1 );
-p.lock.eLock = READ_LOCK;
-p.lock.pNext = pBt.pLock;
-pBt.pLock = &p.lock;
-}
-#endif
-    }
-    p.inTrans = ( wrflag != 0 ? TRANS_WRITE : TRANS_READ );
-    if ( p.inTrans > pBt.inTransaction )
-    {
-      pBt.inTransaction = p.inTrans;
-    }
-    if ( wrflag != 0 )
-    {
-      MemPage pPage1 = pBt.pPage1;
-#if !SQLITE_OMIT_SHARED_CACHE
-Debug.Assert( !pBt.pWriter );
-pBt.pWriter = p;
-pBt.isExclusive = (u8)(wrflag>1);
-#endif
-      /* If the db-size header field is incorrect (as it may be if an old
-** client has been writing the database file), update it now. Doing
-** this sooner rather than later means the database size can safely 
-** re-read the database size from page 1 if a savepoint or transaction
-** rollback occurs within the transaction.
-*/
-      if ( pBt.nPage != sqlite3Get4byte( pPage1.aData, 28 ) )
-      {
-        rc = sqlite3PagerWrite( pPage1.pDbPage );
-        if ( rc == SQLITE_OK )
-        {
-          sqlite3Put4byte( pPage1.aData, (u32)28, pBt.nPage );
-        }
-      }
-    }
-  }
-
-
-trans_begun:
-  if ( rc == SQLITE_OK && wrflag != 0 )
-  {
-    /* This call makes sure that the pager has the correct number of
-    ** open savepoints. If the second parameter is greater than 0 and
-    ** the sub-journal is not already open, then it will be opened here.
-    */
-    rc = sqlite3PagerOpenSavepoint( pBt.pPager, p.db.nSavepoint );
-  }
-
-  btreeIntegrity( p );
-  sqlite3BtreeLeave( p );
-  return rc;
-}
+        //#region Autovacuum
 
 #if !SQLITE_OMIT_AUTOVACUUM
 

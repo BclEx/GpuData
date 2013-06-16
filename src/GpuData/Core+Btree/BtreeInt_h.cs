@@ -94,23 +94,7 @@ namespace Core
             WRITE = 2,
         }
 
-        public class Btree
-        {
-            public Context Ctx;     // The database connection holding this Btree
-            public BtShared Bt;     // Sharable content of this Btree
-            public TRANS InTrans;   // TRANS_NONE, TRANS_READ or TRANS_WRITE
-            public bool Sharable;   // True if we can share pBt with another db
-            public bool Locked;     // True if db currently has pBt locked
-            public int WantToLock;  // Number of nested calls to sqlite3BtreeEnter()
-            public int Backups;     // Number of backup operations reading this btree
-            public Btree Next;      // List of other sharable Btrees from the same db
-            public Btree Prev;      // Back pointer of the same list
-#if !OMIT_SHARED_CACHE
-            public BtLock Lock;     // Object used to lock page 1
-#endif
-        }
-
-        enum BTS : ushort
+        public enum BTS : ushort
         {
             READ_ONLY = 0x0001,		// Underlying file is readonly
             PAGESIZE_FIXED = 0x0002,// Page size can no longer be changed
@@ -189,7 +173,7 @@ namespace Core
 
         const int BTCURSOR_MAX_DEPTH = 20;
 
-        enum CURSOR : byte
+        public enum CURSOR : byte
         {
             INVALID = 0,
             VALID = 1,
@@ -251,11 +235,6 @@ namespace Core
             }
         }
 
-        const int CURSOR_INVALID = 0;
-        const int CURSOR_VALID = 1;
-        const int CURSOR_REQUIRESEEK = 2;
-        const int CURSOR_FAULT = 3;
-
         static uint PENDING_BYTE_PAGE(BtShared pBt)
         {
             return (uint)PAGER_MJ_PGNO(pBt.pPager);
@@ -307,21 +286,5 @@ public static bool ISAUTOVACUUM =false;
             //public int mallocFailed;  // A memory allocation error has occurred
             public StrAccum errMsg = new StrAccum(100); // Accumulate the error message text here
         };
-
-        static int get2byte(byte[] p, int offset)
-        {
-            return p[offset + 0] << 8 | p[offset + 1];
-        }
-
-        static void put2byte(byte[] pData, int Offset, uint v)
-        {
-            pData[Offset + 0] = (byte)(v >> 8);
-            pData[Offset + 1] = (byte)v;
-        }
-        static void put2byte(byte[] pData, int Offset, int v)
-        {
-            pData[Offset + 0] = (byte)(v >> 8);
-            pData[Offset + 1] = (byte)v;
-        }
     }
 }

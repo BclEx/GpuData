@@ -1,13 +1,13 @@
 ﻿using System;
 namespace Core
 {
-    class Context
+    public class Context
     {
-        struct BusyHandler
+        public struct BusyHandler
         {
-            public Func<object, int, int> xFunc;  // The busy callback
-            public object Arg;                   // First arg to busy callback
-            public int Busys;                     // Incremented with each busy call
+            public Func<object, int, int> Func;     // The busy callback
+            public object Arg;                      // First arg to busy callback
+            public int Busys;                       // Incremented with each busy call
         }
 
         [Flags]

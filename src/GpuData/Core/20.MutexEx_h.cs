@@ -3,8 +3,6 @@ namespace Core
     public class MutexEx
     {
         public static bool WantsCoreMutex { get; set; }
-        //private static int mutexIsInit = 0;
-        public static bool SQLITE_THREADSAFE;
 
         public enum MUTEX
         {
