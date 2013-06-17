@@ -15,10 +15,13 @@ namespace Core
 
 	static const char _magicHeader[] = FILE_HEADER;
 
-	//#define BTALLOC_ANY   0           // Allocate any page
-	//#define BTALLOC_EXACT 1           // Allocate exact page if possible
-	//#define BTALLOC_LE    2           // Allocate any page <= the parameter
-	//
+	enum BTALLOC : uint8
+	{
+		ANY = 0,        // Allocate any page
+		EXACT = 1,      // Allocate exact page if possible
+		LE = 2,         // Allocate any page <= the parameter
+	};
+
 	//#ifndef OMIT_AUTOVACUUM
 	//#define IfNotOmitAV(expr) (expr)
 	//#else
@@ -467,7 +470,7 @@ namespace Core
 		return ret;
 	}
 
-	static void ptrmapPut(BtShared *bt, Pid key, uint8 type, Pid parent, int *rcRef)
+	static void ptrmapPut(BtShared *bt, Pid key, PTRMAP type, Pid parent, int *rcRef)
 	{
 		if (*rcRef != RC::OK) return;
 
@@ -513,7 +516,7 @@ ptrmap_exit:
 		Pager::Unref(page);
 	}
 
-	static RC ptrmapGet(BtShared *bt, Pid key, uint8 *type, Pid *id)
+	static RC ptrmapGet(BtShared *bt, Pid key, PTRMAP *type, Pid *id)
 	{
 		_assert(MutexEx::Held(bt->Mutex));
 
@@ -1946,10 +1949,9 @@ trans_begun:
 
 	static int setChildPtrmaps(MemPage *page)
 	{
-		//BtShared *bt = page->Bt;
-		//u8 isInitOrig = page->IsInit;
-
-		_assert(MutexEx::Held(page->Bt->Mutex));
+		bool isInitOrig = page->IsInit;
+		BtShared *bt = page->Bt;
+		_assert(MutexEx::Held(bt->Mutex));
 		RC rc = btreeInitPage(page);
 		if (rc != RC::OK)
 			goto set_child_ptrmaps_out;
@@ -1974,422 +1976,510 @@ trans_begun:
 		}
 
 set_child_ptrmaps_out:
-		//page->IsInit = isInitOrig;
+		page->IsInit = isInitOrig;
 		return rc;
 	}
 
-	static int modifyPagePointer(MemPage *pPage, Pgno iFrom, Pgno iTo, u8 eType){
-		assert( sqlite3_mutex_held(pPage->pBt->mutex) );
-		assert( sqlite3PagerIswriteable(pPage->pDbPage) );
-		if( eType==PTRMAP_OVERFLOW2 ){
-			/* The pointer is always the first 4 bytes of the page in this case.  */
-			if( get4byte(pPage->aData)!=iFrom ){
-				return SQLITE_CORRUPT_BKPT;
-			}
-			put4byte(pPage->aData, iTo);
-		}else{
-			u8 isInitOrig = pPage->isInit;
-			int i;
-			int nCell;
+	static int modifyPagePointer(MemPage *page, Pid from, Pid to, PTRMAP type)
+	{
+		_assert(MutexEx::Held(page->Bt->Mutex));
+		_assert(Pager::Iswriteable(page->DBPage));
+		if (type == PTRMAP::OVERFLOW2)
+		{
+			// The pointer is always the first 4 bytes of the page in this case.
+			if (ConvertEx::Get4(page->Data) != from)
+				return SysEx_CORRUPT_BKPT;
+			ConvertEx::Put4(page->Data, to);
+		}
+		else
+		{
+			bool isInitOrig = pPage->IsInit;
 
-			btreeInitPage(pPage);
-			nCell = pPage->nCell;
+			btreeInitPage(page);
+			int cells = pPage->Cells;
 
-			for(i=0; i<nCell; i++){
-				u8 *pCell = findCell(pPage, i);
-				if( eType==PTRMAP_OVERFLOW1 ){
+			for (int i = 0; i < cells; i++)
+			{
+				uint8 *cell = findCell(page, i);
+				if (type == PTRMAP_OVERFLOW1)
+				{
 					CellInfo info;
-					btreeParseCellPtr(pPage, pCell, &info);
-					if( info.iOverflow
-						&& pCell+info.iOverflow+3<=pPage->aData+pPage->maskPage
-						&& iFrom==get4byte(&pCell[info.iOverflow])
-						){
-							put4byte(&pCell[info.iOverflow], iTo);
-							break;
-					}
-				}else{
-					if( get4byte(pCell)==iFrom ){
-						put4byte(pCell, iTo);
+					btreeParseCellPtr(page, cell, &info);
+					if (info.Overflow &&
+						cell + info.Overflow + 3 <= page->Data + page->MaskPage &&
+						from == ConvertEx.Get4(&cell[info.Overflow]))
+					{
+						ConvertEx::Put4(&cell[info.Overflow], to);
 						break;
 					}
 				}
-			}
-
-			if( i==nCell ){
-				if( eType!=PTRMAP_BTREE || 
-					get4byte(&pPage->aData[pPage->hdrOffset+8])!=iFrom ){
-						return SQLITE_CORRUPT_BKPT;
-				}
-				put4byte(&pPage->aData[pPage->hdrOffset+8], iTo);
-			}
-
-			pPage->isInit = isInitOrig;
-		}
-		return SQLITE_OK;
-	}
-
-	static int relocatePage(
-		BtShared *pBt,           /* Btree */
-		MemPage *pDbPage,        /* Open page to move */
-		u8 eType,                /* Pointer map 'type' entry for pDbPage */
-		Pgno iPtrPage,           /* Pointer map 'page-no' entry for pDbPage */
-		Pgno iFreePage,          /* The location to move pDbPage to */
-		int isCommit             /* isCommit flag passed to sqlite3PagerMovepage */
-		){
-			MemPage *pPtrPage;   /* The page that contains a pointer to pDbPage */
-			Pgno iDbPage = pDbPage->pgno;
-			Pager *pPager = pBt->pPager;
-			int rc;
-
-			assert( eType==PTRMAP_OVERFLOW2 || eType==PTRMAP_OVERFLOW1 || 
-				eType==PTRMAP_BTREE || eType==PTRMAP_ROOTPAGE );
-			assert( sqlite3_mutex_held(pBt->mutex) );
-			assert( pDbPage->pBt==pBt );
-
-			/* Move page iDbPage from its current location to page number iFreePage */
-			TRACE(("AUTOVACUUM: Moving %d to free page %d (ptr page %d type %d)\n", 
-				iDbPage, iFreePage, iPtrPage, eType));
-			rc = sqlite3PagerMovepage(pPager, pDbPage->pDbPage, iFreePage, isCommit);
-			if( rc!=SQLITE_OK ){
-				return rc;
-			}
-			pDbPage->pgno = iFreePage;
-
-			/* If pDbPage was a btree-page, then it may have child pages and/or cells
-			** that point to overflow pages. The pointer map entries for all these
-			** pages need to be changed.
-			**
-			** If pDbPage is an overflow page, then the first 4 bytes may store a
-			** pointer to a subsequent overflow page. If this is the case, then
-			** the pointer map needs to be updated for the subsequent overflow page.
-			*/
-			if( eType==PTRMAP_BTREE || eType==PTRMAP_ROOTPAGE ){
-				rc = setChildPtrmaps(pDbPage);
-				if( rc!=SQLITE_OK ){
-					return rc;
-				}
-			}else{
-				Pgno nextOvfl = get4byte(pDbPage->aData);
-				if( nextOvfl!=0 ){
-					ptrmapPut(pBt, nextOvfl, PTRMAP_OVERFLOW2, iFreePage, &rc);
-					if( rc!=SQLITE_OK ){
-						return rc;
+				else
+					if (ConvertEx::Get4(cell) == from)
+					{
+						ConvertEx::Put4(cell, to);
+						break;
 					}
-				}
 			}
 
-			/* Fix the database pointer on page iPtrPage that pointed at iDbPage so
-			** that it points at iFreePage. Also fix the pointer map entry for
-			** iPtrPage.
-			*/
-			if( eType!=PTRMAP_ROOTPAGE ){
-				rc = btreeGetPage(pBt, iPtrPage, &pPtrPage, 0);
-				if( rc!=SQLITE_OK ){
-					return rc;
-				}
-				rc = sqlite3PagerWrite(pPtrPage->pDbPage);
-				if( rc!=SQLITE_OK ){
-					releasePage(pPtrPage);
-					return rc;
-				}
-				rc = modifyPagePointer(pPtrPage, iDbPage, iFreePage, eType);
-				releasePage(pPtrPage);
-				if( rc==SQLITE_OK ){
-					ptrmapPut(pBt, iFreePage, eType, iPtrPage, &rc);
-				}
+			if (i == cells)
+			{
+				if (type != PTRMAP::BTREE || ConvertEx::Get4(&pPage->Data[page->HdrOffset + 8]) != fFrom)
+					return SysEx_CORRUPT_BKPT;
+				ConvertEx::Put4(&page->Data[page->HdrOffset + 8], to);
 			}
-			return rc;
+
+			page->IsInit = isInitOrig;
+		}
+		return RC::OK;
 	}
 
-	static int allocateBtreePage(BtShared *, MemPage **, Pgno *, Pgno, u8);
-	static int incrVacuumStep(BtShared *pBt, Pgno nFin, Pgno iLastPg, int bCommit){
-		Pgno nFreeList;           /* Number of pages still on the free-list */
-		int rc;
-
-		assert( sqlite3_mutex_held(pBt->mutex) );
-		assert( iLastPg>nFin );
-
-		if( !PTRMAP_ISPAGE(pBt, iLastPg) && iLastPg!=PENDING_BYTE_PAGE(pBt) ){
-			u8 eType;
-			Pgno iPtrPage;
-
-			nFreeList = get4byte(&pBt->pPage1->aData[36]);
-			if( nFreeList==0 ){
-				return SQLITE_DONE;
-			}
-
-			rc = ptrmapGet(pBt, iLastPg, &eType, &iPtrPage);
-			if( rc!=SQLITE_OK ){
-				return rc;
-			}
-			if( eType==PTRMAP_ROOTPAGE ){
-				return SQLITE_CORRUPT_BKPT;
-			}
-
-			if( eType==PTRMAP_FREEPAGE ){
-				if( bCommit==0 ){
-					/* Remove the page from the files free-list. This is not required
-					** if bCommit is non-zero. In that case, the free-list will be
-					** truncated to zero after this function returns, so it doesn't 
-					** matter if it still contains some garbage entries.
-					*/
-					Pgno iFreePg;
-					MemPage *pFreePg;
-					rc = allocateBtreePage(pBt, &pFreePg, &iFreePg, iLastPg, BTALLOC_EXACT);
-					if( rc!=SQLITE_OK ){
-						return rc;
-					}
-					assert( iFreePg==iLastPg );
-					releasePage(pFreePg);
-				}
-			} else {
-				Pgno iFreePg;             /* Index of free page to move pLastPg to */
-				MemPage *pLastPg;
-				u8 eMode = BTALLOC_ANY;   /* Mode parameter for allocateBtreePage() */
-				Pgno iNear = 0;           /* nearby parameter for allocateBtreePage() */
-
-				rc = btreeGetPage(pBt, iLastPg, &pLastPg, 0);
-				if( rc!=SQLITE_OK ){
-					return rc;
-				}
-
-				/* If bCommit is zero, this loop runs exactly once and page pLastPg
-				** is swapped with the first free page pulled off the free list.
-				**
-				** On the other hand, if bCommit is greater than zero, then keep
-				** looping until a free-page located within the first nFin pages
-				** of the file is found.
-				*/
-				if( bCommit==0 ){
-					eMode = BTALLOC_LE;
-					iNear = nFin;
-				}
-				do {
-					MemPage *pFreePg;
-					rc = allocateBtreePage(pBt, &pFreePg, &iFreePg, iNear, eMode);
-					if( rc!=SQLITE_OK ){
-						releasePage(pLastPg);
-						return rc;
-					}
-					releasePage(pFreePg);
-				}while( bCommit && iFreePg>nFin );
-				assert( iFreePg<iLastPg );
-
-				rc = relocatePage(pBt, pLastPg, eType, iPtrPage, iFreePg, bCommit);
-				releasePage(pLastPg);
-				if( rc!=SQLITE_OK ){
-					return rc;
-				}
-			}
-		}
-
-		if( bCommit==0 ){
-			do {
-				iLastPg--;
-			}while( iLastPg==PENDING_BYTE_PAGE(pBt) || PTRMAP_ISPAGE(pBt, iLastPg) );
-			pBt->bDoTruncate = 1;
-			pBt->nPage = iLastPg;
-		}
-		return SQLITE_OK;
-	}
-
-	static Pgno finalDbSize(BtShared *pBt, Pgno nOrig, Pgno nFree){
-		int nEntry;                     /* Number of entries on one ptrmap page */
-		Pgno nPtrmap;                   /* Number of PtrMap pages to be freed */
-		Pgno nFin;                      /* Return value */
-
-		nEntry = pBt->usableSize/5;
-		nPtrmap = (nFree-nOrig+PTRMAP_PAGENO(pBt, nOrig)+nEntry)/nEntry;
-		nFin = nOrig - nFree - nPtrmap;
-		if( nOrig>PENDING_BYTE_PAGE(pBt) && nFin<PENDING_BYTE_PAGE(pBt) ){
-			nFin--;
-		}
-		while( PTRMAP_ISPAGE(pBt, nFin) || nFin==PENDING_BYTE_PAGE(pBt) ){
-			nFin--;
-		}
-
-		return nFin;
-	}
-
-	int sqlite3BtreeIncrVacuum(Btree *p)
+	static int relocatePage(BtShared *bt, MemPage *page, PTRMAP type, Pid ptrPageID, Pid freePageID, bool isCommit)
 	{
-		int rc;
-		BtShared *pBt = p->pBt;
+		_assert(type == PTRMAP::OVERFLOW2 || type == PTRMAP::OVERFLOW1 || type == PTRMAP::BTREE || type == PTRMAP::ROOTPAGE);
+		_assert(MutexEx::Held(bt->Mutex));
+		_assert(page->Bt == bt);
 
-		sqlite3BtreeEnter(p);
-		assert( pBt->inTransaction==TRANS_WRITE && p->inTrans==TRANS_WRITE );
-		if( !pBt->autoVacuum ){
-			rc = SQLITE_DONE;
-		}else{
-			Pgno nOrig = btreePagecount(pBt);
-			Pgno nFree = get4byte(&pBt->pPage1->aData[36]);
-			Pgno nFin = finalDbSize(pBt, nOrig, nFree);
+		// Move page iDbPage from its current location to page number iFreePage
+		Pid lastID = page->ID;
+		TRACE(("AUTOVACUUM: Moving %d to free page %d (ptr page %d type %d)\n", lastID, freePageID, ptrPageID, type));
+		Pager *pager = bt->Pager;
+		RC rc = pager->Movepage(page->DBPage, freePageID, isCommit);
+		if (rc != RC::OK)
+			return rc;
+		page->ID = freePageID;
 
-			if( nOrig<nFin ){
-				rc = SQLITE_CORRUPT_BKPT;
-			}else if( nFree>0 ){
-				invalidateAllOverflowCache(pBt);
-				rc = incrVacuumStep(pBt, nFin, nOrig, 0);
-				if( rc==SQLITE_OK ){
-					rc = sqlite3PagerWrite(pBt->pPage1->pDbPage);
-					put4byte(&pBt->pPage1->aData[28], pBt->nPage);
-				}
-			}else{
-				rc = SQLITE_DONE;
+		// If pDbPage was a btree-page, then it may have child pages and/or cells that point to overflow pages. The pointer map entries for all these
+		// pages need to be changed.
+		//
+		// If pDbPage is an overflow page, then the first 4 bytes may store a pointer to a subsequent overflow page. If this is the case, then
+		// the pointer map needs to be updated for the subsequent overflow page.
+		if (type == PTRMAP::BTREE || type == PTRMAP::ROOTPAGE)
+		{
+			rc = setChildPtrmaps(page);
+			if (rc != RC::OK)
+				return rc;
+		}
+		else
+		{
+			Pid nextOvfl = ConvertEx::Get4(page->Data);
+			if (nextOvfl != 0)
+			{
+				ptrmapPut(bt, nextOvfl, PTRMAP::OVERFLOW2, freePageID, &rc);
+				if (rc != RC::OK)
+					return rc;
 			}
 		}
-		sqlite3BtreeLeave(p);
+
+		// Fix the database pointer on page iPtrPage that pointed at iDbPage so that it points at iFreePage. Also fix the pointer map entry for iPtrPage.
+		if (type != PTRMAP::ROOTPAGE)
+		{
+			MemPage *ptrPage; // The page that contains a pointer to pDbPage
+			rc = btreeGetPage(bt, ptrPageID, &ptrPage, false);
+			if (rc != RC::OK)
+				return rc;
+			rc = Pager::Write(ptrPage->DBPage);
+			if (rc != RC::OK)
+			{
+				releasePage(ptrPage);
+				return rc;
+			}
+			rc = modifyPagePointer(ptrPage, lastID, freePageID, type);
+			releasePage(ptrPage);
+			if (rc == RC::OK)
+				ptrmapPut(bt, freePageID, type, ptrPageID, &rc);
+		}
 		return rc;
 	}
 
-	static int autoVacuumCommit(BtShared *pBt){
-		int rc = SQLITE_OK;
-		Pager *pPager = pBt->pPager;
-		VVA_ONLY( int nRef = sqlite3PagerRefcount(pPager) );
+	static int allocateBtreePage(BtShared *, MemPage **, Pgno *, Pgno, u8);
 
-		assert( sqlite3_mutex_held(pBt->mutex) );
-		invalidateAllOverflowCache(pBt);
-		assert(pBt->autoVacuum);
-		if( !pBt->incrVacuum ){
-			Pgno nFin;         /* Number of pages in database after autovacuuming */
-			Pgno nFree;        /* Number of pages on the freelist initially */
-			Pgno iFree;        /* The next page to be freed */
-			Pgno nOrig;        /* Database size before freeing */
+	static int incrVacuumStep(BtShared *bt, Pid fins, Pid lastPageID, bool commit)
+	{
+		_assert(MutexEx::Held(bt->Mutex));
+		_assert(lastPageID > fins);
 
-			nOrig = btreePagecount(pBt);
-			if( PTRMAP_ISPAGE(pBt, nOrig) || nOrig==PENDING_BYTE_PAGE(pBt) ){
-				/* It is not possible to create a database for which the final page
-				** is either a pointer-map page or the pending-byte page. If one
-				** is encountered, this indicates corruption.
-				*/
-				return SQLITE_CORRUPT_BKPT;
-			}
+		if (!PTRMAP_ISPAGE(bt, lastPageID) && lastPageID != PENDING_BYTE_PAGE(bt))
+		{
+			Pif freesList = ConvertEx::Get4(&bt->Page1->Data[36]); // Number of pages still on the free-list
+			if (freesList == 0)
+				return RC::DONE;
 
-			nFree = get4byte(&pBt->pPage1->aData[36]);
-			nFin = finalDbSize(pBt, nOrig, nFree);
-			if( nFin>nOrig ) return SQLITE_CORRUPT_BKPT;
+			PTRMAP type;
+			Pid ptrPageID;
+			RC rc = ptrmapGet(pBt, lastID, &type, &ptrPageID);
+			if (rc != RC::OK)
+				return rc;
+			if (type == PTRMAP::ROOTPAGE)
+				return SysEx_CORRUPT_BKPT;
 
-			for(iFree=nOrig; iFree>nFin && rc==SQLITE_OK; iFree--){
-				rc = incrVacuumStep(pBt, nFin, iFree, 1);
-			}
-			if( (rc==SQLITE_DONE || rc==SQLITE_OK) && nFree>0 ){
-				rc = sqlite3PagerWrite(pBt->pPage1->pDbPage);
-				put4byte(&pBt->pPage1->aData[32], 0);
-				put4byte(&pBt->pPage1->aData[36], 0);
-				put4byte(&pBt->pPage1->aData[28], nFin);
-				pBt->bDoTruncate = 1;
-				pBt->nPage = nFin;
-			}
-			if( rc!=SQLITE_OK ){
-				sqlite3PagerRollback(pPager);
+			if (type == PTRMAP::FREEPAGE)
+			{
+				if (!commit)
+				{
+					// Remove the page from the files free-list. This is not required if bCommit is non-zero. In that case, the free-list will be
+					// truncated to zero after this function returns, so it doesn't matter if it still contains some garbage entries.
+					Pid freePageID;
+					MemPage *freePage;
+					rc = allocateBtreePage(bt, &freePage, &freePageID, lastPageID, BTALLOC::EXACT);
+					if (rc != RC::OK)
+						return rc;
+					_assert(freePageID == lastPageID);
+					releasePage(freePage);
+				}
+			} 
+			else 
+			{
+				MemPage *lastPage;
+				rc = btreeGetPage(bt, lastPageID, &lastPage, false);
+				if (rc != RC::OK)
+					return rc;
+
+				// If bCommit is zero, this loop runs exactly once and page pLastPg is swapped with the first free page pulled off the free list.
+				//
+				// On the other hand, if bCommit is greater than zero, then keep looping until a free-page located within the first nFin pages
+				// of the file is found.
+				BTALLOC mode = BTALLOC::ANY; // Mode parameter for allocateBtreePage()
+				Pid nearID = 0; // nearby parameter for allocateBtreePage()
+				if (!commit)
+				{
+					mode = BTALLOC::LE;
+					nearID = fins;
+				}
+				do
+				{
+					MemPage *freePage;
+					Pid freePageID; // Index of free page to move pLastPg to
+					rc = allocateBtreePage(bt, &freePage, &freePageID, nearID, mode);
+					if (rc != RC::OK)
+					{
+						releasePage(lastPage);
+						return rc;
+					}
+					releasePage(freePage);
+				} while (commit && freePageID > fins);
+				_assert(freePageID < lastPageID);
+
+				rc = relocatePage(bt, lastPage, type, ptrPageID, freePageID, commit);
+				releasePage(lastPage);
+				if (rc != RC::OK)
+					return rc;
 			}
 		}
 
-		assert( nRef==sqlite3PagerRefcount(pPager) );
+		if (!commit)
+		{
+			do
+			{
+				lastPageID--;
+			} while (lastPageID == PENDING_BYTE_PAGE(bt) || PTRMAP_ISPAGE(bt, lastPageID));
+			bt->DoTruncate = true;
+			bt->Pages = lastPageID;
+		}
+		return RC.OK;
+	}
+
+	static Pid finalDbSize(BtShared *bt, Pid origs, Pid frees)
+	{
+		int entrys = bt->UsableSize / 5; // Number of entries on one ptrmap page
+		Pid ptrmaps = (frees - origs + PTRMAP_PAGENO(bt, origs) + entrys) / entrys; // Number of PtrMap pages to be freed
+		Pid fins = origs - frees - ptrmaps; // Return value
+		if (origs > PENDING_BYTE_PAGE(bt) && fins < PENDING_BYTE_PAGE(bt))
+			fins--;
+		while (PTRMAP_ISPAGE(bt, fins) || fins == PENDING_BYTE_PAGE(bt))
+			fins--;
+		return fins;
+	}
+
+	RC Btree:IncrVacuum()
+	{
+		BtShared *bt = p->Bt;
+
+		Enter();
+		_assert(bt->InTransaction == TRANS::WRITE && InTrans == TRANS::WRITE);
+		RC rc;
+		if (!bt->AutoVacuum)
+			rc = RC::DONE;
+		else
+		{
+			Pid origs = btreePagecount(bt);
+			Pid frees = ConvertEx::Get4(&bt->Page1->Data[36]);
+			Pid fins = finalDbSize(bt, origs, frees);
+
+			if (origs < fins)
+				rc = SysEx_CORRUPT_BKPT;
+			else if (frees > 0)
+			{
+				invalidateAllOverflowCache(bt);
+				rc = incrVacuumStep(bt, fins, origs, false);
+				if (rc == RC::OK)
+				{
+					rc = Pager::Write(bt->Page1->DBPage);
+					ConvertEx::Put4(&bt->Page1->Data[28], bt->Pages);
+				}
+			}
+			else
+				rc = RC::DONE;
+		}
+		Leave();
+		return rc;
+	}
+
+	static RC autoVacuumCommit(BtShared *bt)
+	{
+		Pager *pager = bt->Pager;
+		ASSERTONLY(int refs = pager->get_Refs());
+
+		_assert(MutexEx::Held(bt->Mutex));
+		invalidateAllOverflowCache(bt);
+		_assert(bt->AutoVacuum);
+		if (!bt->IncrVacuum)
+		{
+			Pid origs = btreePagecount(bt); // Database size before freeing
+			if (PTRMAP_ISPAGE(bt, origs) || origs == PENDING_BYTE_PAGE(bt))
+			{
+				// It is not possible to create a database for which the final page is either a pointer-map page or the pending-byte page. If one
+				// is encountered, this indicates corruption.
+				return SysEx_CORRUPT_BKPT;
+			}
+
+			Pid frees = ConvertEx::Get4(&bt->Page1->Data[36]); // Number of pages on the freelist initially
+			Pid fins = finalDbSize(bt, origs, frees); // Number of pages in database after autovacuuming
+			if (fins > origs) return SysEx_CORRUPT_BKPT;
+
+			RC rc = RC::OK;
+			for (Pid freeID = origs; freeID > fins && rc == RC::OK; freeID--) // The next page to be freed
+				rc = incrVacuumStep(bt, fins, freeID, true);
+			if ((rc == RC::DONE || rc == RC::OK) && frees > 0)
+			{
+				rc = Pager::Write(bt->Page1->DBPage);
+				ConvertEx::Put4(&bt->Page1->Data[32], 0);
+				ConvertEx::Put4(&bt->Page1->Data[36], 0);
+				ConvertEx::Put4(&bt->Page1->Data[28], fins);
+				bt->DoTruncate = true;
+				bt->Pages = fins;
+			}
+			if (rc != RC::OK)
+				pager->Rollback();
+		}
+
+		_assert(refs == pager->get_Refs());
 		return rc;
 	}
 
 #else
-#define setChildPtrmaps(x) RC::OK
+	//#define setChildPtrmaps(x) RC::OK
 #endif
 #pragma endregion
 
-#pragma region Commit
+#pragma region Commit / Rollback
 
-	int sqlite3BtreeCommitPhaseOne(Btree *p, const char *zMaster){
-		int rc = SQLITE_OK;
-		if( p->inTrans==TRANS_WRITE ){
-			BtShared *pBt = p->pBt;
-			sqlite3BtreeEnter(p);
-#ifndef SQLITE_OMIT_AUTOVACUUM
-			if( pBt->autoVacuum ){
-				rc = autoVacuumCommit(pBt);
-				if( rc!=SQLITE_OK ){
-					sqlite3BtreeLeave(p);
+	RC Btree::CommitPhaseOne(const char *master)
+	{
+		RC rc = RC::OK;
+		if (InTrans == TRANS::WRITE)
+		{
+			BtShared *bt = Bt;
+			Enter();
+#ifndef OMIT_AUTOVACUUM
+			if (bt->AutoVacuum)
+			{
+				rc = autoVacuumCommit(bt);
+				if (rc != RC::OK)
+				{
+					Leave();
 					return rc;
 				}
 			}
-			if( pBt->bDoTruncate ){
-				sqlite3PagerTruncateImage(pBt->pPager, pBt->nPage);
-			}
+			if (bt->DoTruncate)
+				bt->Pager->TruncateImage(bt->Pages);
 #endif
-			rc = sqlite3PagerCommitPhaseOne(pBt->pPager, zMaster, 0);
-			sqlite3BtreeLeave(p);
+			rc = bt->Pager->CommitPhaseOne(master, false);
+			Leave();
 		}
 		return rc;
 	}
 
-	static void btreeEndTransaction(Btree *p){
-		BtShared *pBt = p->pBt;
-		assert( sqlite3BtreeHoldsMutex(p) );
+	static void btreeEndTransaction(Btree *p)
+	{
+		BtShared *bt = p->Bt;
+		_assert(sqlite3BtreeHoldsMutex(p));
 
-#ifndef SQLITE_OMIT_AUTOVACUUM
-		pBt->bDoTruncate = 0;
+#ifndef OMIT_AUTOVACUUM
+		bt->DoTruncate = false;
 #endif
-		btreeClearHasContent(pBt);
-		if( p->inTrans>TRANS_NONE && p->db->activeVdbeCnt>1 ){
-			/* If there are other active statements that belong to this database
-			** handle, downgrade to a read-only transaction. The other statements
-			** may still be reading from the database.  */
+		btreeClearHasContent(bt);
+		if (p->InTrans > TRANS::NONE && p->Ctx->ActiveVdbeCnt > 1)
+		{
+			// If there are other active statements that belong to this database handle, downgrade to a read-only transaction. The other statements
+			// may still be reading from the database.
 			downgradeAllSharedCacheTableLocks(p);
-			p->inTrans = TRANS_READ;
-		}else{
-			/* If the handle had any kind of transaction open, decrement the 
-			** transaction count of the shared btree. If the transaction count 
-			** reaches 0, set the shared state to TRANS_NONE. The unlockBtreeIfUnused()
-			** call below will unlock the pager.  */
-			if( p->inTrans!=TRANS_NONE ){
+			p->InTrans = TRANS::READ;
+		}
+		else
+		{
+			// If the handle had any kind of transaction open, decrement the transaction count of the shared btree. If the transaction count 
+			// reaches 0, set the shared state to TRANS_NONE. The unlockBtreeIfUnused() call below will unlock the pager.
+			if (p->InTrans != TRANS::NONE)
+			{
 				clearAllSharedCacheTableLocks(p);
-				pBt->nTransaction--;
-				if( 0==pBt->nTransaction ){
-					pBt->inTransaction = TRANS_NONE;
-				}
+				bt->Transactions--;
+				if (bt->Transactions == 0)
+					bt->InTransaction = TRANS::NONE;
 			}
 
-			/* Set the current transaction state to TRANS_NONE and unlock the 
-			** pager if this call closed the only read or write transaction.  */
-			p->inTrans = TRANS_NONE;
-			unlockBtreeIfUnused(pBt);
+			// Set the current transaction state to TRANS_NONE and unlock the  pager if this call closed the only read or write transaction.
+			p->InTrans = TRANS::NONE;
+			unlockBtreeIfUnused(bt);
 		}
 
 		btreeIntegrity(p);
 	}
 
-	int sqlite3BtreeCommitPhaseTwo(Btree *p, int bCleanup){
+	RC Btree::CommitPhaseTwo(bool cleanup)
+	{
+		if (InTrans == TRANS::NONE) return RC::OK;
+		Enter();
+		btreeIntegrity(this);
 
-		if( p->inTrans==TRANS_NONE ) return SQLITE_OK;
-		sqlite3BtreeEnter(p);
-		btreeIntegrity(p);
-
-		/* If the handle has a write-transaction open, commit the shared-btrees 
-		** transaction and set the shared state to TRANS_READ.
-		*/
-		if( p->inTrans==TRANS_WRITE ){
-			int rc;
-			BtShared *pBt = p->pBt;
-			assert( pBt->inTransaction==TRANS_WRITE );
-			assert( pBt->nTransaction>0 );
-			rc = sqlite3PagerCommitPhaseTwo(pBt->pPager);
-			if( rc!=SQLITE_OK && bCleanup==0 ){
-				sqlite3BtreeLeave(p);
+		// If the handle has a write-transaction open, commit the shared-btrees transaction and set the shared state to TRANS_READ.
+		if (InTrans == TRANS::WRITE)
+		{
+			BtShared *bt = Bt;
+			_assert(bt->InTransaction == TRANS::WRITE);
+			_assert(bt->Transactions > 0);
+			RC rc = bt->Pager->CommitPhaseTwo();
+			if (rc != RC::OK && !cleanup)
+			{
+				Leave();
 				return rc;
 			}
-			pBt->inTransaction = TRANS_READ;
+			bt->InTransaction = TRANS::READ;
 		}
 
-		btreeEndTransaction(p);
-		sqlite3BtreeLeave(p);
-		return SQLITE_OK;
+		btreeEndTransaction(this);
+		Leave();
+		return RC::OK;
 	}
 
-	int sqlite3BtreeCommit(Btree *p){
-		int rc;
-		sqlite3BtreeEnter(p);
-		rc = sqlite3BtreeCommitPhaseOne(p, 0);
-		if( rc==SQLITE_OK ){
-			rc = sqlite3BtreeCommitPhaseTwo(p, 0);
+	RC Btree::Commit()
+	{
+		Enter();
+		RC rc = CommitPhaseOne(false);
+		if (rc == RC::OK)
+			rc = CommitPhaseTwo(false);
+		Leave();
+		return rc;
+	}
+
+
+#ifndef _DEBUG
+	static int countWriteCursors(BtShared *bt)
+	{
+		int r = 0;
+		for (BtCursor *cur = bt->Cursor; cur; cur = cur->Next)
+			if (cur->wrFlag && cur->State != CURSOR::FAULT) r++; 
+		return r;
+	}
+#endif
+
+	void Btree::TripAllCursors(RC errCode)
+	{
+		Enter();
+		for (BtCursor *p = Bt->Cursor; p; p = p->Next)
+		{
+			ClearCursor();
+			p->State = CURSOR.FAULT;
+			p->SkipNext = errCode;
+			for (int i = 0; i <= p->Page; i++)
+			{
+				releasePage(p->Pages[i]);
+				p->Pages[i] = nullptr;
+			}
 		}
-		sqlite3BtreeLeave(p);
+		Leave();
+	}
+
+	RC Btree::Rollback(RC tripCode)
+	{
+		BtShared *bt = Bt;
+
+		Enter();
+		RC rc;
+		if (tripCode == RC::OK)
+			rc = tripCode = saveAllCursors(bt, 0, nullptr);
+		else
+			rc = RC::OK;
+		if (tripCode)
+			TripAllCursors(tripCode);
+		btreeIntegrity(this);
+
+		if (InTrans == TRANS::WRITE)
+		{
+			_assert(bt->InTransaction == TRANS::WRITE);
+			RC rc2 = bt->Pager->Rollback();
+			if (rc2 != RC::OK)
+				rc = rc2;
+
+			// The rollback may have destroyed the pPage1->aData value. So call btreeGetPage() on page 1 again to make
+			// sure pPage1->aData is set correctly.
+			MemPage *page1;
+			if (btreeGetPage(bt, 1, &page1, false) == RC::OK)
+			{
+				Pid pages = ConvertEx::Get4(28 + (uint8 *)page1->Data);
+				ASSERTCOVERAGE(pages == 0);
+				if (pages == 0) bt->Pager->Pagecount(&pages);
+				ASSERTCOVERAGE(bt->Pages != pages);
+				bt->Pages = pages;
+				releasePage(page1);
+			}
+			_assert(countWriteCursors(bt) == 0);
+			bt->InTransaction = TRANS::READ;
+		}
+
+		btreeEndTransaction(this);
+		Leave();
+		return rc;
+	}
+
+	RC Btree::BeginStmt(int statements)
+	{
+		BtShared *bt = p->Bt;
+		Enter();
+		_assert(InTrans == TRANS::WRITE);
+		_assert((bt->BtsFlags & BTS::READ_ONLY) == 0);
+		_assert(statements > 0);
+		_assert(statements > Ctx->Savepoints);
+		_assert(bt->InTransaction == TRANS::WRITE);
+		// At the pager level, a statement transaction is a savepoint with an index greater than all savepoints created explicitly using
+		// SQL statements. It is illegal to open, release or rollback any such savepoints while the statement transaction savepoint is active.
+		RC rc = bt->Pager->OpenSavepoint(statements);
+		Leave();
+		return rc;
+	}
+
+	RC Btree::Savepoint(IPager::SAVEPOINT op, int savepoints)
+	{
+		RC rc = RC::OK;
+		if (InTrans == TRANS::WRITE)
+		{
+			BtShared *bt = Bt;
+			_assert(op == IPager::SAVEPOINT::RELEASE || op == IPager::SAVEPOINT::ROLLBACK);
+			_assert(savepoints >= 0 || (savepoints == -1 && op == IPager::SAVEPOINT::ROLLBACK));
+			Enter();
+			rc = bt->Pager->Savepoint(op, savepoints);
+			if (rc == RC::OK)
+			{
+				if (savepoints < 0 && (bt->BtsFlags & BTS::INITIALLY_EMPTY) != 0)
+					bt->Pages = 0;
+				rc = newDatabase(pBt);
+				bt->Pages = ConvertEx::Get4(28 + bt->Page1->Data);
+
+				// The database size was written into the offset 28 of the header when the transaction started, so we know that the value at offset
+				// 28 is nonzero.
+				assert(bt->Pages > 0);
+			}
+			Leave();
+		}
 		return rc;
 	}
 
@@ -2397,542 +2487,386 @@ set_child_ptrmaps_out:
 
 #pragma region Cursors
 
-#ifndef _DEBUG
-	static int countWriteCursors(BtShared *pBt){
-		BtCursor *pCur;
-		int r = 0;
-		for(pCur=pBt->pCursor; pCur; pCur=pCur->pNext){
-			if( pCur->wrFlag && pCur->eState!=CURSOR_FAULT ) r++; 
+	static RC btreeCursor(Btree *p, int table, int wrFlag, struct KeyInfo *keyInfo, BtCursor *cur)
+	{
+		BtShared *bt = p->pBt; // Shared b-tree handle
+
+		_assert(HoldsMutex(p));
+		_assert(wrFlag == 0 || wrFlag == 1);
+
+		// The following assert statements verify that if this is a sharable b-tree database, the connection is holding the required table locks, 
+		// and that no other connection has any open cursor that conflicts with this lock.
+		_assert(hasSharedCacheTableLock(p, table, keyInfo != nullptr, wrFlag + 1));
+		_assert(wrFlag == 0 || !hasReadConflicts(p, table));
+
+		// Assert that the caller has opened the required transaction.
+		_assert(p->InTrans > TRANS::NONE);
+		_assert(wrFlag == 0 || p->InTrans == TRANS::WRITE);
+		_assert(bt->Page1 && bt->Page1->Data);
+
+		if (SysEx::NEVER(wrFlag && (bt->BtsFlags & BTS::READ_ONLY) != 0))
+			return RC::READONLY;
+		if (table == 1 && btreePagecount(bt) == 0)
+		{
+			_assert(wrFlag == 0);
+			table = 0;
 		}
-		return r;
+
+		// Now that no other errors can occur, finish filling in the BtCursor variables and link the cursor into the BtShared list.
+		cur->IDRoot = (Pid)table;
+		cur->Page = -1;
+		cur->KeyInfo = keyInfo;
+		cur->Btree = p;
+		cur->Bt = bt;
+		cur->WrFlag = (uint8)wrFlag;
+		cur->Next = bt->Cursor;
+		if (cur->Next)
+			cur->Next->Prev = cur;
+		bt->Cursor = cur;
+		cur->State = CURSOR::INVALID;
+		cur->CachedRowID = 0;
+		return RC::OK;
 	}
-#endif
 
-	void sqlite3BtreeTripAllCursors(Btree *pBtree, int errCode){
-		BtCursor *p;
-		if( pBtree==0 ) return;
-		sqlite3BtreeEnter(pBtree);
-		for(p=pBtree->pBt->pCursor; p; p=p->pNext){
-			int i;
-			sqlite3BtreeClearCursor(p);
-			p->eState = CURSOR_FAULT;
-			p->skipNext = errCode;
-			for(i=0; i<=p->iPage; i++){
-				releasePage(p->apPage[i]);
-				p->apPage[i] = 0;
-			}
-		}
-		sqlite3BtreeLeave(pBtree);
-	}
-
-	int sqlite3BtreeRollback(Btree *p, int tripCode){
-		int rc;
-		BtShared *pBt = p->pBt;
-		MemPage *pPage1;
-
-		sqlite3BtreeEnter(p);
-		if( tripCode==SQLITE_OK ){
-			rc = tripCode = saveAllCursors(pBt, 0, 0);
-		}else{
-			rc = SQLITE_OK;
-		}
-		if( tripCode ){
-			sqlite3BtreeTripAllCursors(p, tripCode);
-		}
-		btreeIntegrity(p);
-
-		if( p->inTrans==TRANS_WRITE ){
-			int rc2;
-
-			assert( TRANS_WRITE==pBt->inTransaction );
-			rc2 = sqlite3PagerRollback(pBt->pPager);
-			if( rc2!=SQLITE_OK ){
-				rc = rc2;
-			}
-
-			/* The rollback may have destroyed the pPage1->aData value.  So
-			** call btreeGetPage() on page 1 again to make
-			** sure pPage1->aData is set correctly. */
-			if( btreeGetPage(pBt, 1, &pPage1, 0)==SQLITE_OK ){
-				int nPage = get4byte(28+(u8*)pPage1->aData);
-				testcase( nPage==0 );
-				if( nPage==0 ) sqlite3PagerPagecount(pBt->pPager, &nPage);
-				testcase( pBt->nPage!=nPage );
-				pBt->nPage = nPage;
-				releasePage(pPage1);
-			}
-			assert( countWriteCursors(pBt)==0 );
-			pBt->inTransaction = TRANS_READ;
-		}
-
-		btreeEndTransaction(p);
-		sqlite3BtreeLeave(p);
+	RC Btree::Cursor(int table, int wrFlag, struct KeyInfo *keyInfo, BtCursor *cur)
+	{
+		Enter();
+		RC rc = btreeCursor(this, table, wrFlag, keyInfo, cur);
+		Leave();
 		return rc;
 	}
 
-	int sqlite3BtreeBeginStmt(Btree *p, int iStatement){
-		int rc;
-		BtShared *pBt = p->pBt;
-		sqlite3BtreeEnter(p);
-		assert( p->inTrans==TRANS_WRITE );
-		assert( (pBt->btsFlags & BTS_READ_ONLY)==0 );
-		assert( iStatement>0 );
-		assert( iStatement>p->db->nSavepoint );
-		assert( pBt->inTransaction==TRANS_WRITE );
-		/* At the pager level, a statement transaction is a savepoint with
-		** an index greater than all savepoints created explicitly using
-		** SQL statements. It is illegal to open, release or rollback any
-		** such savepoints while the statement transaction savepoint is active.
-		*/
-		rc = sqlite3PagerOpenSavepoint(pBt->pPager, iStatement);
-		sqlite3BtreeLeave(p);
-		return rc;
+	int Btree::CursorSize()
+	{
+		return SysEx::ROUND8(sizeof(BtCursor));
 	}
 
-	int sqlite3BtreeSavepoint(Btree *p, int op, int iSavepoint){
-		int rc = SQLITE_OK;
-		if( p && p->inTrans==TRANS_WRITE ){
-			BtShared *pBt = p->pBt;
-			assert( op==SAVEPOINT_RELEASE || op==SAVEPOINT_ROLLBACK );
-			assert( iSavepoint>=0 || (iSavepoint==-1 && op==SAVEPOINT_ROLLBACK) );
-			sqlite3BtreeEnter(p);
-			rc = sqlite3PagerSavepoint(pBt->pPager, op, iSavepoint);
-			if( rc==SQLITE_OK ){
-				if( iSavepoint<0 && (pBt->btsFlags & BTS_INITIALLY_EMPTY)!=0 ){
-					pBt->nPage = 0;
-				}
-				rc = newDatabase(pBt);
-				pBt->nPage = get4byte(28 + pBt->pPage1->aData);
+	void Btree::CursorZero(BtCursor *p)
+	{
+		_memset(p, 0, offsetof(BtCursor, page));
+	}
 
-				/* The database size was written into the offset 28 of the header
-				** when the transaction started, so we know that the value at offset
-				** 28 is nonzero. */
-				assert( pBt->nPage>0 );
-			}
-			sqlite3BtreeLeave(p);
+	void Btree::SetCachedRowID(BtCursor *cur, int64 rowid)
+	{
+		for (BtCursor *p = cur->Bt->Cursor; p; p = p->Next)
+			if (p->IDRoot == cur->IDRoot) p->CachedRowID = rowid;
+		_assert(cur->CachedRowID == rowid);
+	}
+
+	int64 Btree::GetCachedRowID(BtCursor *cur)
+	{
+		return cur->CachedRowID;
+	}
+
+	RC Btree::CloseCursor(BtCursor *cur)
+	{
+		Btree *btree = cur->Btree;
+		if (btree)
+		{
+			BtShared *bt = cur->Bt;
+			btree->Enter();
+			ClearCursor(cur);
+			if (cur->Prev)
+				cur->Prev->Next = cur->Next;
+			else
+				bt->Cursor = cur->Next;
+			if (cur->Next)
+				cur->Next->Prev = cur->Prev;
+			for (int i = 0; i <= cur->Page; i++)
+				releasePage(cur->Pages[i]);
+			unlockBtreeIfUnused(bt);
+			invalidateOverflowCache(cur);
+			// SysEx::Free(cur);
+			btree->Leave();
 		}
-		return rc;
+		return RC::OK;
 	}
 
-#pragma endregion
-
-#pragma region Cursor
-
-	static int btreeCursor(
-		Btree *p,                              /* The btree */
-		int iTable,                            /* Root page of table to open */
-		int wrFlag,                            /* 1 to write. 0 read-only */
-	struct KeyInfo *pKeyInfo,              /* First arg to comparison function */
-		BtCursor *pCur                         /* Space for new cursor */
-		){
-			BtShared *pBt = p->pBt;                /* Shared b-tree handle */
-
-			assert( sqlite3BtreeHoldsMutex(p) );
-			assert( wrFlag==0 || wrFlag==1 );
-
-			/* The following assert statements verify that if this is a sharable 
-			** b-tree database, the connection is holding the required table locks, 
-			** and that no other connection has any open cursor that conflicts with 
-			** this lock.  */
-			assert( hasSharedCacheTableLock(p, iTable, pKeyInfo!=0, wrFlag+1) );
-			assert( wrFlag==0 || !hasReadConflicts(p, iTable) );
-
-			/* Assert that the caller has opened the required transaction. */
-			assert( p->inTrans>TRANS_NONE );
-			assert( wrFlag==0 || p->inTrans==TRANS_WRITE );
-			assert( pBt->pPage1 && pBt->pPage1->aData );
-
-			if( NEVER(wrFlag && (pBt->btsFlags & BTS_READ_ONLY)!=0) ){
-				return SQLITE_READONLY;
-			}
-			if( iTable==1 && btreePagecount(pBt)==0 ){
-				assert( wrFlag==0 );
-				iTable = 0;
-			}
-
-			/* Now that no other errors can occur, finish filling in the BtCursor
-			** variables and link the cursor into the BtShared list.  */
-			pCur->pgnoRoot = (Pgno)iTable;
-			pCur->iPage = -1;
-			pCur->pKeyInfo = pKeyInfo;
-			pCur->pBtree = p;
-			pCur->pBt = pBt;
-			pCur->wrFlag = (u8)wrFlag;
-			pCur->pNext = pBt->pCursor;
-			if( pCur->pNext ){
-				pCur->pNext->pPrev = pCur;
-			}
-			pBt->pCursor = pCur;
-			pCur->eState = CURSOR_INVALID;
-			pCur->cachedRowid = 0;
-			return SQLITE_OK;
-	}
-	int sqlite3BtreeCursor(
-		Btree *p,                                   /* The btree */
-		int iTable,                                 /* Root page of table to open */
-		int wrFlag,                                 /* 1 to write. 0 read-only */
-	struct KeyInfo *pKeyInfo,                   /* First arg to xCompare() */
-		BtCursor *pCur                              /* Write new cursor here */
-		){
-			int rc;
-			sqlite3BtreeEnter(p);
-			rc = btreeCursor(p, iTable, wrFlag, pKeyInfo, pCur);
-			sqlite3BtreeLeave(p);
-			return rc;
-	}
-
-	int sqlite3BtreeCursorSize(void){
-		return ROUND8(sizeof(BtCursor));
-	}
-
-	void sqlite3BtreeCursorZero(BtCursor *p){
-		memset(p, 0, offsetof(BtCursor, iPage));
-	}
-
-	void sqlite3BtreeSetCachedRowid(BtCursor *pCur, sqlite3_int64 iRowid){
-		BtCursor *p;
-		for(p=pCur->pBt->pCursor; p; p=p->pNext){
-			if( p->pgnoRoot==pCur->pgnoRoot ) p->cachedRowid = iRowid;
-		}
-		assert( pCur->cachedRowid==iRowid );
-	}
-
-	sqlite3_int64 sqlite3BtreeGetCachedRowid(BtCursor *pCur){
-		return pCur->cachedRowid;
-	}
-
-	int sqlite3BtreeCloseCursor(BtCursor *pCur){
-		Btree *pBtree = pCur->pBtree;
-		if( pBtree ){
-			int i;
-			BtShared *pBt = pCur->pBt;
-			sqlite3BtreeEnter(pBtree);
-			sqlite3BtreeClearCursor(pCur);
-			if( pCur->pPrev ){
-				pCur->pPrev->pNext = pCur->pNext;
-			}else{
-				pBt->pCursor = pCur->pNext;
-			}
-			if( pCur->pNext ){
-				pCur->pNext->pPrev = pCur->pPrev;
-			}
-			for(i=0; i<=pCur->iPage; i++){
-				releasePage(pCur->apPage[i]);
-			}
-			unlockBtreeIfUnused(pBt);
-			invalidateOverflowCache(pCur);
-			/* sqlite3_free(pCur); */
-			sqlite3BtreeLeave(pBtree);
-		}
-		return SQLITE_OK;
-	}
-
-#ifndef _DEBUG
-	static void assertCellInfo(BtCursor *pCur){
+#ifdef _DEBUG
+	static void assertCellInfo(BtCursor *cur)
+	{
+		int page = cur->Page;
 		CellInfo info;
-		int iPage = pCur->iPage;
-		memset(&info, 0, sizeof(info));
-		btreeParseCell(pCur->apPage[iPage], pCur->aiIdx[iPage], &info);
-		assert( memcmp(&info, &pCur->info, sizeof(info))==0 );
+		_memset(&info, 0, sizeof(info));
+		btreeParseCell(cur->Pages[page], cur->Idxs[pPage], &info);
+		_assert(_memcmp(&info, &cur->info, sizeof(info)) == 0);
 	}
 #else
 #define assertCellInfo(x)
 #endif
-#ifdef _MSC_VER
-	/* Use a real function in MSVC to work around bugs in that compiler. */
-	static void getCellInfo(BtCursor *pCur){
-		if( pCur->info.nSize==0 ){
-			int iPage = pCur->iPage;
-			btreeParseCell(pCur->apPage[iPage],pCur->aiIdx[iPage],&pCur->info);
-			pCur->validNKey = 1;
-		}else{
-			assertCellInfo(pCur);
-		}
-	}
-#else /* if not _MSC_VER */
-	/* Use a macro in all other compilers so that the function is inlined */
-#define getCellInfo(pCur)                                                      \
-	if( pCur->info.nSize==0 ){                                                   \
-	int iPage = pCur->iPage;                                                   \
-	btreeParseCell(pCur->apPage[iPage],pCur->aiIdx[iPage],&pCur->info); \
-	pCur->validNKey = 1;                                                       \
-	}else{                                                                       \
-	assertCellInfo(pCur);                                                      \
-	}
-#endif /* _MSC_VER */
 
-#ifndef _DEBUG  // The next routine used only within assert() statements
-	int sqlite3BtreeCursorIsValid(BtCursor *pCur){
-		return pCur && pCur->eState==CURSOR_VALID;
+#ifdef _MSC_VER
+	static void getCellInfo(BtCursor *cur)
+	{
+		if (cur->Info.Size == 0)
+		{
+			int page = cur->Page;
+			btreeParseCell(cur->Pages[page], cur->Idxs[pPage], &cur->info);
+			cur->ValidNKey = 1;
+		}
+		else
+			assertCellInfo(cur);
+	}
+#else
+#define getCellInfo(cur) \
+	if (cur->info.Size == 0) { \
+	int page = cur->Page; \
+	btreeParseCell(cur->Pages[page], cur->Idxs[page], &cur->info); \
+	cur->ValidNKey = 1; \
+	} else assertCellInfo(cur);
+#endif
+
+#ifdef _DEBUG
+	bool Btree::CursorIsValid(BtCursor *cur)
+	{
+		return cur && cur->State == CURSOR::VALID;
 	}
 #endif
 
-	int sqlite3BtreeKeySize(BtCursor *pCur, i64 *pSize){
-		assert( cursorHoldsMutex(pCur) );
-		assert( pCur->eState==CURSOR_INVALID || pCur->eState==CURSOR_VALID );
-		if( pCur->eState!=CURSOR_VALID ){
-			*pSize = 0;
-		}else{
-			getCellInfo(pCur);
-			*pSize = pCur->info.nKey;
+	RC Btree::KeySize(BtCursor *cur, int64 *size)
+	{
+		_assert(cursorHoldsMutex(cur));
+		_assert(cur->State == CURSOR::INVALID || cur->State == CURSOR::VALID);
+		if (cur->State != CURSOR::VALID)
+			*size = 0;
+		else
+		{
+			getCellInfo(cur);
+			*size = cur->Info.Key;
 		}
-		return SQLITE_OK;
+		return RC::OK;
 	}
 
-	int sqlite3BtreeDataSize(BtCursor *pCur, u32 *pSize){
-		assert( cursorHoldsMutex(pCur) );
-		assert( pCur->eState==CURSOR_VALID );
-		getCellInfo(pCur);
-		*pSize = pCur->info.nData;
-		return SQLITE_OK;
+	RC Btree::DataSize(BtCursor *cur, uint32 *size)
+	{
+		_assert(cursorHoldsMutex(cur));
+		_assert(cur->State == CURSOR::VALID);
+		getCellInfo(cur);
+		*size = cur->Info.Data;
+		return RC::OK;
 	}
 
 #pragma endregion
 
 #pragma region Overflow
 
-	static int getOverflowPage(
-		BtShared *pBt,               /* The database file */
-		Pgno ovfl,                   /* Current overflow page number */
-		MemPage **ppPage,            /* OUT: MemPage handle (may be NULL) */
-		Pgno *pPgnoNext              /* OUT: Next overflow page number */
-		){
-			Pgno next = 0;
-			MemPage *pPage = 0;
-			int rc = SQLITE_OK;
+	static int getOverflowPage(BtShared *bt, Pid ovfl, MemPage **pageOut, Pid *idNextOut)
+	{
+		Pid next = 0;
+		MemPage *page = nullptr;
+		RC rc = RC::OK;
 
-			assert( sqlite3_mutex_held(pBt->mutex) );
-			assert(pPgnoNext);
+		_assert( sqlite3_mutex_held(pBt->mutex) );
+		_assert(idNextOut);
 
 #ifndef OMIT_AUTOVACUUM
-			/* Try to find the next page in the overflow list using the
-			** autovacuum pointer-map pages. Guess that the next page in 
-			** the overflow list is page number (ovfl+1). If that guess turns 
-			** out to be wrong, fall back to loading the data of page 
-			** number ovfl to determine the next page number.
+		// Try to find the next page in the overflow list using the autovacuum pointer-map pages. Guess that the next page in 
+		// the overflow list is page number (ovfl+1). If that guess turns out to be wrong, fall back to loading the data of page 
+		// number ovfl to determine the next page number.
+		if (bt->AutoVacuum)
+		{
+			Pid guess = ovfl + 1;
+			while (PTRMAP_ISPAGE(bt, guess) || guess == PENDING_BYTE_PAGE(bt))
+				guess++;
+			if (guess <= btreePagecount(bt))
+			{
+				Pid id;
+				uint8 type;
+				rc = ptrmapGet(bt, guess, &type, &id);
+				if (rc == RC::OK && type == PTRMAP_OVERFLOW2 && id == ovfl)
+				{
+					next = guess;
+					rc = RC::DONE;
+				}
+			}
+		}
+#endif
+
+		assert(next == 0 || rc == RC::DONE);
+		if (rc == RC::OK)
+		{
+			rc = btreeGetPage(bt, ovfl, &page, 0);
+			assert(rc == RC::OK || page == 0);
+			if (rc == RC::OK)
+				next = ConvertEx::Get4(page->Data);
+		}
+
+		*idNextOut = next;
+		if (pageOut)
+			*pageOut = page;
+		else
+			releasePage(page);
+		return (rc == RC::DONE ? RC::OK : rc);
+	}
+
+	static RC copyPayload(void *pPayload, void *buf, int byte, int op, IPage *dbPage)
+	{
+		if (op)
+		{
+			// Copy data from buffer to page (a write operation)
+			RC rc = Pager::Write(dbPage);
+			if (rc != RC::OK)
+				return rc;
+			memcpy(payload, buf, bytes);
+		}
+		else
+			// Copy data from page to buffer (a read operation)
+			_memcpy(buf, payload, byte);
+		return RC::OK;
+	}
+
+	static int accessPayload(BtCursor *cur, uint32 offset, uint32 amount, unsigned char *buf, int op)
+	{
+		MemPage *page = cur->Pages[cur->Page]; // Btree page of current entry
+
+		_assert(page);
+		_assert(cur->State == CURSOR::VALID);
+		_assert(cur->Idxs[cur->Page] < page->Cells);
+		_assert(cursorHoldsMutex(cur));
+
+		getCellInfo(cur);
+		unsigned char *payload = cur->Info.Cell + cur->Info.Header;
+		uint32 key = (page->IntKey ? 0 : (int)cur->Info.Key);
+
+		BtShared *bt = cur->Bt; // Btree this cursor belongs to
+		if (SystEx::NEVER(offset + amount > key + cur->Info.Data) || &payload[cur->Info.Local] > &page->Data[bt->UsableSize])
+		{
+			// Trying to read or write past the end of the data is an error
+			return SysEx_CORRUPT_BKPT;
+		}
+
+		// Check if data must be read/written to/from the btree page itself.
+		int idx = 0;
+		RC rc = RC::OK;
+		if (offset < cCur->Info.Local)
+		{
+			int a = amt;
+			if (a + offset > cur->Info.Local)
+				a = cur->Info.Local - offset;
+			rc = copyPayload(&payload[offset], buf, a, op, page->DBPage);
+			offset = 0;
+			buf += a;
+			amount -= a;
+		}
+		else
+			offset -= cur->Info.Local;
+
+		if (rc == RC::OK && amount > 0)
+		{
+			const uint32 ovflSize = bt->UsableSize - 4; // Bytes content per ovfl page
+			Pid nextPage = ConvertEx::Get4(&payload[cur->Info.Local]);
+
+#ifndef OMIT_INCRBLOB
+			// If the isIncrblobHandle flag is set and the BtCursor.aOverflow[] has not been allocated, allocate it now. The array is sized at
+			// one entry for each overflow page in the overflow chain. The page number of the first overflow page is stored in aOverflow[0],
+			// etc. A value of 0 in the aOverflow[] array means "not yet known" (the cache is lazily populated).
+			if (cur->IsIncrblobHandle && !cur->Overflow)
+			{
+				int nOvfl = (pCur->info.nPayload-pCur->info.nLocal+ovflSize-1)/ovflSize;
+				pCur->aOverflow = (Pgno *)sqlite3MallocZero(sizeof(Pgno)*nOvfl);
+				/* nOvfl is always positive.  If it were zero, fetchPayload would have
+				** been used instead of this routine. */
+				if( ALWAYS(nOvfl) && !pCur->aOverflow ){
+					rc = SQLITE_NOMEM;
+				}
+			}
+
+			/* If the overflow page-list cache has been allocated and the
+			** entry for the first required overflow page is valid, skip
+			** directly to it.
 			*/
-			if( pBt->autoVacuum ){
-				Pgno pgno;
-				Pgno iGuess = ovfl+1;
-				u8 eType;
-
-				while( PTRMAP_ISPAGE(pBt, iGuess) || iGuess==PENDING_BYTE_PAGE(pBt) ){
-					iGuess++;
-				}
-
-				if( iGuess<=btreePagecount(pBt) ){
-					rc = ptrmapGet(pBt, iGuess, &eType, &pgno);
-					if( rc==SQLITE_OK && eType==PTRMAP_OVERFLOW2 && pgno==ovfl ){
-						next = iGuess;
-						rc = SQLITE_DONE;
-					}
-				}
+			if( pCur->aOverflow && pCur->aOverflow[offset/ovflSize] ){
+				iIdx = (offset/ovflSize);
+				nextPage = pCur->aOverflow[iIdx];
+				offset = (offset%ovflSize);
 			}
 #endif
 
-			assert( next==0 || rc==SQLITE_DONE );
-			if( rc==SQLITE_OK ){
-				rc = btreeGetPage(pBt, ovfl, &pPage, 0);
-				assert( rc==SQLITE_OK || pPage==0 );
-				if( rc==SQLITE_OK ){
-					next = get4byte(pPage->aData);
-				}
-			}
-
-			*pPgnoNext = next;
-			if( ppPage ){
-				*ppPage = pPage;
-			}else{
-				releasePage(pPage);
-			}
-			return (rc==SQLITE_DONE ? SQLITE_OK : rc);
-	}
-
-	static int copyPayload(
-		void *pPayload,           /* Pointer to page data */
-		void *pBuf,               /* Pointer to buffer */
-		int nByte,                /* Number of bytes to copy */
-		int eOp,                  /* 0 -> copy from page, 1 -> copy to page */
-		DbPage *pDbPage           /* Page containing pPayload */
-		){
-			if( eOp ){
-				/* Copy data from buffer to page (a write operation) */
-				int rc = sqlite3PagerWrite(pDbPage);
-				if( rc!=SQLITE_OK ){
-					return rc;
-				}
-				memcpy(pPayload, pBuf, nByte);
-			}else{
-				/* Copy data from page to buffer (a read operation) */
-				memcpy(pBuf, pPayload, nByte);
-			}
-			return SQLITE_OK;
-	}
-
-	static int accessPayload(
-		BtCursor *pCur,      /* Cursor pointing to entry to read from */
-		u32 offset,          /* Begin reading this far into payload */
-		u32 amt,             /* Read this many bytes */
-		unsigned char *pBuf, /* Write the bytes into this buffer */ 
-		int eOp              /* zero to read. non-zero to write. */
-		){
-			unsigned char *aPayload;
-			int rc = SQLITE_OK;
-			u32 nKey;
-			int iIdx = 0;
-			MemPage *pPage = pCur->apPage[pCur->iPage]; /* Btree page of current entry */
-			BtShared *pBt = pCur->pBt;                  /* Btree this cursor belongs to */
-
-			assert( pPage );
-			assert( pCur->eState==CURSOR_VALID );
-			assert( pCur->aiIdx[pCur->iPage]<pPage->nCell );
-			assert( cursorHoldsMutex(pCur) );
-
-			getCellInfo(pCur);
-			aPayload = pCur->info.pCell + pCur->info.nHeader;
-			nKey = (pPage->intKey ? 0 : (int)pCur->info.nKey);
-
-			if( NEVER(offset+amt > nKey+pCur->info.nData) 
-				|| &aPayload[pCur->info.nLocal] > &pPage->aData[pBt->usableSize]
-			){
-				/* Trying to read or write past the end of the data is an error */
-				return SQLITE_CORRUPT_BKPT;
-			}
-
-			/* Check if data must be read/written to/from the btree page itself. */
-			if( offset<pCur->info.nLocal ){
-				int a = amt;
-				if( a+offset>pCur->info.nLocal ){
-					a = pCur->info.nLocal - offset;
-				}
-				rc = copyPayload(&aPayload[offset], pBuf, a, eOp, pPage->pDbPage);
-				offset = 0;
-				pBuf += a;
-				amt -= a;
-			}else{
-				offset -= pCur->info.nLocal;
-			}
-
-			if( rc==SQLITE_OK && amt>0 ){
-				const u32 ovflSize = pBt->usableSize - 4;  /* Bytes content per ovfl page */
-				Pgno nextPage;
-
-				nextPage = get4byte(&aPayload[pCur->info.nLocal]);
+			for( ; rc==SQLITE_OK && amt>0 && nextPage; iIdx++){
 
 #ifndef OMIT_INCRBLOB
-				/* If the isIncrblobHandle flag is set and the BtCursor.aOverflow[]
-				** has not been allocated, allocate it now. The array is sized at
-				** one entry for each overflow page in the overflow chain. The
-				** page number of the first overflow page is stored in aOverflow[0],
-				** etc. A value of 0 in the aOverflow[] array means "not yet known"
-				** (the cache is lazily populated).
-				*/
-				if( pCur->isIncrblobHandle && !pCur->aOverflow ){
-					int nOvfl = (pCur->info.nPayload-pCur->info.nLocal+ovflSize-1)/ovflSize;
-					pCur->aOverflow = (Pgno *)sqlite3MallocZero(sizeof(Pgno)*nOvfl);
-					/* nOvfl is always positive.  If it were zero, fetchPayload would have
-					** been used instead of this routine. */
-					if( ALWAYS(nOvfl) && !pCur->aOverflow ){
-						rc = SQLITE_NOMEM;
-					}
-				}
-
-				/* If the overflow page-list cache has been allocated and the
-				** entry for the first required overflow page is valid, skip
-				** directly to it.
-				*/
-				if( pCur->aOverflow && pCur->aOverflow[offset/ovflSize] ){
-					iIdx = (offset/ovflSize);
-					nextPage = pCur->aOverflow[iIdx];
-					offset = (offset%ovflSize);
+				/* If required, populate the overflow page-list cache. */
+				if( pCur->aOverflow ){
+					assert(!pCur->aOverflow[iIdx] || pCur->aOverflow[iIdx]==nextPage);
+					pCur->aOverflow[iIdx] = nextPage;
 				}
 #endif
 
-				for( ; rc==SQLITE_OK && amt>0 && nextPage; iIdx++){
-
+				if( offset>=ovflSize ){
+					/* The only reason to read this page is to obtain the page
+					** number for the next page in the overflow chain. The page
+					** data is not required. So first try to lookup the overflow
+					** page-list cache, if any, then fall back to the getOverflowPage()
+					** function.
+					*/
 #ifndef OMIT_INCRBLOB
-					/* If required, populate the overflow page-list cache. */
-					if( pCur->aOverflow ){
-						assert(!pCur->aOverflow[iIdx] || pCur->aOverflow[iIdx]==nextPage);
-						pCur->aOverflow[iIdx] = nextPage;
-					}
+					if( pCur->aOverflow && pCur->aOverflow[iIdx+1] ){
+						nextPage = pCur->aOverflow[iIdx+1];
+					} else 
 #endif
-
-					if( offset>=ovflSize ){
-						/* The only reason to read this page is to obtain the page
-						** number for the next page in the overflow chain. The page
-						** data is not required. So first try to lookup the overflow
-						** page-list cache, if any, then fall back to the getOverflowPage()
-						** function.
-						*/
-#ifndef OMIT_INCRBLOB
-						if( pCur->aOverflow && pCur->aOverflow[iIdx+1] ){
-							nextPage = pCur->aOverflow[iIdx+1];
-						} else 
-#endif
-							rc = getOverflowPage(pBt, nextPage, 0, &nextPage);
-						offset -= ovflSize;
-					}else{
-						/* Need to read this page properly. It contains some of the
-						** range of data that is being read (eOp==0) or written (eOp!=0).
-						*/
+						rc = getOverflowPage(pBt, nextPage, 0, &nextPage);
+					offset -= ovflSize;
+				}else{
+					/* Need to read this page properly. It contains some of the
+					** range of data that is being read (eOp==0) or written (eOp!=0).
+					*/
 #ifdef DIRECT_OVERFLOW_READ
-						sqlite3_file *fd;
+					sqlite3_file *fd;
 #endif
-						int a = amt;
-						if( a + offset > ovflSize ){
-							a = ovflSize - offset;
-						}
+					int a = amt;
+					if( a + offset > ovflSize ){
+						a = ovflSize - offset;
+					}
 
 #ifdef DIRECT_OVERFLOW_READ
-						/* If all the following are true:
-						**
-						**   1) this is a read operation, and 
-						**   2) data is required from the start of this overflow page, and
-						**   3) the database is file-backed, and
-						**   4) there is no open write-transaction, and
-						**   5) the database is not a WAL database,
-						**
-						** then data can be read directly from the database file into the
-						** output buffer, bypassing the page-cache altogether. This speeds
-						** up loading large records that span many overflow pages.
-						*/
-						if( eOp==0                                             /* (1) */
-							&& offset==0                                          /* (2) */
-							&& pBt->inTransaction==TRANS_READ                     /* (4) */
-							&& (fd = sqlite3PagerFile(pBt->pPager))->pMethods     /* (3) */
-							&& pBt->pPage1->aData[19]==0x01                       /* (5) */
-							){
-								u8 aSave[4];
-								u8 *aWrite = &pBuf[-4];
-								memcpy(aSave, aWrite, 4);
-								rc = sqlite3OsRead(fd, aWrite, a+4, (i64)pBt->pageSize*(nextPage-1));
-								nextPage = get4byte(aWrite);
-								memcpy(aWrite, aSave, 4);
-						}else
+					/* If all the following are true:
+					**
+					**   1) this is a read operation, and 
+					**   2) data is required from the start of this overflow page, and
+					**   3) the database is file-backed, and
+					**   4) there is no open write-transaction, and
+					**   5) the database is not a WAL database,
+					**
+					** then data can be read directly from the database file into the
+					** output buffer, bypassing the page-cache altogether. This speeds
+					** up loading large records that span many overflow pages.
+					*/
+					if( eOp==0                                             /* (1) */
+						&& offset==0                                          /* (2) */
+						&& pBt->inTransaction==TRANS_READ                     /* (4) */
+						&& (fd = sqlite3PagerFile(pBt->pPager))->pMethods     /* (3) */
+						&& pBt->pPage1->aData[19]==0x01                       /* (5) */
+						){
+							u8 aSave[4];
+							u8 *aWrite = &pBuf[-4];
+							memcpy(aSave, aWrite, 4);
+							rc = sqlite3OsRead(fd, aWrite, a+4, (i64)pBt->pageSize*(nextPage-1));
+							nextPage = get4byte(aWrite);
+							memcpy(aWrite, aSave, 4);
+					}else
 #endif
 
-						{
-							DbPage *pDbPage;
-							rc = sqlite3PagerGet(pBt->pPager, nextPage, &pDbPage);
-							if( rc==SQLITE_OK ){
-								aPayload = sqlite3PagerGetData(pDbPage);
-								nextPage = get4byte(aPayload);
-								rc = copyPayload(&aPayload[offset+4], pBuf, a, eOp, pDbPage);
-								sqlite3PagerUnref(pDbPage);
-								offset = 0;
-							}
+					{
+						DbPage *pDbPage;
+						rc = sqlite3PagerGet(pBt->pPager, nextPage, &pDbPage);
+						if( rc==SQLITE_OK ){
+							aPayload = sqlite3PagerGetData(pDbPage);
+							nextPage = get4byte(aPayload);
+							rc = copyPayload(&aPayload[offset+4], pBuf, a, eOp, pDbPage);
+							sqlite3PagerUnref(pDbPage);
+							offset = 0;
 						}
-						amt -= a;
-						pBuf += a;
 					}
+					amt -= a;
+					pBuf += a;
 				}
 			}
+		}
 
-			if( rc==SQLITE_OK && amt>0 ){
-				return SQLITE_CORRUPT_BKPT;
-			}
-			return rc;
+		if( rc==SQLITE_OK && amt>0 ){
+			return SQLITE_CORRUPT_BKPT;
+		}
+		return rc;
 	}
 
 	int sqlite3BtreeKey(BtCursor *pCur, u32 offset, u32 amt, void *pBuf){

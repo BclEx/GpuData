@@ -111,17 +111,12 @@ namespace Core
             public Context Ctx;             // Database connection currently using this Btree
             public BtCursor Cursor;         // A list of all open cursors
             public MemPage Page1;           // First page of the database
-            //public bool ReadOnly;           // True if the underlying file is readonly
-            //public bool PageSizeFixed;      // True if the page size can no longer be changed
-            //public bool SecureDelete;       // True if secure_delete is enabled
-            //public bool InitiallyEmpty;     // Database is empty at start of transaction
             public byte OpenFlags;          // Flags to sqlite3BtreeOpen()
 #if !OMIT_AUTOVACUUM
             public bool AutoVacuum;         // True if auto-vacuum is enabled
             public bool IncrVacuum;         // True if incr-vacuum is enabled
 #endif
             public TRANS InTransaction;      // Transaction state
-            //public bool DoNotUseWAL;        // If true, do not open write-ahead-log file
             public BTS BtsFlags;			// Boolean parameters.  See BTS_* macros below
             public ushort MaxLocal;         // Maximum local payload in non-LEAFDATA tables
             public ushort MinLocal;         // Minimum local payload in non-LEAFDATA tables
@@ -157,9 +152,9 @@ namespace Core
             public ushort Size;     // Size of the cell content on the main b-tree page
             public bool Equals(CellInfo ci)
             {
-                if (ci.CellIdx >= ci.Cells.Length || CellIdx >= this.Cells.Length)
+                if (ci.CellIdx >= ci.Cell.Length || CellIdx >= this.Cell.Length)
                     return false;
-                if (ci.Cells[ci.CellIdx] != this.Cells[CellIdx])
+                if (ci.Cell[ci.CellIdx] != this.Cell[CellIdx])
                     return false;
                 if (ci.Key != this.Key || ci.Data != this.Data || ci.Payload != this.Payload)
                     return false;
@@ -208,7 +203,7 @@ namespace Core
             public ushort[] Idxs = new ushort[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
             public MemPage[] Pages = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 
-            public void Clear()
+            public void memset()
             {
                 Next = Prev = null;
                 KeyInfo = null;
@@ -235,34 +230,26 @@ namespace Core
             }
         }
 
-        static uint PENDING_BYTE_PAGE(BtShared pBt)
-        {
-            return (uint)PAGER_MJ_PGNO(pBt.pPager);
-        }
+        static uint PENDING_BYTE_PAGE(BtShared bt) { return (uint)PAGER_MJ_PGNO(bt.Pager); }
 
-        static Pid PTRMAP_PAGENO(BtShared pBt, Pid pgno)
+        static Pid PTRMAP_PAGENO(BtShared pBt, Pid pgno) { return ptrmapPageno(pBt, pgno); }
+        static Pid PTRMAP_PTROFFSET(uint pgptrmap, Pid pgno) { return (5 * (pgno - pgptrmap - 1)); }
+        static bool PTRMAP_ISPAGE(BtShared pBt, Pid pgno) { return (PTRMAP_PAGENO((pBt), (pgno)) == (pgno)); }
+
+        public enum PTRMAP : byte
         {
-            return ptrmapPageno(pBt, pgno);
+            ROOTPAGE = 1,
+            FREEPAGE = 2,
+            OVERFLOW1 = 3,
+            OVERFLOW2 = 4,
+            BTREE = 5,
         }
-        static Pid PTRMAP_PTROFFSET(uint pgptrmap, Pid pgno)
-        {
-            return (5 * (pgno - pgptrmap - 1));
-        }
-        static bool PTRMAP_ISPAGE(BtShared pBt, Pid pgno)
-        {
-            return (PTRMAP_PAGENO((pBt), (pgno)) == (pgno));
-        }
-        const int PTRMAP_ROOTPAGE = 1;
-        const int PTRMAP_FREEPAGE = 2;
-        const int PTRMAP_OVERFLOW1 = 3;
-        const int PTRMAP_OVERFLOW2 = 4;
-        const int PTRMAP_BTREE = 5;
 
 #if DEBUG
         static void btreeIntegrity(Btree p)
         {
-            Debug.Assert(p.Bt.inTransaction != TRANS_NONE || p.Bt.nTransaction == 0);
-            Debug.Assert(p.Bt.inTransaction >= p.InTrans);
+            Debug.Assert(p.Bt.InTransaction != TRANS.NONE || p.Bt.Transactions == 0);
+            Debug.Assert(p.Bt.InTransaction >= p.InTrans);
         }
 #else
 static void btreeIntegrity(Btree p) { }

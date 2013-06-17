@@ -58,11 +58,11 @@ namespace Core
 		RC SetAutoVacuum(AUTOVACUUM autoVacuum);
 		AUTOVACUUM GetAutoVacuum();
 		RC BeginTrans(int wrflag);
-		int sqlite3BtreeCommitPhaseOne(Btree*, const char *zMaster);
-		int sqlite3BtreeCommitPhaseTwo(Btree*, int);
-		int sqlite3BtreeCommit(Btree*);
-		int sqlite3BtreeRollback(Btree*,int);
-		int sqlite3BtreeBeginStmt(Btree*,int);
+		RC CommitPhaseOne(const char *master);
+		RC CommitPhaseTwo(bool cleanup);
+		RC Commit();
+		RC Rollback(RC tripCode);
+		RC BeginStmt(int statement);
 		int sqlite3BtreeCreateTable(Btree*, int*, int flags);
 		int sqlite3BtreeIsInTrans(Btree*);
 		int sqlite3BtreeIsInReadTrans(Btree*);
@@ -70,20 +70,20 @@ namespace Core
 		void *sqlite3BtreeSchema(Btree *, int, void(*)(void *));
 		int sqlite3BtreeSchemaLocked(Btree *pBtree);
 		int sqlite3BtreeLockTable(Btree *pBtree, int iTab, uint8 isWriteLock);
-		int sqlite3BtreeSavepoint(Btree *, int, int);
+		RC Savepoint(IPager::SAVEPOINT op, int savepoint);
 
 		const char *sqlite3BtreeGetFilename(Btree *);
 		const char *sqlite3BtreeGetJournalname(Btree *);
 		int sqlite3BtreeCopyFile(Btree *, Btree *);
 
-		int sqlite3BtreeIncrVacuum(Btree *);
+		RC IncrVacuum();
 
 #define BTREE_INTKEY 1    // Table has only 64-bit signed integer keys
 #define BTREE_BLOBKEY 2    // Table has keys only - no data
 
 		int sqlite3BtreeDropTable(Btree*, int, int*);
 		int sqlite3BtreeClearTable(Btree*, int, int*);
-		void sqlite3BtreeTripAllCursors(Btree*, int);
+		void TripAllCursors(RC errCode);
 
 		void sqlite3BtreeGetMeta(Btree *pBtree, int idx, uint32 *pValue);
 		int sqlite3BtreeUpdateMeta(Btree*, int idx, uint32 value);
@@ -104,15 +104,9 @@ namespace Core
 
 #define BTREE_BULKLOAD 0x00000001
 
-		int sqlite3BtreeCursor(
-			Btree*,                              /* BTree containing table to open */
-			int iTable,                          /* Index of root page */
-			int wrFlag,                          /* 1 for writing.  0 for read-only */
-		struct KeyInfo*,                     /* First argument to compare function */
-			BtCursor *pCursor                    /* Space to write cursor structure */
-			);
-		int sqlite3BtreeCursorSize(void);
-		void sqlite3BtreeCursorZero(BtCursor*);
+		RC Cursor(int table, int wrFlag, struct KeyInfo *keyInfo, BtCursor *cur);
+		static int CursorSize();
+		static void CursorZero(BtCursor *p);
 
 		int sqlite3BtreeCloseCursor(BtCursor*);
 		int sqlite3BtreeMovetoUnpacked(
@@ -132,14 +126,16 @@ namespace Core
 		int sqlite3BtreeNext(BtCursor*, int *pRes);
 		int sqlite3BtreeEof(BtCursor*);
 		int sqlite3BtreePrevious(BtCursor*, int *pRes);
+		static RC KeySize(BtCursor *cur, int64 *size);
 		int sqlite3BtreeKeySize(BtCursor*, int64 *pSize);
 		int sqlite3BtreeKey(BtCursor*, uint32 offset, uint32 amt, void*);
 		const void *sqlite3BtreeKeyFetch(BtCursor*, int *pAmt);
 		const void *sqlite3BtreeDataFetch(BtCursor*, int *pAmt);
-		int sqlite3BtreeDataSize(BtCursor*, uint32 *pSize);
+		static RC DataSize(BtCursor *cur, uint32 *size)
 		int sqlite3BtreeData(BtCursor*, uint32 offset, uint32 amt, void*);
-		void sqlite3BtreeSetCachedRowid(BtCursor*, int64);
-		int64 sqlite3BtreeGetCachedRowid(BtCursor*);
+		static void SetCachedRowID(BtCursor *cur, int64 rowid);
+		static int64 GetCachedRowID(BtCursor *cur);
+		static RC CloseCursor(BtCursor *cur);
 
 		char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
 		struct Pager *sqlite3BtreePager(Btree*);
@@ -150,29 +146,29 @@ namespace Core
 		int sqlite3BtreeSetVersion(Btree *pBt, int iVersion);
 		void sqlite3BtreeCursorHints(BtCursor *, unsigned int mask);
 
-#ifndef NDEBUG
-		int sqlite3BtreeCursorIsValid(BtCursor*);
+#ifndef DEBUG
+		static bool CursorIsValid(BtCursor *cur);
 #endif
 
-#ifndef SQLITE_OMIT_BTREECOUNT
+#ifndef OMIT_BTREECOUNT
 		int sqlite3BtreeCount(BtCursor *, int64 *);
 #endif
 
-#ifdef SQLITE_TEST
+#ifdef TEST
 		int sqlite3BtreeCursorInfo(BtCursor*, int*, int);
 		void sqlite3BtreeCursorList(Btree*);
 #endif
 
-#ifndef SQLITE_OMIT_WAL
+#ifndef OMIT_WAL
 		int sqlite3BtreeCheckpoint(Btree*, int, int *, int *);
 #endif
 
-#ifndef OMIT_SHARED_CACHE
+#ifndef SHARED_CACHE
 		void sqlite3BtreeEnter(Btree*);
 		void sqlite3BtreeEnterAll(Context*);
 #else
-# define sqlite3BtreeEnter(X) 
-# define sqlite3BtreeEnterAll(X)
+#define Enter(X) 
+#define EnterAll(X)
 #endif
 
 #if !defined(OMIT_SHARED_CACHE) && THREADSAFE

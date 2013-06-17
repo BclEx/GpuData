@@ -170,11 +170,14 @@ namespace Core
 #define PTRMAP_PTROFFSET(pgptrmap, pgno) (5*(pgno-pgptrmap-1))
 #define PTRMAP_ISPAGE(pBt, pgno) (PTRMAP_PAGENO((pBt),(pgno))==(pgno))
 
-#define PTRMAP_ROOTPAGE 1
-#define PTRMAP_FREEPAGE 2
-#define PTRMAP_OVERFLOW1 3
-#define PTRMAP_OVERFLOW2 4
-#define PTRMAP_BTREE 5
+	enum PTRMAP : uint8
+	{
+		ROOTPAGE = 1,
+		FREEPAGE = 2,
+		OVERFLOW1 = 3,
+		OVERFLOW2 = 4,
+		BTREE = 5,
+	};
 
 #define btreeIntegrity(p) \
 	_assert(p->Bt->InTransaction != TRANS::NONE || p->Bt->Transactions == 0); \
