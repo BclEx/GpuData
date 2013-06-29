@@ -35,7 +35,7 @@ namespace Core
         public class MemPage
         {
             public bool IsInit;             // True if previously initialized. MUST BE FIRST!
-            public byte OverflowsUsed;      // Number of overflow cell bodies in aCell[]
+            public byte Overflows;          // Number of overflow cell bodies in aCell[]
             public byte IntKey;             // True if u8key flag is set
             public byte Leaf;               // 1 if leaf flag is set
             public byte HasData;            // True if this page stores data
@@ -47,7 +47,8 @@ namespace Core
             public ushort Frees;            // Number of free bytes on the page
             public ushort Cells;            // Number of cells on this page, local and ovfl
             public ushort MaskPage;         // Mask for page offset
-            public OverflowCell[] Overflows = new OverflowCell[5];
+            public ushort[] OvflIdxs = new ushort[5];
+            public OverflowCell[] Ovfls = new OverflowCell[5];
             public BtShared Bt;             // Pointer to BtShared that this page is part of
             public byte[] Data;             // Pointer to disk image of the page data
             public IPage DBPage;            // Pager page handle

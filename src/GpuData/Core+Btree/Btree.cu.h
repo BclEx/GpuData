@@ -64,16 +64,16 @@ namespace Core
 		RC Rollback(RC tripCode);
 		RC BeginStmt(int statement);
 		int sqlite3BtreeCreateTable(Btree*, int*, int flags);
-		int sqlite3BtreeIsInTrans(Btree*);
-		int sqlite3BtreeIsInReadTrans(Btree*);
-		int sqlite3BtreeIsInBackup(Btree*);
-		void *sqlite3BtreeSchema(Btree *, int, void(*)(void *));
-		int sqlite3BtreeSchemaLocked(Btree *pBtree);
-		int sqlite3BtreeLockTable(Btree *pBtree, int iTab, uint8 isWriteLock);
+		bool IsInTrans();
+		bool IsInReadTrans();
+		bool IsInBackup();
+		void *Schema(int bytes, void (*free)(void *));
+		RC SchemaLocked();
+		RC LockTable(int table, bool isWriteLock);
 		RC Savepoint(IPager::SAVEPOINT op, int savepoint);
 
-		const char *sqlite3BtreeGetFilename(Btree *);
-		const char *sqlite3BtreeGetJournalname(Btree *);
+		const char *GetFilename();
+		const char *GetJournalname();
 		int sqlite3BtreeCopyFile(Btree *, Btree *);
 
 		RC IncrVacuum();
@@ -109,30 +109,21 @@ namespace Core
 		static void CursorZero(BtCursor *p);
 
 		int sqlite3BtreeCloseCursor(BtCursor*);
-		int sqlite3BtreeMovetoUnpacked(
-			BtCursor*,
-			UnpackedRecord *pUnKey,
-			int64 intKey,
-			int bias,
-			int *pRes
-			);
+		static RC MovetoUnpacked(BtCursor *cur, UnpackedRecord *idxKey, int64 intKey, int biasRight, int *res);
 		int sqlite3BtreeCursorHasMoved(BtCursor*, int*);
 		int sqlite3BtreeDelete(BtCursor*);
-		int sqlite3BtreeInsert(BtCursor*, const void *pKey, int64 nKey,
-			const void *pData, int nData,
-			int nZero, int bias, int seekResult);
-		int sqlite3BtreeFirst(BtCursor*, int *pRes);
-		int sqlite3BtreeLast(BtCursor*, int *pRes);
-		int sqlite3BtreeNext(BtCursor*, int *pRes);
-		int sqlite3BtreeEof(BtCursor*);
-		int sqlite3BtreePrevious(BtCursor*, int *pRes);
+		int sqlite3BtreeInsert(BtCursor*, const void *pKey, int64 nKey, const void *pData, int nData, int nZero, int bias, int seekResult);
+		static RC First(BtCursor *cur, int *res);
+		static RC Last(BtCursor *cur, int *res);
+		static RC Next(BtCursor *cur, int *res);
+		static bool Eof(BtCursor *cur);
+		static RC Previous(BtCursor *cur, int *res);
 		static RC KeySize(BtCursor *cur, int64 *size);
-		int sqlite3BtreeKeySize(BtCursor*, int64 *pSize);
-		int sqlite3BtreeKey(BtCursor*, uint32 offset, uint32 amt, void*);
-		const void *sqlite3BtreeKeyFetch(BtCursor*, int *pAmt);
-		const void *sqlite3BtreeDataFetch(BtCursor*, int *pAmt);
-		static RC DataSize(BtCursor *cur, uint32 *size)
-		int sqlite3BtreeData(BtCursor*, uint32 offset, uint32 amt, void*);
+		static RC Key(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
+		static const void *KeyFetch(BtCursor *cur, int *amount);
+		static const void *DataFetch(BtCursor *cur, int *amount);
+		static RC DataSize(BtCursor *cur, uint32 *size);
+		static RC Data(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
 		static void SetCachedRowID(BtCursor *cur, int64 rowid);
 		static int64 GetCachedRowID(BtCursor *cur);
 		static RC CloseCursor(BtCursor *cur);
@@ -140,11 +131,11 @@ namespace Core
 		char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
 		struct Pager *sqlite3BtreePager(Btree*);
 
-		int sqlite3BtreePutData(BtCursor*, uint32 offset, uint32 amt, void*);
-		void sqlite3BtreeCacheOverflow(BtCursor *);
+		static RC PutData(BtCursor *cur, uint32 offset, uint32 amount, void *z)
+		static void CacheOverflow(BtCursor *cur);
 		void sqlite3BtreeClearCursor(BtCursor *);
-		int sqlite3BtreeSetVersion(Btree *pBt, int iVersion);
-		void sqlite3BtreeCursorHints(BtCursor *, unsigned int mask);
+		RC SetVersion(int version);
+		static void CursorHints(BtCursor *cur, unsigned int mask);
 
 #ifndef DEBUG
 		static bool CursorIsValid(BtCursor *cur);
@@ -160,7 +151,7 @@ namespace Core
 #endif
 
 #ifndef OMIT_WAL
-		int sqlite3BtreeCheckpoint(Btree*, int, int *, int *);
+		RC Checkpoint(int mode, int *logs, int *checkpoints);
 #endif
 
 #ifndef SHARED_CACHE

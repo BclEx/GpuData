@@ -20,7 +20,7 @@ namespace Core
 	struct MemPage
 	{
 		bool IsInit;			// True if previously initialized. MUST BE FIRST!
-		uint8 OverflowsUsed;    // Number of overflow cell bodies in aCell[]
+		uint8 Overflows;		// Number of overflow cell bodies in aCell[]
 		bool IntKey;			// True if intkey flag is set
 		bool Leaf;				// True if leaf flag is set
 		bool HasData;			// True if this page stores data
@@ -33,8 +33,8 @@ namespace Core
 		uint16 Frees;           // Number of free bytes on the page
 		uint16 Cells;           // Number of cells on this page, local and ovfl
 		uint16 MaskPage;        // Mask for page offset
-		uint16 OverflowIdxs[5]; // Insert the i-th overflow cell before the aiOvfl-thnon-overflow cell
-		uint8 *Overflows[5];    // Pointers to the body of overflow cells
+		uint16 OvflIdxs[5];		// Insert the i-th overflow cell before the aiOvfl-thnon-overflow cell
+		uint8 *Ovfls[5];		// Pointers to the body of overflow cells
 		BtShared *Bt;			// Pointer to BtShared that this page is part of
 		uint8 *Data;			// Pointer to disk image of the page data
 		uint8 *DataEnd;			// One byte past the end of usable data
