@@ -63,30 +63,30 @@ namespace Core
 		RC Commit();
 		RC Rollback(RC tripCode);
 		RC BeginStmt(int statement);
-		int sqlite3BtreeCreateTable(Btree*, int*, int flags);
+		RC CreateTable(int *tableID, int flags);
 		bool IsInTrans();
 		bool IsInReadTrans();
 		bool IsInBackup();
 		void *Schema(int bytes, void (*free)(void *));
 		RC SchemaLocked();
-		RC LockTable(int table, bool isWriteLock);
+		RC LockTable(int tableID, bool isWriteLock);
 		RC Savepoint(IPager::SAVEPOINT op, int savepoint);
 
 		const char *GetFilename();
 		const char *GetJournalname();
-		int sqlite3BtreeCopyFile(Btree *, Btree *);
+		//int sqlite3BtreeCopyFile(Btree *, Btree *);
 
 		RC IncrVacuum();
 
-#define BTREE_INTKEY 1    // Table has only 64-bit signed integer keys
-#define BTREE_BLOBKEY 2    // Table has keys only - no data
+#define BTREE_INTKEY 1 // Table has only 64-bit signed integer keys
+#define BTREE_BLOBKEY 2 // Table has keys only - no data
 
-		int sqlite3BtreeDropTable(Btree*, int, int*);
-		int sqlite3BtreeClearTable(Btree*, int, int*);
+		RC DropTable(int tableID, int *movedID);
+		RC ClearTable(int tableID, int *changes);
 		void TripAllCursors(RC errCode);
 
-		void sqlite3BtreeGetMeta(Btree *pBtree, int idx, uint32 *pValue);
-		int sqlite3BtreeUpdateMeta(Btree*, int idx, uint32 value);
+		void GetMeta(int idx, uint32 *meta);
+		RC UpdateMeta(int idx, uint32 meta);
 
 		RC NewDb();
 
@@ -108,11 +108,11 @@ namespace Core
 		static int CursorSize();
 		static void CursorZero(BtCursor *p);
 
-		int sqlite3BtreeCloseCursor(BtCursor*);
+		static RC CloseCursor(BtCursor *cur);
 		static RC MovetoUnpacked(BtCursor *cur, UnpackedRecord *idxKey, int64 intKey, int biasRight, int *res);
-		int sqlite3BtreeCursorHasMoved(BtCursor*, int*);
-		int sqlite3BtreeDelete(BtCursor*);
-		int sqlite3BtreeInsert(BtCursor*, const void *pKey, int64 nKey, const void *pData, int nData, int nZero, int bias, int seekResult);
+		static RC CursorHasMoved(BtCursor *cur, bool *hasMoved);
+		static RC Delete(BtCursor *cur);
+		static RC Insert(BtCursor *cur, const void *key, int64 keyLength, const void *data, int dataLength, int zero, int appendBias, int seekResult);
 		static RC First(BtCursor *cur, int *res);
 		static RC Last(BtCursor *cur, int *res);
 		static RC Next(BtCursor *cur, int *res);
@@ -129,11 +129,11 @@ namespace Core
 		static RC CloseCursor(BtCursor *cur);
 
 		char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
-		struct Pager *sqlite3BtreePager(Btree*);
+		Pager *Pager();
 
-		static RC PutData(BtCursor *cur, uint32 offset, uint32 amount, void *z)
+		static RC PutData(BtCursor *cur, uint32 offset, uint32 amount, void *z);
 		static void CacheOverflow(BtCursor *cur);
-		void sqlite3BtreeClearCursor(BtCursor *);
+		static void ClearCursor(BtCursor *cur);
 		RC SetVersion(int version);
 		static void CursorHints(BtCursor *cur, unsigned int mask);
 
@@ -142,12 +142,12 @@ namespace Core
 #endif
 
 #ifndef OMIT_BTREECOUNT
-		int sqlite3BtreeCount(BtCursor *, int64 *);
+		static RC Count(BtCursor *cur, int64 *entrysOut);
 #endif
 
 #ifdef TEST
-		int sqlite3BtreeCursorInfo(BtCursor*, int*, int);
-		void sqlite3BtreeCursorList(Btree*);
+		//int sqlite3BtreeCursorInfo(BtCursor*, int*, int);
+		//void sqlite3BtreeCursorList(Btree*);
 #endif
 
 #ifndef OMIT_WAL
@@ -155,36 +155,35 @@ namespace Core
 #endif
 
 #ifndef SHARED_CACHE
-		void sqlite3BtreeEnter(Btree*);
-		void sqlite3BtreeEnterAll(Context*);
+		//void sqlite3BtreeEnter(Btree*);
+		//void sqlite3BtreeEnterAll(Context*);
 #else
-#define Enter(X) 
-#define EnterAll(X)
+		//#define Enter(X) 
+		//#define EnterAll(X)
 #endif
 
 #if !defined(OMIT_SHARED_CACHE) && THREADSAFE
-		int sqlite3BtreeSharable(Btree*);
-		void sqlite3BtreeLeave(Btree*);
-		void sqlite3BtreeEnterCursor(BtCursor*);
-		void sqlite3BtreeLeaveCursor(BtCursor*);
-		void sqlite3BtreeLeaveAll(sqlite3*);
+		//int sqlite3BtreeSharable(Btree*);
+		//void sqlite3BtreeLeave(Btree*);
+		//void sqlite3BtreeEnterCursor(BtCursor*);
+		//void sqlite3BtreeLeaveCursor(BtCursor*);
+		//void sqlite3BtreeLeaveAll(sqlite3*);
 #ifndef _DEBUG
 		// These routines are used inside assert() statements only.
-		int sqlite3BtreeHoldsMutex(Btree*);
-		int sqlite3BtreeHoldsAllMutexes(sqlite3*);
-		int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
+		//int sqlite3BtreeHoldsMutex(Btree*);
+		//int sqlite3BtreeHoldsAllMutexes(sqlite3*);
+		//int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
 #endif
 #else
-
-#define sqlite3BtreeSharable(X) 0
-#define sqlite3BtreeLeave(X)
-#define sqlite3BtreeEnterCursor(X)
-#define sqlite3BtreeLeaveCursor(X)
-#define sqlite3BtreeLeaveAll(X)
-
-#define sqlite3BtreeHoldsMutex(X) 1
-#define sqlite3BtreeHoldsAllMutexes(X) 1
-#define sqlite3SchemaMutexHeld(X,Y,Z) 1
+		//#define sqlite3BtreeSharable(X) 0
+		//#define sqlite3BtreeLeave(X)
+		//#define sqlite3BtreeEnterCursor(X)
+		//#define sqlite3BtreeLeaveCursor(X)
+		//#define sqlite3BtreeLeaveAll(X)
+		// These routines are used inside assert() statements only.
+		//#define sqlite3BtreeHoldsMutex(X) 1
+		//#define sqlite3BtreeHoldsAllMutexes(X) 1
+		//#define sqlite3SchemaMutexHeld(X,Y,Z) 1
 #endif
 
 

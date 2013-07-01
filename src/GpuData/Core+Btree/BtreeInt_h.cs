@@ -186,7 +186,7 @@ namespace Core
 #if !OMIT_INCRBLOB
             public Pid[] Overflows;         // Cache of overflow page locations
 #endif
-            public Pid IDRoot;              // The root page of this tree
+            public Pid RootID;              // The root page of this tree
             public long CachedRowID;        // Next rowid cache.  0 means not valid
             public CellInfo Info = new CellInfo();           // A parse of the cell we are pointing at
             public long KeyLength;          // Size of pKey, or last integer key
@@ -200,7 +200,7 @@ namespace Core
             public bool IsIncrblobHandle;   // True if this cursor is an incr. io handle
 #endif
             public byte Hints;			    // As configured by CursorSetHints()
-            public short PageIdx;           // Index of current page in apPage
+            public short PageID;           // Index of current page in apPage
             public ushort[] Idxs = new ushort[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
             public MemPage[] Pages = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 
@@ -208,7 +208,7 @@ namespace Core
             {
                 Next = Prev = null;
                 KeyInfo = null;
-                IDRoot = 0;
+                RootID = 0;
                 CachedRowID = 0;
                 Info = new CellInfo();
                 WrFlag = false;
@@ -222,7 +222,7 @@ namespace Core
                 IsIncrblobHandle = false;
                 Overflows = null;
 #endif
-                PageIdx = 0;
+                PageID = 0;
             }
             public BtCursor Copy()
             {
@@ -268,7 +268,7 @@ public static bool ISAUTOVACUUM =false;
             public BtShared pBt;      // The tree being checked out
             public Pager pPager;      // The associated pager.  Also accessible by pBt.pPager
             public Pid nPage;        // Number of pages in the database
-            public int[] anRef;       // Number of times each page is referenced
+            public int[] Refs;       // Number of times each page is referenced
             public int mxErr;         // Stop accumulating errors when this reaches zero
             public int nErr;          // Number of messages written to zErrMsg so far
             //public int mallocFailed;  // A memory allocation error has occurred
