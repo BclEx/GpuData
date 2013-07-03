@@ -58,20 +58,21 @@ namespace Core
 
             // If the client is reading  or writing an index and the schema is not loaded, then it is too difficult to actually check to see if
             // the correct locks are held.  So do not bother - just return true. This case does not come up very often anyhow.
-            var schema = (Schema)btree.Bt.Schema;
-            if (isIndex && (!schema || (schema->Flags & DB_SchemaLoaded) == 0))
+            var schema = btree.Bt.Schema;
+            if (isIndex && (schema == null || (schema.Flags & SCHEMA.SchemaLoaded) == 0))
                 return true;
 
             // Figure out the root-page that the lock should be held on. For table b-trees, this is just the root page of the b-tree being read or
             // written. For index b-trees, it is the root page of the associated table.
             Pid table = 0;
             if (isIndex)
-                for (var p = sqliteHashFirst(schema.IdxHash); p != null; p = sqliteHashNext(p))
-                {
-                    var idx = (Index)sqliteHashData(p);
-                    if (idx.TID == (int)root)
-                        table = idx.Table.TID;
-                }
+                throw new NotImplementedException();
+                //for (var p = sqliteHashFirst(schema.IdxHash); p != null; p = sqliteHashNext(p))
+                //{
+                //    var idx = (Index)sqliteHashData(p);
+                //    if (idx.TID == (int)root)
+                //        table = idx.Table.TID;
+                //}
             else
                 table = root;
 
@@ -100,7 +101,7 @@ namespace Core
 
         static RC querySharedCacheTableLock(Btree p, Pid table, LOCK lockType)
         {
-            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(p.HoldsMutex());
             Debug.Assert(lockType == LOCK.READ || lockType == LOCK.WRITE);
             Debug.Assert(p.Ctx != null);
             Debug.Assert((p.Ctx.Flags & Context.FLAG.ReadUncommitted) == 0 || lockType == LOCK.WRITE || table == 1);
@@ -148,7 +149,7 @@ namespace Core
 
         static RC setSharedCacheTableLock(Btree p, Pid table, LOCK lock_)
         {
-            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(p.HoldsMutex());
             Debug.Assert(lock_ == LOCK.READ || lock_ == LOCK.WRITE);
             Debug.Assert(p.Ctx != null);
 
@@ -195,7 +196,7 @@ namespace Core
             var bt = p.Bt;
             var iter = bt.Lock;
 
-            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(p.HoldsMutex());
             Debug.Assert(p.Sharable || iter == null);
             Debug.Assert(p.InTrans > 0);
 
@@ -276,7 +277,7 @@ namespace Core
         static void invalidateIncrblobCursors(Btree btree, long rowid, bool isClearTable)
         {
             var bt = btree.Bt;
-            Debug.Assert(sqlite3BtreeHoldsMutex(btree));
+            Debug.Assert(btree.HoldsMutex());
             for (var p = bt.Cursor; p != null; p = p.Next)
                 if (p.IsIncrblobHandle && (isClearTable || p.Info.Key == rowid))
                     p.State = CURSOR.INVALID;
@@ -2292,7 +2293,7 @@ namespace Core
         static void btreeEndTransaction(Btree p)
         {
             var bt = p.Bt;
-            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(p.HoldsMutex());
 
 #if !OMIT_AUTOVACUUM
             bt.DoTruncate = false;
@@ -5301,7 +5302,7 @@ namespace Core
         static int btreeCreateTable(Btree p, ref int tableID, int createTabFlags)
         {
             BtShared bt = p.Bt;
-            Debug.Assert(sqlite3BtreeHoldsMutex(p));
+            Debug.Assert(p.HoldsMutex());
             Debug.Assert(bt.inTransaction == TRANS_WRITE);
             Debug.Assert(!bt.readOnly);
 

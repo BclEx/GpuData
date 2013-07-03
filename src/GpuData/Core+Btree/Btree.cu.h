@@ -1,4 +1,5 @@
 // btree.h
+typedef struct Mem Mem;
 namespace Core
 {
 #define N_BTREE_META 10
@@ -20,12 +21,38 @@ namespace Core
 			FULL = 1,        // Do full auto-vacuum
 			INCR = 2,        // Incremental vacuum
 		};
+
 		enum OPEN : uint8
 		{
 			OMIT_JOURNAL = 1,   // Do not create or use a rollback journal
 			MEMORY = 2,         // This is an in-memory DB
 			SINGLE = 4,         // The file contains at most 1 b-tree
 			UNORDERED = 8,      // Use of a hash implementation is OK
+		};
+
+		struct KeyInfo
+		{
+			Context *Ctx;		// The database connection
+			uint8 Enc;			// Text encoding - one of the SQLITE_UTF* values
+			uint16 Fields;      // Number of entries in aColl[]
+			uint8 *SortOrders;  // Sort order for each column.  May be NULL
+			CollSeq *Colls[1];  // Collating sequence for each term of the key
+		};
+
+		enum UNPACKED : uint8
+		{
+			INCRKEY = 0x01,			// Make this key an epsilon larger
+			PREFIX_MATCH = 0x02,	// A prefix match is considered OK
+			PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
+		};
+
+		struct UnpackedRecord
+		{
+			KeyInfo *KeyInfo;	// Collation and sort-order information
+			uint16 Fields;      // Number of entries in apMem[]
+			UNPACKED Flags;     // Boolean settings.  UNPACKED_... below
+			int64 Rowid;        // Used by UNPACKED_PREFIX_SEARCH
+			Mem *Mems;          // Values
 		};
 
 		Context *Ctx;			// The database connection holding this btree

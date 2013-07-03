@@ -60,20 +60,21 @@ namespace Core
 
 		// If the client is reading  or writing an index and the schema is not loaded, then it is too difficult to actually check to see if
 		// the correct locks are held.  So do not bother - just return true. This case does not come up very often anyhow.
-		Schema *schema = (Schema *)btree->Bt->Schema;
-		if (isIndex && (!schema || (schema->Flags & DB_SchemaLoaded) == 0))
+		ISchema *schema = btree->Bt->Schema;
+		if (isIndex && (!schema || (schema->Flags & SCHEMA::SchemaLoaded) == 0))
 			return true;
 
 		// Figure out the root-page that the lock should be held on. For table b-trees, this is just the root page of the b-tree being read or
 		// written. For index b-trees, it is the root page of the associated table.
 		Pid table = 0;
 		if (isIndex)
-			for (HashElem *p = sqliteHashFirst(&schema->IdxHash); p; p = sqliteHashNext(p))
-			{
-				Index *idx = (Index *)sqliteHashData(p);
-				if (idx->TID == (int)root)
-					table = idx->Table->TID;
-			}
+			return false;
+			//for (HashElem *p = sqliteHashFirst(&schema->IdxHash); p; p = sqliteHashNext(p))
+			//{
+			//	Index *idx = (Index *)sqliteHashData(p);
+			//	if (idx->TID == (int)root)
+			//		table = idx->Table->TID;
+			//}
 		else
 			table = root;
 

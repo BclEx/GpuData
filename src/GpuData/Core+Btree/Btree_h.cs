@@ -1,13 +1,14 @@
 // btree.h
+using Mem = System.Object;
 using System;
 namespace Core
 {
     public partial class Btree
     {
-        const int SQLITE_N_BTREE_META = 10;
-        const AUTOVACUUM DEFAULT_AUTOVACUUM = AUTOVACUUM.NONE;
+        //const int SQLITE_N_BTREE_META = 10;
+        //const AUTOVACUUM DEFAULT_AUTOVACUUM = AUTOVACUUM.NONE;
 
-        enum AUTOVACUUM : byte
+        public enum AUTOVACUUM : byte
         {
             NONE = 0,           // Do not do auto-vacuum
             FULL = 1,           // Do full auto-vacuum
@@ -23,6 +24,45 @@ namespace Core
             UNORDERED = 8,      // Use of a hash implementation is OK
         }
 
+		public class KeyInfo
+		{
+            public Context Ctx;		// The database connection
+            public byte Enc;			// Text encoding - one of the SQLITE_UTF* values
+            public ushort Fields;      // Number of entries in aColl[]
+            public byte[] SortOrders;  // Sort order for each column.  May be NULL
+            public CollSeq[] Colls = new CollSeq[1];  // Collating sequence for each term of the key
+		};
+
+        [Flags]
+        public enum UNPACKED : byte
+		{
+			INCRKEY = 0x01,			// Make this key an epsilon larger
+			PREFIX_MATCH = 0x02,	// A prefix match is considered OK
+			PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
+		};
+
+        public class UnpackedRecord
+		{
+            public KeyInfo KeyInfo;	// Collation and sort-order information
+            public ushort Fields;      // Number of entries in apMem[]
+            public UNPACKED Flags;     // Boolean settings.  UNPACKED_... below
+            public long Rowid;        // Used by UNPACKED_PREFIX_SEARCH
+			public Mem[] Mems;          // Values
+		};
+
+        public Context Ctx;     // The database connection holding this Btree
+        public BtShared Bt;     // Sharable content of this Btree
+        public TRANS InTrans;   // TRANS_NONE, TRANS_READ or TRANS_WRITE
+        public bool Sharable;   // True if we can share pBt with another db
+        public bool Locked;     // True if db currently has pBt locked
+        public int WantToLock;  // Number of nested calls to sqlite3BtreeEnter()
+        public int Backups;     // Number of backup operations reading this btree
+        public Btree Next;      // List of other sharable Btrees from the same db
+        public Btree Prev;      // Back pointer of the same list
+#if !OMIT_SHARED_CACHE
+        public BtLock Lock;     // Object used to lock page 1
+#endif
+        
         const int BTREE_INTKEY = 1;
         const int BTREE_BLOBKEY = 2;
 
@@ -37,19 +77,6 @@ namespace Core
             USER_VERSION = 6,
             INCR_VACUUM = 7,
         }
-
-        public Context Ctx;     // The database connection holding this Btree
-        public BtShared Bt;     // Sharable content of this Btree
-        public TRANS InTrans;   // TRANS_NONE, TRANS_READ or TRANS_WRITE
-        public bool Sharable;   // True if we can share pBt with another db
-        public bool Locked;     // True if db currently has pBt locked
-        public int WantToLock;  // Number of nested calls to sqlite3BtreeEnter()
-        public int Backups;     // Number of backup operations reading this btree
-        public Btree Next;      // List of other sharable Btrees from the same db
-        public Btree Prev;      // Back pointer of the same list
-#if !OMIT_SHARED_CACHE
-        public BtLock Lock;     // Object used to lock page 1
-#endif
 
 
         //#if !OMIT_SHARED_CACHE

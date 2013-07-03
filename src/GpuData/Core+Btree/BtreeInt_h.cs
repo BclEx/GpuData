@@ -18,7 +18,6 @@ namespace Core
         public struct OverflowCell // Cells that will not fit on aData[]
         {
             public byte[] Cell;     // Pointers to the body of the overflow cell
-            public ushort Idx;      // Insert this cell before idx-th non-overflow cell
 
             public OverflowCell Copy()
             {
@@ -28,7 +27,6 @@ namespace Core
                     cp.Cell = SysEx.Alloc(Cell.Length);
                     Buffer.BlockCopy(Cell, 0, cp.Cell, 0, Cell.Length);
                 }
-                cp.Idx = Idx;
                 return cp;
             }
         };
@@ -37,9 +35,9 @@ namespace Core
         {
             public bool IsInit;             // True if previously initialized. MUST BE FIRST!
             public byte Overflows;          // Number of overflow cell bodies in aCell[]
-            public byte IntKey;             // True if u8key flag is set
-            public byte Leaf;               // 1 if leaf flag is set
-            public byte HasData;            // True if this page stores data
+            public bool IntKey;             // True if u8key flag is set
+            public bool Leaf;               // 1 if leaf flag is set
+            public bool HasData;            // True if this page stores data
             public byte HdrOffset;          // 100 for page 1.  0 otherwise
             public byte ChildPtrSize;       // 0 if leaf==1.  4 if leaf==0
             public ushort MaxLocal;         // Copy of BtShared.maxLocal or BtShared.maxLeaf
@@ -130,7 +128,7 @@ namespace Core
             public uint UsableSize;         // Number of usable bytes on each page
             public int Transactions;        // Number of open transactions (read + write)
             public Pid Pages;               // Number of pages in the database
-            public object Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
+            public ISchema Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
             public Action<object> FreeSchema; // Destructor for BtShared.pSchema
             public MutexEx Mutex;           // Non-recursive mutex required to access this object
             public Bitvec HasContent;       // Set of pages moved to free-list this transaction
@@ -234,7 +232,7 @@ namespace Core
             }
         }
 
-        static uint PENDING_BYTE_PAGE(BtShared bt) { return (uint)PAGER_MJ_PGNO(bt.Pager); }
+        static uint PENDING_BYTE_PAGE(BtShared bt) { return (uint)PAGER.MJ_PID(bt.Pager); }
 
         static Pid PTRMAP_PAGENO(BtShared bt, Pid id) { return ptrmapPageno(bt, id); }
         static Pid PTRMAP_PTROFFSET(Pid ptrmapID, Pid id) { return (5 * (id - ptrmapID - 1)); }

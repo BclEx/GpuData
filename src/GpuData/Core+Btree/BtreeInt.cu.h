@@ -100,7 +100,7 @@ namespace Core
 		uint32 UsableSize;		// Number of usable bytes on each page
 		int Transactions;		// Number of open transactions (read + write)
 		uint32 Pages;			// Number of pages in the database
-		void *Schema;			// Pointer to space allocated by sqlite3BtreeSchema()
+		ISchema *Schema;		// Pointer to space allocated by sqlite3BtreeSchema()
 		void (*FreeSchema)(void *);  // Destructor for BtShared.pSchema
 		MutexEx Mutex;			// Non-recursive mutex required to access this object
 		Bitvec *HasContent;		// Set of pages moved to free-list this transaction
