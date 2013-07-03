@@ -529,7 +529,7 @@ namespace Core
         static int findOverflowCell(MemPage page, int cell)
         {
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
-            for (var i = page.OverflowsUsed - 1; i >= 0; i--)
+            for (var i = page.Overflows - 1; i >= 0; i--)
             {
                 var ovfl = page.Overflows[i];
                 var k = ovfl.Idx;
@@ -561,16 +561,16 @@ namespace Core
             if (page.IntKey != 0)
             {
                 if (page.HasData != 0)
-                    n += (ushort)ConvertEx.GetVaraint4(cell, cellIdx + n, out payloadLength);
+                    n += (ushort)ConvertEx.GetVariant4(cell, cellIdx + n, out payloadLength);
                 else
                     payloadLength = 0;
-                n += (ushort)ConvertEx.GetVaraint(cell, cellIdx + n, out info.Key);
+                n += (ushort)ConvertEx.GetVariant(cell, cellIdx + n, out info.Key);
                 info.Data = payloadLength;
             }
             else
             {
                 info.Data = 0;
-                n += (ushort)ConvertEx.GetVaraint4(cell, cellIdx + n, out payloadLength);
+                n += (ushort)ConvertEx.GetVariant4(cell, cellIdx + n, out payloadLength);
                 info.Key = payloadLength;
             }
             info.Payload = payloadLength;
@@ -693,7 +693,7 @@ namespace Core
             if (info.Overflow != 0)
             {
                 Pid ovfl = ConvertEx.Get4(page.Data, cell, info.Overflow);
-                ptrmapPut(page.Bt, ovfl, PTRMAP_OVERFLOW1, page.ID, ref rcRef);
+                ptrmapPut(page.Bt, ovfl, PTRMAP.OVERFLOW1, page.ID, ref rcRef);
             }
         }
 
@@ -707,7 +707,7 @@ namespace Core
             if (info.Overflow != 0)
             {
                 Pid ovfl = ConvertEx.Get4(cell, info.Overflow);
-                ptrmapPut(page.Bt, ovfl, PTRMAP_OVERFLOW1, page.ID, ref rcRef);
+                ptrmapPut(page.Bt, ovfl, PTRMAP.OVERFLOW1, page.ID, ref rcRef);
             }
         }
 #endif
@@ -721,7 +721,7 @@ namespace Core
             Debug.Assert(Pager.Iswriteable(page.DBPage));
             Debug.Assert(page.Bt != null);
             Debug.Assert(page.Bt.UsableSize <= MAX_PAGE_SIZE);
-            Debug.Assert(page.OverflowsUsed == 0);
+            Debug.Assert(page.Overflows == 0);
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
             var temp = page.Bt.Pager.get_TempSpace(); // Temp area for cell content
             var data = page.Data; // The page data
@@ -965,7 +965,7 @@ namespace Core
                 if (decodeFlags(page, data[hdr]) != RC.OK) return SysEx.CORRUPT_BKPT();
                 Debug.Assert(bt.PageSize >= 512 && bt.PageSize <= 65536);
                 page.MaskPage = (ushort)(bt.PageSize - 1);
-                page.OverflowsUsed = 0;
+                page.Overflows = 0;
                 int usableSize = (int)bt.UsableSize; // Amount of usable space on each page
                 ushort cellOffset; // Offset from start of page to first cell pointer
                 page.CellOffset = (cellOffset = (ushort)(hdr + 12 - 4 * page.Leaf));
@@ -999,7 +999,7 @@ namespace Core
 #endif
 
                 // Compute the total free space on the page
-                pc = (ushort)get2byte(data, hdr + 1);
+                pc = (ushort)ConvertEx.Get2(data, hdr + 1);
                 int free = (ushort)(data[hdr + 7] + top); // Number of unused bytes on the page
                 while (pc > 0)
                 {
@@ -1049,7 +1049,7 @@ namespace Core
             //page.DataEnd = &data[pt.UsableSize];
             //page.CellIdx = &data[first];
             page.CellOffset = first;
-            page.OverflowsUsed = 0;
+            page.Overflows = 0;
             Debug.Assert(bt.PageSize >= 512 && bt.PageSize <= 65536);
             page.MaskPage = (ushort)(bt.PageSize - 1);
             page.Cells = 0;
@@ -3201,7 +3201,7 @@ namespace Core
                         if (page.HasData != 0)
                         {
                             uint dummy = 0;
-                            cell += ConvertEx.GetVaraint4(page.Data, cell, out dummy);
+                            cell += ConvertEx.GetVariant4(page.Data, cell, out dummy);
                         }
                         long cellKeyLength = 0;
                         ConvertEx.GetVariant(page.Data, cell, out cellKeyLength);
@@ -4898,7 +4898,7 @@ namespace Core
                     }
 
                     Debug.Assert(overflows > 0 || overflowID < i);
-                    Debug.Assert(overflows < 2 || oldPage.OvflIdx[0]x == oldPage.OvflIdxs[1] - 1);
+                    Debug.Assert(overflows < 2 || oldPage.OvflIdx[0] == oldPage.OvflIdxs[1] - 1);
                     Debug.Assert(overflows < 3 || oldPage.OvflIdx[1] == oldPage.OvflIdxs[2] - 1);
                     if (i == overflowID)
                     {
@@ -5685,7 +5685,7 @@ namespace Core
         }
 #endif
 
-        public Pager Pager()
+        public Pager get_Pager()
         {
             return Bt.Pager;
         }
@@ -5697,60 +5697,67 @@ namespace Core
 
         static void checkAppendMsg(IntegrityCk check, string msg1, string format, params object[] args)
         {
-            if (0 == check.mxErr)
-                return;
+            if (check.MaxErrors == 0) return;
             //va_list ap;
-            lock (lock_va_list)
+            lock (_va_listLock)
             {
-                check.mxErr--;
-                check.nErr++;
-                va_start(args, format);
-                if (check.errMsg.zText.Length != 0)
-                    sqlite3StrAccumAppend(check.errMsg, "\n", 1);
-                if (msg1.Length > 0)
-                    sqlite3StrAccumAppend(check.errMsg, msg1.ToString(), -1);
-                sqlite3VXPrintf(check.errMsg, 1, format, args);
-                va_end(ref args);
+                check.MaxErrors--;
+                check.Errors++;
+                // implement
+                //va_start(args, format);
+                //if (check.errMsg.zText.Length != 0)
+                //    sqlite3StrAccumAppend(check.errMsg, "\n", 1);
+                //if (msg1.Length > 0)
+                //    sqlite3StrAccumAppend(check.errMsg, msg1.ToString(), -1);
+                //sqlite3VXPrintf(check.errMsg, 1, format, args);
+                //va_end(ref args);
             }
         }
-
         static void checkAppendMsg(IntegrityCk check, StringBuilder msg1, string format, params object[] args)
         {
-            if (check.mxErr == 0)
-                return;
+            if (check.MaxErrors == 0) return;
             //va_list ap;
-            lock (lock_va_list)
+            lock (_va_listLock)
             {
-                check.mxErr--;
-                check.nErr++;
-                va_start(args, format);
-                if (check.errMsg.zText.Length != 0)
-                    sqlite3StrAccumAppend(check.errMsg, "\n", 1);
-                if (msg1.Length > 0)
-                    sqlite3StrAccumAppend(check.errMsg, msg1.ToString(), -1);
-                sqlite3VXPrintf(check.errMsg, 1, format, args);
-                va_end(ref args);
+                check.MaxErrors--;
+                check.Errors++;
+                //va_start(args, format);
+                //if (check.errMsg.zText.Length != 0)
+                //    sqlite3StrAccumAppend(check.errMsg, "\n", 1);
+                //if (msg1.Length > 0)
+                //    sqlite3StrAccumAppend(check.errMsg, msg1.ToString(), -1);
+                //sqlite3VXPrintf(check.errMsg, 1, format, args);
+                //va_end(ref args);
             }
-            //if( pCheck.errMsg.mallocFailed ){
-            //  pCheck.mallocFailed = 1;
-            //}
         }
 
-        static int checkRef(IntegrityCk check, Pid pageID, string context)
+        static bool getPageReferenced(IntegrityCk check, Pid pageID)
         {
-            if (pageID == 0)
-                return 1;
-            if (pageID > check.nPage)
+            Debug.Assert(pageID <= check.Pages && sizeof(byte) == 1);
+            return (check.PgRefs[pageID / 8] & (1 << (pageID & 0x07)));
+        }
+
+        static void setPageReferenced(IntegrityCk check, Pid pageID)
+        {
+            Debug.Assert(pageID <= check.Pages && sizeof(byte) == 1);
+            check.PgRefs[pageID / 8] |= (1 << (pageID & 0x07));
+        }
+
+        static bool checkRef(IntegrityCk check, Pid pageID, string context)
+        {
+            if (pageID == 0) return true;
+            if (pageID > check.Pages)
             {
                 checkAppendMsg(check, context, "invalid page number %d", pageID);
-                return 1;
+                return true;
             }
-            if (check.Refs[pageID] == 1)
+            if (getPageReferenced(check, pageID))
             {
                 checkAppendMsg(check, context, "2nd reference to page %d", pageID);
-                return 1;
+                return true;
             }
-            return ((check.Refs[pageID]++) > 1) ? 1 : 0;
+            setPageReferenced(check, pageID);
+            return true;
         }
 
 #if !OMIT_AUTOVACUUM
@@ -5761,7 +5768,7 @@ namespace Core
             RC rc = ptrmapGet(check.Bt, childID, ref ptrmapType, ref ptrmapParentID);
             if (rc != RC.OK)
             {
-                //if( rc==SQLITE_NOMEM || rc==SQLITE_IOERR_NOMEM ) pCheck.mallocFailed = 1;
+                if (rc == RC.NOMEM || rc == RC.IOERR_NOMEM) check.MallocFailed = true;
                 checkAppendMsg(check, context, "Failed to read ptrmap key=%d", childID);
                 return;
             }
@@ -5771,41 +5778,40 @@ namespace Core
         }
 #endif
 
-        static void checkList(IntegrityCk check, int isFreeList, int pageID, int n, string context)
+        static void checkList(IntegrityCk check, bool isFreeList, Pid pageID, int length, string context)
         {
-            int expected = n;
+            int expected = length;
             int firstID = pageID;
-            while (n-- > 0 && check.mxErr != 0)
+            while (length-- > 0 && check.MaxErrors != 0)
             {
                 if (pageID < 1)
                 {
-                    checkAppendMsg(check, context, "%d of %d pages missing from overflow list starting at %d", n + 1, expected, firstID);
+                    checkAppendMsg(check, context, "%d of %d pages missing from overflow list starting at %d", length + 1, expected, firstID);
                     break;
                 }
-                if (checkRef(check, (uint)pageID, context) != 0)
-                    break;
+                if (checkRef(check, (uint)pageID, context) != 0) break;
                 PgHdr ovflPage = new PgHdr();
-                if (check.Pager.Aquire((Pid)pageID, ref ovflPage, false) != 0)
+                if (check.Pager.Aquire((Pid)pageID, ref ovflPage, false) != RC.OK)
                 {
                     checkAppendMsg(check, context, "failed to get page %d", pageID);
                     break;
                 }
                 byte[] ovflData = Pager.GetData(ovflPage);
-                if (isFreeList != 0)
+                if (isFreeList)
                 {
                     int n = (int)ConvertEx.Get4(ovflData, 4);
 #if !OMIT_AUTOVACUUM
-                    if (check.Bt.autoVacuum)
+                    if (check.Bt.AutoVacuum)
                         checkPtrmap(check, (uint)pageID, PTRMAP.FREEPAGE, 0, context);
 #endif
                     if (n > (int)check.Bt.UsableSize / 4 - 2)
                     {
                         checkAppendMsg(check, context, "freelist leaf count too big on page %d", pageID);
-                        n--;
+                        length--;
                     }
                     else
                     {
-                        for (i = 0; i < n; i++)
+                        for (int i = 0; i < n; i++)
                         {
                             Pid freePageID = ConvertEx.Get4(ovflData, 8 + i * 4);
 #if !OMIT_AUTOVACUUM
@@ -5814,7 +5820,7 @@ namespace Core
 #endif
                             checkRef(check, freePageID, context);
                         }
-                        n -= n;
+                        length -= n;
                     }
                 }
 #if !OMIT_AUTOVACUUM
@@ -5822,9 +5828,9 @@ namespace Core
                 {
                     // If this database supports auto-vacuum and iPage is not the last page in this overflow list, check that the pointer-map entry for
                     // the following page matches iPage.
-                    if (check.Bt.AutoVacuum && n > 0)
+                    if (check.Bt.AutoVacuum && length > 0)
                     {
-                        i = (int)ConvertEx.Get4(ovflData);
+                        int i = (int)ConvertEx.Get4(ovflData);
                         checkPtrmap(check, (uint)i, PTRMAP.OVERFLOW2, (uint)pageID, context);
                     }
                 }
@@ -5834,371 +5840,265 @@ namespace Core
             }
         }
 
-        static i64 refNULL = 0;   //Dummy for C# ref NULL
-
-        static int checkTreePage(IntegrityCk pCheck, int iPage, string zParentContext, ref i64 pnParentMinKey, ref i64 pnParentMaxKey,
-            /* C# Needed to determine if content passed*/ object _pnParentMinKey, object _pnParentMaxKey)
+        static object _nullRef_ = null;
+        static int checkTreePage(IntegrityCk check, Pid pageID, string parentContext, ref long parentMinKey, bool hasParentMinKey, ref long parentMaxKey, bool hasParentMaxKey)
         {
-            MemPage pPage = new MemPage();
-            int i, rc, depth, d2, pgno, cnt;
-            int hdr, cellStart;
-            int nCell;
-            u8[] data;
-            BtShared pBt;
-            int usableSize;
-            StringBuilder zContext = new StringBuilder(100);
-            byte[] hit = null;
-            i64 nMinKey = 0;
-            i64 nMaxKey = 0;
+            var context = new StringBuilder(100);
+            sqlite3_snprintf(200, context, "Page %d: ", pageID);
 
-
-            sqlite3_snprintf(200, zContext, "Page %d: ", iPage);
-
-            /* Check that the page exists
-            */
-            pBt = pCheck.pBt;
-            usableSize = (int)pBt.usableSize;
-            if (iPage == 0)
-                return 0;
-            if (checkRef(pCheck, (u32)iPage, zParentContext) != 0)
-                return 0;
-            if ((rc = btreeGetPage(pBt, (Pgno)iPage, ref pPage, 0)) != 0)
+            // Check that the page exists
+            var bt = check.Bt;
+            var usableSize = (int)bt.UsableSize;
+            if (pageID == 0) return 0;
+            if (checkRef(check, pageID, parentContext) != 0) return 0;
+            RC rc;
+            MemPage page = new MemPage();
+            if ((rc = btreeGetPage(bt, pageID, ref page, 0)) != RC.OK)
             {
-                checkAppendMsg(pCheck, zContext.ToString(),
-                "unable to get the page. error code=%d", rc);
+                checkAppendMsg(check, context.ToString(), "unable to get the page. error code=%d", rc);
                 return 0;
             }
 
-            /* Clear MemPage.isInit to make sure the corruption detection code in
-            ** btreeInitPage() is executed.  */
-            pPage.isInit = 0;
-            if ((rc = btreeInitPage(pPage)) != 0)
+            // Clear MemPage.isInit to make sure the corruption detection code in btreeInitPage() is executed.
+            page.IsInit = false;
+            if ((rc = btreeInitPage(page)) != RC.OK)
             {
-                Debug.Assert(rc == SQLITE_CORRUPT);  /* The only possible error from InitPage */
-                checkAppendMsg(pCheck, zContext.ToString(),
-                "btreeInitPage() returns error code %d", rc);
-                releasePage(pPage);
+                Debug.Assert(rc == SQLITE_CORRUPT); // The only possible error from InitPage
+                checkAppendMsg(check, context.ToString(), "btreeInitPage() returns error code %d", rc);
+                releasePage(page);
                 return 0;
             }
 
-            /* Check out all the cells.
-            */
-            depth = 0;
-            for (i = 0; i < pPage.nCell && pCheck.mxErr != 0; i++)
+            // Check out all the cells.
+            Pid id;
+            int i, depth = 0;
+            long minKey = 0;
+            long maxKey = 0;
+            for (i = 0; i < page.Cells && check.MaxErrors != 0; i++)
             {
-                u8[] pCell;
-                u32 sz;
-                CellInfo info = new CellInfo();
-
-                /* Check payload overflow pages
-                */
-                sqlite3_snprintf(200, zContext,
-                "On tree page %d cell %d: ", iPage, i);
-                int iCell = findCell(pPage, i); //pCell = findCell( pPage, i );
-                pCell = pPage.aData;
-                btreeParseCellPtr(pPage, iCell, ref info); //btreeParseCellPtr( pPage, pCell, info );
-                sz = info.Data;
-                if (0 == pPage.intKey)
-                    sz += (u32)info.nKey;
-                /* For intKey pages, check that the keys are in order.
-                */
-                else if (i == 0)
-                    nMinKey = nMaxKey = info.nKey;
+                // Check payload overflow pages
+                sqlite3_snprintf(200, context, "On tree page %d cell %d: ", pageID, i);
+                int cell = findCell(page, i);
+                var info = new CellInfo();
+                btreeParseCellPtr(page, cell, ref info);
+                uint sizeCell = info.Data;
+                if (page.intKey == 0) sizeCell += (uint)info.Key;
+                // For intKey pages, check that the keys are in order.
+                else if (i == 0) minKey = maxKey = info.Key;
                 else
                 {
-                    if (info.nKey <= nMaxKey)
-                    {
-                        checkAppendMsg(pCheck, zContext.ToString(),
-                        "Rowid %lld out of order (previous was %lld)", info.nKey, nMaxKey);
-                    }
-                    nMaxKey = info.nKey;
+                    if (info.Key <= maxKey)
+                        checkAppendMsg(check, context.ToString(), "Rowid %lld out of order (previous was %lld)", info.Key, maxKey);
+                    maxKey = info.Key;
                 }
-                Debug.Assert(sz == info.Payload);
-                if ((sz > info.Local)
-                    //&& (pCell[info.iOverflow]<=&pPage.aData[pBt.usableSize])
-                )
+                Debug.Assert(sizeCell == info.Payload);
+                if (sizeCell > info.Local) //&& pCell[info.iOverflow]<=&pPage.aData[pBt.usableSize]
                 {
-                    int nPage = (int)(sz - info.Local + usableSize - 5) / (usableSize - 4);
-                    Pgno pgnoOvfl = sqlite3Get4byte(pCell, iCell, info.Overflow);
+                    int pages = (int)(sizeCell - info.Local + usableSize - 5) / (usableSize - 4);
+                    Pid ovflID = ConvertEx.Get4(page.Data, cell, info.Overflow);
 #if !OMIT_AUTOVACUUM
-                    if (pBt.autoVacuum)
-                    {
-                        checkPtrmap(pCheck, pgnoOvfl, PTRMAP_OVERFLOW1, (u32)iPage, zContext.ToString());
-                    }
+                    if (bt.AutoVacuum)
+                        checkPtrmap(check, ovflID, PTRMAP.OVERFLOW1, pageID, context.ToString());
 #endif
-                    checkList(pCheck, 0, (int)pgnoOvfl, nPage, zContext.ToString());
+                    checkList(check, 0, ovflID, pages, context.ToString());
                 }
 
-                /* Check sanity of left child page.
-                */
-                if (0 == pPage.leaf)
+                // Check sanity of left child page.
+                if (page.Leaf == 0)
                 {
-                    pgno = (int)sqlite3Get4byte(pCell, iCell); //sqlite3Get4byte( pCell );
+                    id = (int)ConvertEx.Get4(page.Data, cell);
 #if !OMIT_AUTOVACUUM
-                    if (pBt.autoVacuum)
-                    {
-                        checkPtrmap(pCheck, (u32)pgno, PTRMAP_BTREE, (u32)iPage, zContext.ToString());
-                    }
+                    if (bt.AutoVacuum)
+                        checkPtrmap(check, id, PTRMAP.BTREE, pageID, context.ToString());
 #endif
+                    int depth2;
                     if (i == 0)
-                        d2 = checkTreePage(pCheck, pgno, zContext.ToString(), ref nMinKey, ref refNULL, pCheck, null);
+                        depth2 = checkTreePage(check, id, context.ToString(), ref minKey, true, ref _nullRef_, false);
                     else
-                        d2 = checkTreePage(pCheck, pgno, zContext.ToString(), ref nMinKey, ref nMaxKey, pCheck, pCheck);
+                        depth2 = checkTreePage(check, id, context.ToString(), ref minKey, true, ref maxKey, true);
 
-                    if (i > 0 && d2 != depth)
-                    {
-                        checkAppendMsg(pCheck, zContext, "Child page depth differs");
-                    }
-                    depth = d2;
+                    if (i > 0 && depth2 != depth)
+                        checkAppendMsg(check, context, "Child page depth differs");
+                    depth = depth2;
                 }
             }
-            if (0 == pPage.leaf)
+            if (page.Leaf == 0)
             {
-                pgno = (int)sqlite3Get4byte(pPage.aData, pPage.hdrOffset + 8);
-                sqlite3_snprintf(200, zContext,
-                "On page %d at right child: ", iPage);
+                id = (Pid)ConvertEx.Get4(page.Data, page.HdrOffset + 8);
+                sqlite3_snprintf(200, context, "On page %d at right child: ", pageID);
 #if !OMIT_AUTOVACUUM
-                if (pBt.autoVacuum)
-                {
-                    checkPtrmap(pCheck, (u32)pgno, PTRMAP_BTREE, (u32)iPage, zContext.ToString());
-                }
+                if (bt.AutoVacuum)
+                    checkPtrmap(check, id, PTRMAP.BTREE, pageID, context.ToString());
 #endif
-                //    checkTreePage(pCheck, pgno, zContext, NULL, !pPage->nCell ? NULL : &nMaxKey);
-                if (0 == pPage.nCell)
-                    checkTreePage(pCheck, pgno, zContext.ToString(), ref refNULL, ref refNULL, null, null);
+                if (page.Cells == 0)
+                    checkTreePage(check, id, context.ToString(), ref _nullRef_, false, ref _nullRef_, false);
                 else
-                    checkTreePage(pCheck, pgno, zContext.ToString(), ref refNULL, ref nMaxKey, null, pCheck);
+                    checkTreePage(check, id, context.ToString(), ref _nullRef_, false, ref maxKey, true);
             }
 
-            /* For intKey leaf pages, check that the min/max keys are in order
-            ** with any left/parent/right pages.
-            */
-            if (pPage.leaf != 0 && pPage.intKey != 0)
+            // For intKey leaf pages, check that the min/max keys are in order with any left/parent/right pages.
+            if (page.Leaf != 0 && page.IntKey != 0)
             {
-                /* if we are a left child page */
-                if (_pnParentMinKey != null)
+                // if we are a left child page
+                if (hasParentMinKey)
                 {
-                    /* if we are the left most child page */
-                    if (_pnParentMaxKey == null)
+                    // if we are the left most child page
+                    if (!hasParentMaxKey)
                     {
-                        if (nMaxKey > pnParentMinKey)
-                        {
-                            checkAppendMsg(pCheck, zContext,
-                            "Rowid %lld out of order (max larger than parent min of %lld)",
-                            nMaxKey, pnParentMinKey);
-                        }
+                        if (maxKey > parentMinKey)
+                            checkAppendMsg(check, context, "Rowid %lld out of order (max larger than parent min of %lld)", maxKey, parentMinKey);
                     }
                     else
                     {
-                        if (nMinKey <= pnParentMinKey)
-                        {
-                            checkAppendMsg(pCheck, zContext,
-                            "Rowid %lld out of order (min less than parent min of %lld)",
-                            nMinKey, pnParentMinKey);
-                        }
-                        if (nMaxKey > pnParentMaxKey)
-                        {
-                            checkAppendMsg(pCheck, zContext,
-                            "Rowid %lld out of order (max larger than parent max of %lld)",
-                            nMaxKey, pnParentMaxKey);
-                        }
-                        pnParentMinKey = nMaxKey;
+                        if (minKey <= parentMinKey)
+                            checkAppendMsg(check, context, "Rowid %lld out of order (min less than parent min of %lld)", minKey, parentMinKey);
+                        if (maxKey > parentMaxKey)
+                            checkAppendMsg(check, context, "Rowid %lld out of order (max larger than parent max of %lld)", maxKey, parentMaxKey);
+                        parentMinKey = maxKey;
                     }
-                    /* else if we're a right child page */
                 }
-                else if (_pnParentMaxKey != null)
+                // else if we're a right child page
+                else if (hasParentMaxKey)
                 {
-                    if (nMinKey <= pnParentMaxKey)
-                    {
-                        checkAppendMsg(pCheck, zContext,
-                        "Rowid %lld out of order (min less than parent max of %lld)",
-                        nMinKey, pnParentMaxKey);
-                    }
+                    if (minKey <= parentMaxKey)
+                        checkAppendMsg(check, context, "Rowid %lld out of order (min less than parent max of %lld)", minKey, parentMaxKey);
                 }
             }
 
-            /* Check for complete coverage of the page
-            */
-            data = pPage.aData;
-            hdr = pPage.hdrOffset;
-            hit = sqlite3Malloc(pBt.pageSize);
-            //if( hit==null ){
-            //  pCheck.mallocFailed = 1;
-            //}else
+            // Check for complete coverage of the page
+            byte[] data = page.Data;
+            int hdr = page.HdrOffset;
+            int hit = sqlite3Malloc(bt.PageSize);
+            if (hit == nullptr)
+                check->MallocFailed = true;
+            else
             {
-                int contentOffset = get2byteNotZero(data, hdr + 5);
-                Debug.Assert(contentOffset <= usableSize);  /* Enforced by btreeInitPage() */
-                Array.Clear(hit, contentOffset, usableSize - contentOffset);//memset(hit+contentOffset, 0, usableSize-contentOffset);
-                for (int iLoop = contentOffset - 1; iLoop >= 0; iLoop--)
-                    hit[iLoop] = 1;//memset(hit, 1, contentOffset);
-                nCell = get2byte(data, hdr + 3);
-                cellStart = hdr + 12 - 4 * pPage.leaf;
-                for (i = 0; i < nCell; i++)
+                int contentOffset = ConvertEx.Get2nz(data, hdr + 5);
+                Debug.Assert(contentOffset <= usableSize); // Enforced by btreeInitPage()
+                Array.Clear(hit, contentOffset, usableSize - contentOffset);
+                { for (int z = contentOffset - 1; z >= 0; z--) hit[z] = 1; }// memset(hit, 1, contentOffset);
+                int cells = ConvertEx.Get2(data, hdr + 3);
+                int cellStart = hdr + 12 - 4 * page.leaf;
+                for (i = 0; i < cells; i++)
                 {
-                    int pc = get2byte(data, cellStart + i * 2);
-                    u32 size = 65536;
-                    int j;
+                    var sizeCell = 65536U;
+                    int pc = ConvertEx.Get2(data, cellStart + i * 2);
                     if (pc <= usableSize - 4)
-                    {
-                        size = cellSizePtr(pPage, data, pc);
-                    }
-                    if ((int)(pc + size - 1) >= usableSize)
-                    {
-                        checkAppendMsg(pCheck, "",
-                        "Corruption detected in cell %d on page %d", i, iPage);
-                    }
+                        sizeCell = cellSizePtr(page, data, pc);
+                    if ((int)(pc + sizeCell - 1) >= usableSize)
+                        checkAppendMsg(check, null, "Corruption detected in cell %d on page %d", i, pageID);
                     else
-                    {
-                        for (j = (int)(pc + size - 1); j >= pc; j--)
-                            hit[j]++;
-                    }
+                        for (var j = (int)(pc + sizeCell - 1); j >= pc; j--) hit[j]++;
                 }
-                i = get2byte(data, hdr + 1);
+                i = ConvertEx.Get2(data, hdr + 1);
                 while (i > 0)
                 {
-                    int size, j;
-                    Debug.Assert(i <= usableSize - 4);     /* Enforced by btreeInitPage() */
-                    size = get2byte(data, i + 2);
-                    Debug.Assert(i + size <= usableSize);  /* Enforced by btreeInitPage() */
-                    for (j = i + size - 1; j >= i; j--)
-                        hit[j]++;
-                    j = get2byte(data, i);
-                    Debug.Assert(j == 0 || j > i + size);  /* Enforced by btreeInitPage() */
-                    Debug.Assert(j <= usableSize - 4);   /* Enforced by btreeInitPage() */
+                    Debug.Assert(i <= usableSize - 4); // Enforced by btreeInitPage()
+                    int size = ConvertEx.Get2(data, i + 2);
+                    Debug.Assert(i + size <= usableSize); // Enforced by btreeInitPage()
+                    int j;
+                    for (j = i + size - 1; j >= i; j--) hit[j]++;
+                    j = ConvertEx.Get2(data, i);
+                    Debug.Assert(j == 0 || j > i + size); // Enforced by btreeInitPage()
+                    Debug.Assert(j <= usableSize - 4); // Enforced by btreeInitPage()
                     i = j;
                 }
+                int cnt;
                 for (i = cnt = 0; i < usableSize; i++)
                 {
                     if (hit[i] == 0)
-                    {
                         cnt++;
-                    }
                     else if (hit[i] > 1)
                     {
-                        checkAppendMsg(pCheck, "",
-                        "Multiple uses for byte %d of page %d", i, iPage);
+                        checkAppendMsg(check, null, "Multiple uses for byte %d of page %d", i, pageID);
                         break;
                     }
                 }
                 if (cnt != data[hdr + 7])
-                {
-                    checkAppendMsg(pCheck, "",
-                    "Fragmentation of %d bytes reported as %d on page %d",
-                    cnt, data[hdr + 7], iPage);
-                }
+                    checkAppendMsg(check, null, "Fragmentation of %d bytes reported as %d on page %d", cnt, data[hdr + 7], pageID);
             }
             sqlite3PageFree(ref hit);
-            releasePage(pPage);
+            releasePage(page);
             return depth + 1;
         }
 
-        static string sqlite3BtreeIntegrityCheck(Btree p, int[] aRoot, int nRoot, int mxErr, ref int pnErr)
+        public string IntegrityCheck(Pid[] roots, int rootsLength, int maxErrors, out int errors)
         {
-            Pgno i;
-            int nRef;
-            IntegrityCk sCheck = new IntegrityCk();
-            BtShared pBt = p.pBt;
-
-            sqlite3BtreeEnter(p);
-            Debug.Assert(p.inTrans > TRANS_NONE && pBt.inTransaction > TRANS_NONE);
-            nRef = sqlite3PagerRefcount(pBt.pPager);
-            sCheck.pBt = pBt;
-            sCheck.pPager = pBt.pPager;
-            sCheck.nPage = btreePagecount(sCheck.pBt);
-            sCheck.mxErr = mxErr;
-            sCheck.nErr = 0;
-            //sCheck.mallocFailed = 0;
-            pnErr = 0;
-            if (sCheck.nPage == 0)
+            BtShared bt = p.pBt;
+            Enter();
+            Debug.Assert(InTrans > TRANS.NONE && bt.InTransaction > TRANS.NONE);
+            int refs = bt.Pager.get_Refs();
+            IntegrityCk check = new IntegrityCk();
+            check.Bt = bt;
+            check.Pager = bt.Pager;
+            check.Pages = btreePagecount(check.Bt);
+            check.MaxErrors = maxErrors;
+            check.Errors = 0;
+            check.MallocFailed = false;
+            errors = 0;
+            if (check.Pages == 0)
             {
-                sqlite3BtreeLeave(p);
-                return "";
+                Leave();
+                return null;
             }
-            sCheck.Refs = sqlite3Malloc(sCheck.Refs, (int)sCheck.nPage + 1);
-            //if( !sCheck.anRef ){
-            //  pnErr = 1;
-            //  sqlite3BtreeLeave(p);
-            //  return 0;
-            //}
-            // for (i = 0; i <= sCheck.nPage; i++) { sCheck.anRef[i] = 0; }
-            i = PENDING_BYTE_PAGE(pBt);
-            if (i <= sCheck.nPage)
+            check.PgRefs = SysEx.Alloc((check.Pages / 8) + 1);
+            if (check.PgRefs == null)
             {
-                sCheck.Refs[i] = 1;
+                errors = 1;
+                Leave();
+                return null;
             }
-            sqlite3StrAccumInit(sCheck.errMsg, null, 1000, 20000);
-            //sCheck.errMsg.useMalloc = 2;
+            Pid i = PENDING_BYTE_PAGE(bt);
+            if (i <= check.Pages) setPageReferenced(check, i);
+            sqlite3StrAccumInit(check.errMsg, null, 1000, 20000);
 
-            /* Check the integrity of the freelist
-            */
-            checkList(sCheck, 1, (int)sqlite3Get4byte(pBt.pPage1.aData, 32),
-            (int)sqlite3Get4byte(pBt.pPage1.aData, 36), "Main freelist: ");
+            // Check the integrity of the freelist
+            checkList(check, true, (Pid)ConvertEx.Get4(bt.Page1.Data, 32), (int)ConvertEx.Get4(bt.Page1.Data, 36), "Main freelist: ");
 
-            /* Check all the tables.
-            */
-            for (i = 0; (int)i < nRoot && sCheck.mxErr != 0; i++)
+            // Check all the tables.
+            for (i = 0; (int)i < rootsLength && check.MaxErrors != 0; i++)
             {
-                if (aRoot[i] == 0)
-                    continue;
+                if (roots[i] == 0) continue;
 #if !OMIT_AUTOVACUUM
-                if (pBt.autoVacuum && aRoot[i] > 1)
-                {
-                    checkPtrmap(sCheck, (u32)aRoot[i], PTRMAP_ROOTPAGE, 0, "");
-                }
+                if (bt.AutoVacuum && roots[i] > 1)
+                    checkPtrmap(check, roots[i], PTRMAP.ROOTPAGE, 0, null);
 #endif
-                checkTreePage(sCheck, aRoot[i], "List of tree roots: ", ref refNULL, ref refNULL, null, null);
+                checkTreePage(check, roots[i], "List of tree roots: ", ref _nullRef_, false, ref _nullRef_, false);
             }
 
-            /* Make sure every page in the file is referenced
-            */
-            for (i = 1; i <= sCheck.nPage && sCheck.mxErr != 0; i++)
+            // Make sure every page in the file is referenced
+            for (i = 1; i <= check.Pages && check.MaxErrors != 0; i++)
             {
 #if OMIT_AUTOVACUUM
-if( sCheck.anRef[i]==null ){
-checkAppendMsg(sCheck, 0, "Page %d is never used", i);
-}
+                if (check.PgRefs[i] == null)
+                    checkAppendMsg(check, null, "Page %d is never used", i);
 #else
-                /* If the database supports auto-vacuum, make sure no tables contain
-** references to pointer-map pages.
-*/
-                if (sCheck.Refs[i] == 0 &&
-                (PTRMAP_PAGENO(pBt, i) != i || !pBt.autoVacuum))
-                {
-                    checkAppendMsg(sCheck, "", "Page %d is never used", i);
-                }
-                if (sCheck.Refs[i] != 0 &&
-                (PTRMAP_PAGENO(pBt, i) == i && pBt.autoVacuum))
-                {
-                    checkAppendMsg(sCheck, "", "Pointer map page %d is referenced", i);
-                }
+                // If the database supports auto-vacuum, make sure no tables contain references to pointer-map pages.
+                if (!getPageReferenced(check, i) && (PTRMAP_PAGENO(bt, i) != i || !bt.AutoVacuum))
+                    checkAppendMsg(check, null, "Page %d is never used", i);
+                if (getPageReferenced(check, i) && (PTRMAP_PAGENO(bt, i) == i && bt.AutoVacuum))
+                    checkAppendMsg(check, null, "Pointer map page %d is referenced", i);
 #endif
             }
 
-            /* Make sure this analysis did not leave any unref() pages.
-            ** This is an internal consistency check; an integrity check
-            ** of the integrity check.
-            */
-            if (NEVER(nRef != sqlite3PagerRefcount(pBt.pPager)))
-            {
-                checkAppendMsg(sCheck, "",
-                "Outstanding page count goes from %d to %d during this analysis",
-                nRef, sqlite3PagerRefcount(pBt.pPager)
-                );
-            }
+            // Make sure this analysis did not leave any unref() pages. This is an internal consistency check; an integrity check
+            // of the integrity check.
+            if (SysEx.NEVER(refs != bt.Pager.get_Refs()))
+                checkAppendMsg(check, null, "Outstanding page count goes from %d to %d during this analysis", refs, bt.Pager.get_Refs());
 
-            /* Clean  up and report errors.
-            */
-            sqlite3BtreeLeave(p);
-            sCheck.Refs = null;// sqlite3_free( ref sCheck.anRef );
-            //if( sCheck.mallocFailed ){
-            //  sqlite3StrAccumReset(sCheck.errMsg);
-            //  pnErr = sCheck.nErr+1;
-            //  return 0;
-            //}
-            pnErr = sCheck.nErr;
-            if (sCheck.nErr == 0)
-                sqlite3StrAccumReset(sCheck.errMsg);
-            return sqlite3StrAccumFinish(sCheck.errMsg);
+            // Clean  up and report errors.
+            Leave();
+            check.PgRefs = null;
+            if (check.MallocFailed)
+            {
+                sqlite3StrAccumReset(check.ErrMsg);
+                errors = check.Errors + 1;
+                return 0;
+            }
+            errors = check.Errors;
+            if (check.Errors == 0)
+                sqlite3StrAccumReset(check.ErrMsg);
+            return sqlite3StrAccumFinish(check.ErrMsg);
         }
 
 #endif

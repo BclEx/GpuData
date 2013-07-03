@@ -128,8 +128,8 @@ namespace Core
 		static int64 GetCachedRowID(BtCursor *cur);
 		static RC CloseCursor(BtCursor *cur);
 
-		char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
-		Pager *Pager();
+		char *IntegrityCheck(Pid *roots, int rootsLength, int maxErrors, int *errors);
+		Pager *get_Pager();
 
 		static RC PutData(BtCursor *cur, uint32 offset, uint32 amount, void *z);
 		static void CacheOverflow(BtCursor *cur);
@@ -154,38 +154,39 @@ namespace Core
 		RC Checkpoint(int mode, int *logs, int *checkpoints);
 #endif
 
-#ifndef SHARED_CACHE
-		//void sqlite3BtreeEnter(Btree*);
-		//void sqlite3BtreeEnterAll(Context*);
+#ifndef OMIT_SHARED_CACHE
+		void Enter();
+		static void EnterAll(Context *);
 #else
-		//#define Enter(X) 
-		//#define EnterAll(X)
+#define Enter(X) 
+#define EnterAll(X)
 #endif
 
-#if !defined(OMIT_SHARED_CACHE) && THREADSAFE
-		//int sqlite3BtreeSharable(Btree*);
-		//void sqlite3BtreeLeave(Btree*);
-		//void sqlite3BtreeEnterCursor(BtCursor*);
-		//void sqlite3BtreeLeaveCursor(BtCursor*);
-		//void sqlite3BtreeLeaveAll(sqlite3*);
+#ifndef defined(OMIT_SHARED_CACHE)
+		int Sharable();
+		void Leave();
+		static void EnterCursor(BtCursor *);
+		static void LeaveCursor(BtCursor *);
+		static void LeaveAll(Context *);
 #ifndef _DEBUG
 		// These routines are used inside assert() statements only.
-		//int sqlite3BtreeHoldsMutex(Btree*);
-		//int sqlite3BtreeHoldsAllMutexes(sqlite3*);
-		//int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
+		int HoldsMutex();
+		int HoldsAllMutexes(sqlite3*);
+		int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
 #endif
 #else
-		//#define sqlite3BtreeSharable(X) 0
-		//#define sqlite3BtreeLeave(X)
-		//#define sqlite3BtreeEnterCursor(X)
-		//#define sqlite3BtreeLeaveCursor(X)
-		//#define sqlite3BtreeLeaveAll(X)
+#define Sharable(X) 0
+#define Leave(X)
+#define EnterCursor(X)
+#define LeaveCursor(X)
+#define LeaveAll(X)
+#ifndef _DEBUG
 		// These routines are used inside assert() statements only.
-		//#define sqlite3BtreeHoldsMutex(X) 1
-		//#define sqlite3BtreeHoldsAllMutexes(X) 1
-		//#define sqlite3SchemaMutexHeld(X,Y,Z) 1
+#define HoldsMutex(X) 1
+#define HoldsAllMutexes(X) 1
+#define sqlite3SchemaMutexHeld(X,Y,Z) 1
 #endif
-
+#endif
 
 	};
 }

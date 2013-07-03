@@ -191,7 +191,7 @@ namespace Core
 		RC OpenWal(bool *opened);
 		RC CloseWal();
 #endif
-#ifdef SQLITE_ENABLE_ZIPVFS
+#ifdef ENABLE_ZIPVFS
 		int WalFramesize();
 #endif
 

@@ -145,7 +145,7 @@ namespace Core
 #ifndef OMIT_INCRBLOB
 		uint32 *Overflows;		// Cache of overflow page locations
 #endif
-		Pid IDRoot;				// The root page of this tree
+		Pid RootID;				// The root page of this tree
 		int64 CachedRowID;		// Next rowid cache.  0 means not valid
 		CellInfo Info;          // A parse of the cell we are pointing at
 		int64 KeyLength;		// Size of pKey, or last integer key
@@ -159,16 +159,16 @@ namespace Core
 		bool IsIncrblobHandle;  // True if this cursor is an incr. io handle
 #endif
 		uint8 Hints;			// As configured by CursorSetHints()
-		int16 PageIdx;			// Index of current page in apPage
+		int16 ID;				// Index of current page in apPage
 		uint16 Idxs[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
 		MemPage *Pages[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 	};
 
-#define PENDING_BYTE_PAGE(pBt) PAGER_MJ_PGNO(pBt)
+#define PENDING_BYTE_PAGE(bt) PAGER_MJ_PGNO(bt)
 
-#define PTRMAP_PAGENO(pBt, pgno) ptrmapPageno(pBt, pgno)
-#define PTRMAP_PTROFFSET(pgptrmap, pgno) (5*(pgno-pgptrmap-1))
-#define PTRMAP_ISPAGE(pBt, pgno) (PTRMAP_PAGENO((pBt),(pgno))==(pgno))
+#define PTRMAP_PAGENO(bt, id) ptrmapPageno(bt, id)
+#define PTRMAP_PTROFFSET(ptrmapID, id) (5 * (id - pgptrmapID - 1))
+#define PTRMAP_ISPAGE(bt, id) (PTRMAP_PAGENO((bt), (id)) == (id))
 
 	enum PTRMAP : uint8
 	{
@@ -183,23 +183,23 @@ namespace Core
 	_assert(p->Bt->InTransaction != TRANS::NONE || p->Bt->Transactions == 0); \
 	_assert(p->Bt->InTransaction >= p->InTrans); 
 
-#ifndef OMIT_AUTOVACUUM
-#define ISAUTOVACUUM (pBt->autoVacuum)
-#else
-#define ISAUTOVACUUM 0
-#endif
+//#ifndef OMIT_AUTOVACUUM
+//#define ISAUTOVACUUM (pBt->autoVacuum)
+//#else
+//#define ISAUTOVACUUM 0
+//#endif
 
 	typedef struct IntegrityCk IntegrityCk;
 	struct IntegrityCk
 	{
-		BtShared *pBt;    // The tree being checked out
-		Pager *pPager;    // The associated pager.  Also accessible by pBt->pPager
-		uint8 *aPgRef;       // 1 bit per page in the db (see above)
-		Pid nPage;       // Number of pages in the database
-		int mxErr;        // Stop accumulating errors when this reaches zero
-		int nErr;         // Number of messages written to zErrMsg so far
-		int mallocFailed; // A memory allocation error has occurred
-		StrAccum errMsg;  // Accumulate the error message text here
+		BtShared *Bt;		// The tree being checked out
+		Pager *Pager;		// The associated pager.  Also accessible by pBt->pPager
+		uint8 *PgRefs;		// 1 bit per page in the db (see above)
+		Pid Pages;			// Number of pages in the database
+		int MaxErrors;		// Stop accumulating errors when this reaches zero
+		int Errors;			// Number of messages written to zErrMsg so far
+		bool MallocFailed;	// A memory allocation error has occurred
+		StrAccum ErrMsg;	// Accumulate the error message text here
 	};
 
 	BTS inline operator |= (BTS a, BTS b) { return (BTS)(a | b); }

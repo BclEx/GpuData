@@ -158,11 +158,11 @@ namespace Core
             return 9;
         }
 
-        public static byte GetVariant4(byte[] p, out int v) { v = p[0]; if (v <= 0x7F) return 1; uint uv; var r = _getVaraint4(p, 0, out uv); v = (int)uv; return r; }
-        public static byte GetVariant4(byte[] p, out uint v) { v = p[0]; if (v <= 0x7F) return 1; return _getVaraint4(p, 0, out v); }
-        public static byte GetVariant4(byte[] p, uint offset, out int v) { v = p[offset]; if (v <= 0x7F) return 1; uint uv; var r = _getVaraint4(p, offset, out uv); v = (int)uv; return r; }
-        public static byte GetVariant4(byte[] p, uint offset, out uint v) { v = p[offset]; if (v <= 0x7F) return 1; return _getVaraint4(p, offset, out v); }
-        private static byte _getVaraint4(byte[] p, uint offset, out uint v)
+        public static byte GetVariant4(byte[] p, out int v) { v = p[0]; if (v <= 0x7F) return 1; uint uv; var r = _getVariant4(p, 0, out uv); v = (int)uv; return r; }
+        public static byte GetVariant4(byte[] p, out uint v) { v = p[0]; if (v <= 0x7F) return 1; return _getVariant4(p, 0, out v); }
+        public static byte GetVariant4(byte[] p, uint offset, out int v) { v = p[offset]; if (v <= 0x7F) return 1; uint uv; var r = _getVariant4(p, offset, out uv); v = (int)uv; return r; }
+        public static byte GetVariant4(byte[] p, uint offset, out uint v) { v = p[offset]; if (v <= 0x7F) return 1; return _getVariant4(p, offset, out v); }
+        private static byte _getVariant4(byte[] p, uint offset, out uint v)
         {
             uint a, b;
             // The 1-byte case.  Overwhelmingly the most common.  Handled inline  by the getVarin32() macro
@@ -211,9 +211,9 @@ namespace Core
             a[1] = (byte)p[(int)offset + 1];
             a[2] = (byte)p[(int)offset + 2];
             a[3] = (byte)p[(int)offset + 3];
-            uint uv; var r = _getVaraint4(a, 0, out uv); v = (int)uv; return r;
+            uint uv; var r = _getVariant4(a, 0, out uv); v = (int)uv; return r;
         }
-        public static byte GetVaraint4(string p, uint offset, out uint v)
+        public static byte GetVariant4(string p, uint offset, out uint v)
         {
             v = p[(int)offset]; if (v <= 0x7F) return 1;
             var a = new byte[4];
@@ -221,7 +221,7 @@ namespace Core
             a[1] = (byte)p[(int)offset + 1];
             a[2] = (byte)p[(int)offset + 2];
             a[3] = (byte)p[(int)offset + 3];
-            return _getVaraint4(a, 0, out v);
+            return _getVariant4(a, 0, out v);
         }
 
         public static byte PutVariant(byte[] p, int v) { return PutVariantL(p, 0, (ulong)v); }

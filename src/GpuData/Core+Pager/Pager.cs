@@ -59,8 +59,6 @@ namespace Core
             // For C#
             public object WalData = null;
 #endif
-            // For C#
-            //public static implicit operator bool(PagerSavepoint b) { return (b != null); }
         }
 
         enum STAT : byte

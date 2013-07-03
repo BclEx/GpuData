@@ -92,7 +92,7 @@ namespace Core
 	static bool hasReadConflicts(Btree *btree, Pid root)
 	{
 		for (BtCursor *p = btree->Bt->Cursor; p; p = p->Next)
-			if (p->IDRoot == root &&
+			if (p->RootID == root &&
 				p->Btree != btree &&
 				(p->Btree->Ctx->Flags & Context::FLAG::ReadUncommitted) == 0)
 				return true;
@@ -102,7 +102,7 @@ namespace Core
 
 	static RC querySharedCacheTableLock(Btree *p, Pid table, LOCK lock)
 	{
-		_assert(sqlite3BtreeHoldsMutex(p));
+		_assert(p->HoldsMutex());
 		_assert(lock == LOCK::READ || lock == LOCK::WRITE);
 		_assert(p->Ctx != nullptr);
 		_assert(!(p->Ctx->Flags & Context::FLAG::ReadUncommitted) || lock == LOCK::WRITE || table == 1);
@@ -150,7 +150,7 @@ namespace Core
 
 	static RC setSharedCacheTableLock(Btree *p, Pid table, LOCK lock)
 	{
-		_assert(sqlite3BtreeHoldsMutex(p));
+		_assert(p->HoldsMutex());
 		_assert(lock == LOCK::READ || lock == LOCK::WRITE);
 		_assert(p->Ctx != nullptr);
 
@@ -200,7 +200,7 @@ namespace Core
 		BtShared *bt = p->Bt;
 		BtLock **iter = &bt->Lock;
 
-		_assert(sqlite3BtreeHoldsMutex(p));
+		_assert(p->HoldsMutex());
 		_assert(p->Sharable || iter == nullptr);
 		_assert(p->InTrans > 0);
 
@@ -276,14 +276,14 @@ namespace Core
 	static void invalidateAllOverflowCache(BtShared *bt)
 	{
 		_assert(MutexEx::Held(bt->Mutex));
-		for (BtCursor *p = pBt->Cursor; p; p = p->Next)
+		for (BtCursor *p = bt->Cursor; p; p = p->Next)
 			invalidateOverflowCache(p);
 	}
 
 	static void invalidateIncrblobCursors(Btree *btree, int64 rowid, bool isClearTable)
 	{
 		BtShared *bt = btree->Bt;
-		_assert(sqlite3BtreeHoldsMutex(btree));
+		_assert(btree->HoldsMutex());
 		for (BtCursor *p = bt->Cursor; p; p = p->Next)
 			if (p->IsIncrblobHandle && (isClearTable || p->Info.Key == rowid))
 				p->State = CURSOR::INVALID;
@@ -470,7 +470,7 @@ namespace Core
 		return ret;
 	}
 
-	static void ptrmapPut(BtShared *bt, Pid key, PTRMAP type, Pid parent, int *rcRef)
+	static void ptrmapPut(BtShared *bt, Pid key, PTRMAP type, Pid parent, RC *rcRef)
 	{
 		if (*rcRef != RC::OK) return;
 
@@ -535,7 +535,7 @@ ptrmap_exit:
 		}
 		_assert(offset <= (int)bt->UsableSize - 5);
 		_assert(type != 0);
-		*type = ptrmap[offset];
+		*type = (PTRMAP)ptrmap[offset];
 		if (id) *id = ConvertEx::Get4(&ptrmap[offset + 1]);
 
 		Pager::Unref(page);
@@ -555,13 +555,13 @@ ptrmap_exit:
 	static uint8 *findOverflowCell(MemPage *page, int cell)
 	{
 		_assert(MutexEx::Held(page->Bt->Mutex));
-		for (int i = page->OverflowsUsed - 1; i >= 0; i--)
+		for (int i = page->Overflows - 1; i >= 0; i--)
 		{
-			int k = page->OverflowIdxs[i];
+			int k = page->OvflIdxs[i];
 			if (k <= cell)
 			{
 				if (k == cell)
-					return page->Overflows[i];
+					return page->Ovfls[i];
 				cell--;
 			}
 		}
@@ -669,7 +669,7 @@ ptrmap_exit:
 		if (size < 4)
 			size = 4;
 
-		assert(size == debuginfo.Size);
+		_assert(size == debuginfo.Size);
 		return (uint16)size;
 	}
 
@@ -691,7 +691,7 @@ ptrmap_exit:
 		if (info.Overflow)
 		{
 			Pid ovfl = ConvertEx::Get4(&cell[info.Overflow]);
-			ptrmapPut(page->Bt, ovfl, PTRMAP_OVERFLOW1, page->ID, rcRef);
+			ptrmapPut(page->Bt, ovfl, PTRMAP::OVERFLOW1, page->ID, rcRef);
 		}
 	}
 #endif
@@ -1511,8 +1511,8 @@ btree_open_out:
 		_assert(level >= 1 && level <= 3);
 		Enter();
 		Bt->Pager->SetSafetyLevel(level, fullSync, ckptFullSync);
-		Leave(p);
-		return RC.OK;
+		Leave();
+		return RC::OK;
 	}
 #endif
 
@@ -1541,8 +1541,8 @@ btree_open_out:
 		_assert(reserves >= 0 && reserves <= 255);
 		if (pageSize >= 512 && pageSize <= MAX_PAGE_SIZE && ((pageSize - 1) & pageSize) == 0)
 		{
-			assert((pageSize & 7) == 0);
-			assert(!bt->pPage1 && !bt->Cursor);
+			_assert((pageSize & 7) == 0);
+			_assert(!bt->Page1 && !bt->Cursor);
 			bt->PageSize = (uint32)pageSize;
 			freeTempSpace(bt);
 		}
@@ -1578,7 +1578,7 @@ btree_open_out:
 	int Btree::MaxPageCount(int maxPage)
 	{
 		Enter();
-		int n = Bt->Pager->MaxPageCount(maxPage);
+		int n = Bt->Pager->MaxPages(maxPage);
 		Leave();
 		return n;
 	}
@@ -1624,7 +1624,7 @@ btree_open_out:
 		Btree::AUTOVACUUM rc = (!bt->AutoVacuum ? Btree::AUTOVACUUM::NONE :
 			!bt->IncrVacuum ? Btree::AUTOVACUUM::FULL :
 			Btree::AUTOVACUUM::INCR);
-		Leave(p);
+		Leave();
 		return rc;
 #endif
 	}
@@ -1654,7 +1654,7 @@ btree_open_out:
 		{
 			uint8 *page1Data = page1->Data;
 			rc = RC::NOTADB;
-			if (_memcmp(page1Data, )magicHeader, 16) != 0)
+			if (_memcmp(page1Data, _magicHeader, 16) != 0)
 				goto page1_init_failed;
 
 #ifdef OMIT_WAL
@@ -1706,7 +1706,7 @@ btree_open_out:
 				bt->UsableSize = usableSize;
 				bt->PageSize = pageSize;
 				freeTempSpace(bt);
-				rc = bt->Pager->SetPagesize(&bt->PageSize, pageSize - usableSize);
+				rc = bt->Pager->SetPageSize(&bt->PageSize, pageSize - usableSize);
 				return rc;
 			}
 			if ((bt->Ctx->Flags & Context::FLAG::RecoveryMode) == 0 && pages > pagesFile)
@@ -1716,8 +1716,8 @@ btree_open_out:
 			}
 			if (usableSize < 480)
 				goto page1_init_failed;
-			bt->pageSize = pageSize;
-			bt->usableSize = usableSize;
+			bt->PageSize = pageSize;
+			bt->UsableSize = usableSize;
 #ifndef OMIT_AUTOVACUUM
 			bt->AutoVacuum = (ConvertEx::Get4(&page1Data[36 + 4 * 4]));
 			bt->IncrVacuum = (ConvertEx::Get4(&page1Data[36 + 7 * 4]));
@@ -1758,8 +1758,8 @@ page1_init_failed:
 		_assert(bt->Cursor == nullptr || bt->InTransaction > TRANS::NONE);
 		if (bt->InTransaction == TRANS::NONE && bt->Page1 != nullptr)
 		{
-			_assert(bt->Page1->Data);
-			_assert(bt->Pager->Refs() == 1);
+			_assert(bt->Page1->Data != nullptr);
+			_assert(bt->Pager->get_Refs() == 1);
 			releasePage(bt->Page1);
 			bt->Page1 = nullptr;
 		}
@@ -1947,7 +1947,7 @@ trans_begun:
 #pragma region Autovacuum
 #ifndef OMIT_AUTOVACUUM
 
-	static int setChildPtrmaps(MemPage *page)
+	static RC setChildPtrmaps(MemPage *page)
 	{
 		bool isInitOrig = page->IsInit;
 		BtShared *bt = page->Bt;
@@ -1965,14 +1965,14 @@ trans_begun:
 			if (!page->Leaf)
 			{
 				Pid childID = ConvertEx::Get4(cell);
-				ptrmapPut(bt, childID, PTRMAP_BTREE, id, &rc);
+				ptrmapPut(bt, childID, PTRMAP::BTREE, id, &rc);
 			}
 		}
 
 		if (!page->Leaf)
 		{
 			Pid childID = ConvertEx::Get4(&page->Data[page->HdrOffset + 8]);
-			ptrmapPut(bt, childID, PTRMAP_BTREE, id, &rc);
+			ptrmapPut(bt, childID, PTRMAP::BTREE, id, &rc);
 		}
 
 set_child_ptrmaps_out:
@@ -2302,7 +2302,7 @@ set_child_ptrmaps_out:
 	static void btreeEndTransaction(Btree *p)
 	{
 		BtShared *bt = p->Bt;
-		_assert(sqlite3BtreeHoldsMutex(p));
+		_assert(p->HoldsMutex());
 
 #ifndef OMIT_AUTOVACUUM
 		bt->DoTruncate = false;
@@ -4200,8 +4200,8 @@ freepage_out:
 			uint8 *cell = page->Ovfls[0];
 			uint16 sizeCell = cellSizePtr(page, cell);
 
-			assert(Pager::Iswriteable(newPage->DBPage));
-			assert(page->Data[0] == (PTF_INTKEY | PTF_LEAFDATA | PTF_LEAF));
+			_assert(Pager::Iswriteable(newPage->DBPage));
+			_assert(page->Data[0] == (PTF_INTKEY | PTF_LEAFDATA | PTF_LEAF));
 			zeroPage(newPage, PTF_INTKEY | PTF_LEAFDATA | PTF_LEAF);
 			assemblePage(newPage, 1, &cell, &sizeCell);
 
@@ -4937,7 +4937,7 @@ balance_cleanup:
 		RC rc = RC::OK;
 		do
 		{
-			int pageID = cur->PageID;
+			int pageID = cur->ID;
 			MemPage *page = cur->Pages[pageID];
 
 			if (pageID == 0)
@@ -4950,7 +4950,7 @@ balance_cleanup:
 					rc = balance_deeper(page, &cur->Pages[1]);
 					if (rc == RC::OK)
 					{
-						cur->PageID = 1;
+						cur->ID = 1;
 						cur->Idxs[0] = 0;
 						cur->Idxs[1] = 0;
 						_assert(cur->Pages[1]->Overflows);
@@ -5012,7 +5012,7 @@ balance_cleanup:
 
 				// The next iteration of the do-loop balances the parent page.
 				releasePage(page);
-				cur->PageID--;
+				cur->ID--;
 			}
 		} while (rc == RC::OK);
 
@@ -5066,7 +5066,7 @@ balance_cleanup:
 		}
 		_assert(cur->State == CURSOR::VALID || (cur->State == CURSOR::INVALID && loc));
 
-		MemPage *page = cur->Pages[cur->PageID];
+		MemPage *page = cur->Pages[cur->ID];
 		_assert(page->IntKey || keyLength >= 0);
 		_assert(page->Leaf || !page->IntKey);
 
@@ -5080,7 +5080,7 @@ balance_cleanup:
 		if (rc) goto end_insert;
 		_assert(sizeNew == cellSizePtr(page, newCell));
 		_assert(sizeNew <= MX_CELL_SIZE(bt));
-		int idx = cur->Idxs[cur->PageID];
+		int idx = cur->Idxs[cur->ID];
 		if (loc == 0)
 		{
 			_assert(idx < page->Cells);
@@ -5098,7 +5098,7 @@ balance_cleanup:
 		else if (loc < 0 && page->Cells > 0)
 		{
 			_assert(page->Leaf);
-			idx = ++cur->Idxs[cur->PageID];
+			idx = ++cur->Idxs[cur->ID];
 		}
 		else
 			assert(page->Leaf);
@@ -5124,10 +5124,10 @@ balance_cleanup:
 
 			// Must make sure nOverflow is reset to zero even if the balance() fails. Internal data structure corruption will result otherwise. 
 			// Also, set the cursor state to invalid. This stops saveCursorPosition() from trying to save the current position of the cursor.
-			cur->Pages[cur->PageID]->Overflows = 0;
+			cur->Pages[cur->ID]->Overflows = 0;
 			cur->State = CURSOR::INVALID;
 		}
-		_assert(cur->Pages[cur->PageID]->Overflows == 0);
+		_assert(cur->Pages[cur->ID]->Overflows == 0);
 
 end_insert:
 		return rc;
@@ -5144,7 +5144,7 @@ end_insert:
 		_assert(hasSharedCacheTableLock(p, cur->IDRoot, cur->KeyInfo != nullptr, 2));
 		_assert(!hasReadConflicts(p, cur->IDRoot));
 
-		if (SysEx_NEVER(cur->Idxs[cur->PageID] >= cur->Pages[cur->PageID]->Cells) || SysEx_NEVER(cur->State != CURSOR::VALID))
+		if (SysEx_NEVER(cur->Idxs[cur->ID] >= cur->Pages[cur->ID]->Cells) || SysEx_NEVER(cur->State != CURSOR::VALID))
 			return RC::ERROR; // Something has gone awry.
 
 		int cellDepth = cur->Page; // Depth of node containing pCell
@@ -5184,7 +5184,7 @@ end_insert:
 		// node to replace the deleted cell.
 		if (!page->Leaf)
 		{
-			MemPage *leaf = cur->Pages[cur->PageID];
+			MemPage *leaf = cur->Pages[cur->ID];
 			Pid n = cur->Pages[cellDepth + 1]->ID;
 
 			cell = findCell(leaf, leaf->Cells - 1);
@@ -5209,10 +5209,10 @@ end_insert:
 		// tree that we can be sure that any problem in the internal node has been corrected, so be it. Otherwise, after balancing the leaf node,
 		// walk the cursor up the tree to the internal node and balance it as well.
 		rc = balance(cur);
-		if (rc == RC::OK && cur->PageID > cellDepth)
+		if (rc == RC::OK && cur->ID > cellDepth)
 		{
-			while (cur->PageID > cellDepth)
-				releasePage(cur->Pages[cur->PageID--]);
+			while (cur->ID > cellDepth)
+				releasePage(cur->Pages[cur->ID--]);
 			rc = balance(cur);
 		}
 
@@ -5517,9 +5517,9 @@ cleardatabasepage_out:
 		Enter();
 		_assert(InTrans > TRANS::NONE);
 		_assert(querySharedCacheTableLock(this, MASTER_ROOT, LOCK::READ) == RC::OK);
-		_assert(bt->Page1);
+		_assert(bt->Page1 != nullptr);
 		_assert(idx >= 0 && idx <= 15);
-		*meta = get4(&bt->Page1->Data[36 + idx * 4]);
+		*meta = ConvertEx::Get4(&bt->Page1->Data[36 + idx * 4]);
 		// If auto-vacuum is disabled in this build and this is an auto-vacuum database, mark the database as read-only.
 #ifdef OMIT_AUTOVACUUM
 		if (idx == BTREE_LARGEST_ROOT_PAGE && *meta > 0)
@@ -5531,7 +5531,7 @@ cleardatabasepage_out:
 	RC Btree::UpdateMeta(int idx, uint32 meta)
 	{
 		BtShared *bt = Bt;
-		assert(idx >= 1 && idx <= 15);
+		_assert(idx >= 1 && idx <= 15);
 		Enter();
 		_assert(InTrans == TRANS::WRITE);
 		_assert(bt->Page1 != 0);
@@ -5556,7 +5556,7 @@ cleardatabasepage_out:
 #ifndef OMIT_BTREECOUNT
 	RC Btree::Count(BtCursor *cur, int64 *entrysOut)
 	{
-		if (cur->IDRoot == 0)
+		if (cur->RootID == 0)
 		{
 			*entrysOut = 0;
 			return RC::OK;
@@ -5568,7 +5568,7 @@ cleardatabasepage_out:
 		while (rc == RC::OK)
 		{
 			// If this is a leaf page or the tree is not an int-key tree, then this page contains countable entries. Increment the entry counter accordingly.
-			MemPage *page = cur->Pages[cur->PageID]; // Current page of the b-tree
+			MemPage *page = cur->Pages[cur->ID]; // Current page of the b-tree
 			if (page->Leaf || !page->IntKey)
 				entrys += page->Cells;
 
@@ -5581,21 +5581,21 @@ cleardatabasepage_out:
 			{
 				do
 				{
-					if (cur->PageID == 0)
+					if (cur->ID == 0)
 					{
 						// All pages of the b-tree have been visited. Return successfully.
 						*entrysOut = entrys;
 						return RC::OK;
 					}
 					moveToParent(cur);
-				} while (cur->iIdxs[cur->PageID] >= cur->Pages[cur->PageID]->Cells);
+				} while (cur->Idxs[cur->ID] >= cur->Pages[cur->ID]->Cells);
 
-				cur->Idxs[cur->PageID]++;
-				page = cur->Pages[cur->PageID];
+				cur->Idxs[cur->ID]++;
+				page = cur->Pages[cur->ID];
 			}
 
 			// Descend to the child node of the cell that the cursor currently points at. This is the right-child if (iIdx==pPage->nCell).
-			int idx = cur->Idxs[cur->PageID]; // Index of child node in parent
+			int idx = cur->Idxs[cur->ID]; // Index of child node in parent
 			if (idx == page->Cells)
 				rc = moveToChild(cur, ConvertEx::Get4(&page->Data[page->HdrOffset + 8]));
 			else
@@ -5607,7 +5607,7 @@ cleardatabasepage_out:
 	}
 #endif
 
-	Pager *Btree::Pager()
+	Pager *Btree::get_Pager()
 	{
 		return Bt->Pager;
 	}
@@ -5623,444 +5623,378 @@ cleardatabasepage_out:
 		if (!check->MaxErrors) return;
 		check->MaxErrors--;
 		check->Errors++;
-		va_start(ap, format);
-		if (check->ErrMsg.nChar)
-			sqlite3StrAccumAppend(&check->ErrMsg, "\n", 1);
-		if (msg1)
-			sqlite3StrAccumAppend(&pCheck->ErrMsg, msg1, -1);
-		sqlite3VXPrintf(&check->ErrMsg, 1, format, ap);
-		va_end(ap);
-		if (check->ErrMsg.MallocFailed)
-			check->MallocFailed = 1;
+		// implement
+		//va_start(ap, format);
+		//if (check->ErrMsg.nChar)
+		//	sqlite3StrAccumAppend(&check->ErrMsg, "\n", 1);
+		//if (msg1)
+		//	sqlite3StrAccumAppend(&check->ErrMsg, msg1, -1);
+		//sqlite3VXPrintf(&check->ErrMsg, 1, format, ap);
+		//va_end(ap);
+		//if (check->ErrMsg.MallocFailed)
+		//	check->MallocFailed = true;
 	}
 
-	static int getPageReferenced(IntegrityCk *pCheck, Pgno iPg){
-		assert( iPg<=pCheck->nPage && sizeof(pCheck->aPgRef[0])==1 );
-		return (pCheck->aPgRef[iPg/8] & (1 << (iPg & 0x07)));
+	static bool getPageReferenced(IntegrityCk *check, Pid pageID)
+	{
+		_assert(pageID <= check->Pages && sizeof(check->PgRefs[0]) == 1);
+		return (check->PgRefs[pageID / 8] & (1 << (pageID & 0x07)));
 	}
 
-	static void setPageReferenced(IntegrityCk *pCheck, Pgno iPg){
-		assert( iPg<=pCheck->nPage && sizeof(pCheck->aPgRef[0])==1 );
-		pCheck->aPgRef[iPg/8] |= (1 << (iPg & 0x07));
+	static void setPageReferenced(IntegrityCk *check, Pid pageID)
+	{
+		_assert(pageID <= check->Pages && sizeof(check->PgRefs[0]) == 1);
+		check->PgRefs[pageID / 8] |= (1 << (pageID & 0x07));
 	}
 
-	static int checkRef(IntegrityCk *pCheck, Pgno iPage, char *zContext){
-		if( iPage==0 ) return 1;
-		if( iPage>pCheck->nPage ){
-			checkAppendMsg(pCheck, zContext, "invalid page number %d", iPage);
-			return 1;
+	static bool checkRef(IntegrityCk *check, Pid pageID, char *context)
+	{
+		if (pageID == 0) return true;
+		if (pageID > check->Pages)
+		{
+			checkAppendMsg(check, context, "invalid page number %d", pageID);
+			return true;
 		}
-		if( getPageReferenced(pCheck, iPage) ){
-			checkAppendMsg(pCheck, zContext, "2nd reference to page %d", iPage);
-			return 1;
+		if (getPageReferenced(check, pageID))
+		{
+			checkAppendMsg(check, context, "2nd reference to page %d", pageID);
+			return true;
 		}
-		setPageReferenced(pCheck, iPage);
-		return 0;
+		setPageReferenced(check, pageID);
+		return false;
 	}
 
 #ifndef OMIT_AUTOVACUUM
-	static void checkPtrmap(
-		IntegrityCk *pCheck,   /* Integrity check context */
-		Pgno iChild,           /* Child page number */
-		u8 eType,              /* Expected pointer map type */
-		Pgno iParent,          /* Expected pointer map parent page number */
-		char *zContext         /* Context description (used for error msg) */
-		){
-			int rc;
-			u8 ePtrmapType;
-			Pgno iPtrmapParent;
+	static void checkPtrmap(IntegrityCk *check, Pid childID, PTRMAP type, Pid parentID, char *context)
+	{
+		PTRMAP ptrmapType;
+		Pid ptrmapParentID;
+		RC rc = ptrmapGet(check->Bt, childID, &ptrmapType, &ptrmapParentID);
+		if (rc != RC::OK)
+		{
+			if (rc == RC::NOMEM || rc == RC::IOERR_NOMEM) check->MallocFailed = true;
+			checkAppendMsg(check, context, "Failed to read ptrmap key=%d", childID);
+			return;
+		}
 
-			rc = ptrmapGet(pCheck->pBt, iChild, &ePtrmapType, &iPtrmapParent);
-			if( rc!=SQLITE_OK ){
-				if( rc==SQLITE_NOMEM || rc==SQLITE_IOERR_NOMEM ) pCheck->mallocFailed = 1;
-				checkAppendMsg(pCheck, zContext, "Failed to read ptrmap key=%d", iChild);
-				return;
-			}
-
-			if( ePtrmapType!=eType || iPtrmapParent!=iParent ){
-				checkAppendMsg(pCheck, zContext, 
-					"Bad ptr map entry key=%d expected=(%d,%d) got=(%d,%d)", 
-					iChild, eType, iParent, ePtrmapType, iPtrmapParent);
-			}
+		if (ptrmapType != type || ptrmapParentID != parentID)
+			checkAppendMsg(check, context, "Bad ptr map entry key=%d expected=(%d,%d) got=(%d,%d)", childID, type, parentID, ptrmapType, ptrmapParentID);
 	}
 #endif
 
-	static void checkList(
-		IntegrityCk *pCheck,  /* Integrity checking context */
-		int isFreeList,       /* True for a freelist.  False for overflow page list */
-		int iPage,            /* Page number for first page in the list */
-		int N,                /* Expected number of pages in the list */
-		char *zContext        /* Context for error messages */
-		){
-			int i;
-			int expected = N;
-			int iFirst = iPage;
-			while( N-- > 0 && pCheck->mxErr ){
-				DbPage *pOvflPage;
-				unsigned char *pOvflData;
-				if( iPage<1 ){
-					checkAppendMsg(pCheck, zContext,
-						"%d of %d pages missing from overflow list starting at %d",
-						N+1, expected, iFirst);
+	static void checkList(IntegrityCk *check, bool isFreeList, int pageID, int length, char *context)
+	{
+		int expected = length;
+		int firstID = pageID;
+		while (length-- > 0 && check->MaxErrors)
+		{
+			if (pageID < 1)
+			{
+				checkAppendMsg(check, context, "%d of %d pages missing from overflow list starting at %d", length + 1, expected, firstID);
+				break;
+			}
+			if (checkRef(check, pageID, context)) break;
+			IPage *ovflPage;
+			if (check->Pager->Acquire((Pid)pageID, &ovflPage, false))
+			{
+				checkAppendMsg(check, context, "failed to get page %d", pageID);
+				break;
+			}
+			unsigned char *ovflData = (unsigned char *)Pager::GetData(ovflPage);
+			if (isFreeList)
+			{
+				int n = ConvertEx::Get4(&ovflData[4]);
+#ifndef OMIT_AUTOVACUUM
+				if (check->Bt->AutoVacuum)
+					checkPtrmap(check, pageID, PTRMAP::FREEPAGE, 0, context);
+#endif
+				if (n > (int)check->Bt->UsableSize / 4 - 2)
+				{
+					checkAppendMsg(check, context, "freelist leaf count too big on page %d", pageID);
+					length--;
+				}
+				else
+				{
+					for (int i = 0; i < n; i++)
+					{
+						Pid freePageID = ConvertEx::Get4(&ovflData[8 + i * 4]);
+#ifndef OMIT_AUTOVACUUM
+						if (check->Bt->AutoVacuum)
+							checkPtrmap(check, freePageID, PTRMAP::FREEPAGE, 0, context);
+#endif
+						checkRef(check, freePageID, context);
+					}
+					length -= n;
+				}
+			}
+#ifndef OMIT_AUTOVACUUM
+			else
+			{
+				// If this database supports auto-vacuum and iPage is not the last page in this overflow list, check that the pointer-map entry for
+				// the following page matches iPage.
+				if (check->Bt->AutoVacuum && length > 0)
+				{
+					int i = ConvertEx::Get4(ovflData);
+					checkPtrmap(check, i, PTRMAP::OVERFLOW2, pageID, context);
+				}
+			}
+#endif
+			pageID = ConvertEx::Get4(ovflData);
+			Pager::Unref(ovflPage);
+		}
+	}
+
+	static int checkTreePage(IntegrityCk *check, Pid pageID, char *parentContext, int64 *parentMinKey, int64 *parentMaxKey)
+	{
+		char context[100];
+		sqlite3_snprintf(sizeof(context), context, "Page %d: ", pageID);
+
+		// Check that the page exists
+		BtShared *bt = check->Bt;
+		int usableSize = bt->UsableSize;
+		if (pageID == 0) return 0;
+		if (checkRef(check, pageID, parentContext)) return 0;
+		RC rc;
+		MemPage *page;
+		if ((rc = btreeGetPage(bt, pageID, &page, 0)) != RC::OK)
+		{
+			checkAppendMsg(check, context, "unable to get the page. error code=%d", rc);
+			return 0;
+		}
+
+		// Clear MemPage.isInit to make sure the corruption detection code in btreeInitPage() is executed.
+		page->IsInit = false;
+		if ((rc = btreeInitPage(page)) != RC::OK)
+		{
+			_assert(rc == RC::CORRUPT); // The only possible error from InitPage
+			checkAppendMsg(check, context, "btreeInitPage() returns error code %d", rc);
+			releasePage(page);
+			return 0;
+		}
+
+		// Check out all the cells.
+		Pid id;
+		int i, depth = 0;
+		int64 minKey = 0;
+		int64 maxKey = 0;
+		for (i = 0; i < page->Cells && check->MaxErrors; i++)
+		{
+			// Check payload overflow pages
+			sqlite3_snprintf(sizeof(context), context, "On tree page %d cell %d: ", pageID, i);
+			uint8 *cell = findCell(page,i);
+			CellInfo info;
+			btreeParseCellPtr(page, cell, &info);
+			uint32 sizeCell = info.Data;
+			if (!page->IntKey) sizeCell += (int)info.Key;
+			// For intKey pages, check that the keys are in order.
+			else if (i == 0) minKey = maxKey = info.Key;
+			else
+			{
+				if (info.Key <= maxKey)
+					checkAppendMsg(check, context, "Rowid %lld out of order (previous was %lld)", info.Key, maxKey);
+				maxKey = info.Key;
+			}
+			_assert(sizeCell == info.Payload);
+			if (sizeCell > info.Local && &cell[info.Overflow] <= &page->Data[bt->UsableSize])
+			{
+				int pages = (sizeCell - info.Local + usableSize - 5) / (usableSize - 4);
+				Pid ovflID = ConvertEx::Get4(&cell[info.Overflow]);
+#ifndef OMIT_AUTOVACUUM
+				if (bt->AutoVacuum)
+					checkPtrmap(check, ovflID, PTRMAP::OVERFLOW1, pageID, context);
+#endif
+				checkList(check, 0, ovflID, pages, context);
+			}
+
+			// Check sanity of left child page.
+			if (!page->Leaf)
+			{
+				id = ConvertEx::Get4(cell);
+#ifndef OMIT_AUTOVACUUM
+				if (bt->AutoVacuum)
+					checkPtrmap(check, id, PTRMAP::BTREE, pageID, context);
+#endif
+				int depth2 = checkTreePage(check, id, context, (&minKey, i == 0 ? nullptr : &maxKey));
+				if (i > 0 && depth2 != depth)
+					checkAppendMsg(check, context, "Child page depth differs");
+				depth = depth2;
+			}
+		}
+
+		if (!page->Leaf)
+		{
+			id = ConvertEx::Get4(&page->Data[page->HdrOffset + 8]);
+			sqlite3_snprintf(sizeof(context), context, "On page %d at right child: ", pageID);
+#ifndef OMIT_AUTOVACUUM
+			if (bt->AutoVacuum)
+				checkPtrmap(check, id, PTRMAP::BTREE, pageID, context);
+#endif
+			checkTreePage(check, id, context, nullptr, (!page->Cells ? nullptr : &maxKey));
+		}
+
+		// For intKey leaf pages, check that the min/max keys are in order with any left/parent/right pages.
+		if (page->Leaf && page->IntKey)
+		{
+			// if we are a left child page
+			if (parentMinKey)
+			{
+				// if we are the left most child page
+				if (!parentMaxKey)
+				{
+					if (maxKey > *parentMinKey)
+						checkAppendMsg(check, context, "Rowid %lld out of order (max larger than parent min of %lld)", maxKey, *parentMinKey);
+				}
+				else
+				{
+					if (minKey <= *parentMinKey)
+						checkAppendMsg(check, context, "Rowid %lld out of order (min less than parent min of %lld)", minKey, *parentMinKey);
+					if (maxKey > *parentMaxKey)
+						checkAppendMsg(check, context, "Rowid %lld out of order (max larger than parent max of %lld)", maxKey, *parentMaxKey);
+					*parentMinKey = maxKey;
+				}
+			}
+			// else if we're a right child page
+			else if (parentMaxKey)
+				if (minKey <= *parentMaxKey)
+					checkAppendMsg(check, context, "Rowid %lld out of order (min less than parent max of %lld)", minKey, *parentMaxKey);
+		}
+
+		// Check for complete coverage of the page
+		uint8 *data = page->Data;
+		int hdr = page->HdrOffset;
+		uint8 *hit = sqlite3PageMalloc(bt->PageSize);
+		if (hit == nullptr)
+			check->MallocFailed = true;
+		else
+		{
+			int contentOffset = ConvertEx::Get2nz(&data[hdr + 5]);
+			_assert(contentOffset <= usableSize); // Enforced by btreeInitPage()
+			_memset(hit + contentOffset, 0, usableSize - contentOffset);
+			_memset(hit, 1, contentOffset);
+			int cells = ConvertEx::Get2(&data[hdr + 3]);
+			int cellStart = hdr + 12 - 4 * page->Leaf;
+			for (i = 0; i < cells; i++)
+			{
+				uint32 sizeCell = 65536U;
+				int pc = ConvertEx::Get2(&data[cellStart + i * 2]);
+				if (pc <= usableSize - 4)
+					sizeCell = cellSizePtr(page, &data[pc]);
+				if ((int)(pc + sizeCell - 1) >= usableSize)
+					checkAppendMsg(check, nullptr, "Corruption detected in cell %d on page %d", i, pageID);
+				else
+					for (int j = pc + sizeCell - 1; j >= pc; j--) hit[j]++;
+			}
+			i = ConvertEx::Get2(&data[hdr + 1]);
+			while (i > 0)
+			{
+				_assert(i <= usableSize - 4); // Enforced by btreeInitPage()
+				int size = ConvertEx::Get2(&data[i + 2]);
+				_assert(i + size <= usableSize); // Enforced by btreeInitPage()
+				int j;
+				for (j = i + size - 1; j >= i; j--) hit[j]++;
+				j = ConvertEx::Get2(&data[i]);
+				_assert(j == 0 || j > i + size); // Enforced by btreeInitPage()
+				_assert(j <= usableSize - 4); // Enforced by btreeInitPage()
+				i = j;
+			}
+			int cnt;
+			for (i = cnt = 0; i < usableSize; i++)
+			{
+				if (hit[i] == 0)
+					cnt++;
+				else if (hit[i] > 1)
+				{
+					checkAppendMsg(check, nullptr, "Multiple uses for byte %d of page %d", i, pageID);
 					break;
 				}
-				if( checkRef(pCheck, iPage, zContext) ) break;
-				if( sqlite3PagerGet(pCheck->pPager, (Pgno)iPage, &pOvflPage) ){
-					checkAppendMsg(pCheck, zContext, "failed to get page %d", iPage);
-					break;
-				}
-				pOvflData = (unsigned char *)sqlite3PagerGetData(pOvflPage);
-				if( isFreeList ){
-					int n = get4byte(&pOvflData[4]);
-#ifndef OMIT_AUTOVACUUM
-					if( pCheck->pBt->autoVacuum ){
-						checkPtrmap(pCheck, iPage, PTRMAP_FREEPAGE, 0, zContext);
-					}
-#endif
-					if( n>(int)pCheck->pBt->usableSize/4-2 ){
-						checkAppendMsg(pCheck, zContext,
-							"freelist leaf count too big on page %d", iPage);
-						N--;
-					}else{
-						for(i=0; i<n; i++){
-							Pgno iFreePage = get4byte(&pOvflData[8+i*4]);
-#ifndef OMIT_AUTOVACUUM
-							if( pCheck->pBt->autoVacuum ){
-								checkPtrmap(pCheck, iFreePage, PTRMAP_FREEPAGE, 0, zContext);
-							}
-#endif
-							checkRef(pCheck, iFreePage, zContext);
-						}
-						N -= n;
-					}
-				}
-#ifndef OMIT_AUTOVACUUM
-				else{
-					/* If this database supports auto-vacuum and iPage is not the last
-					** page in this overflow list, check that the pointer-map entry for
-					** the following page matches iPage.
-					*/
-					if( pCheck->pBt->autoVacuum && N>0 ){
-						i = get4byte(pOvflData);
-						checkPtrmap(pCheck, i, PTRMAP_OVERFLOW2, iPage, zContext);
-					}
-				}
-#endif
-				iPage = get4byte(pOvflData);
-				sqlite3PagerUnref(pOvflPage);
 			}
+			if (cnt != data[hdr + 7])
+				checkAppendMsg(check, nullptr, "Fragmentation of %d bytes reported as %d on page %d", cnt, data[hdr + 7], pageID);
+		}
+		sqlite3PageFree(hit);
+		releasePage(page);
+		return depth + 1;
 	}
 
-	static int checkTreePage(
-		IntegrityCk *pCheck,  /* Context for the sanity check */
-		int iPage,            /* Page number of the page to check */
-		char *zParentContext, /* Parent context */
-		i64 *pnParentMinKey, 
-		i64 *pnParentMaxKey
-		){
-			MemPage *pPage;
-			int i, rc, depth, d2, pgno, cnt;
-			int hdr, cellStart;
-			int nCell;
-			u8 *data;
-			BtShared *pBt;
-			int usableSize;
-			char zContext[100];
-			char *hit = 0;
-			i64 nMinKey = 0;
-			i64 nMaxKey = 0;
+	char *Btree::IntegrityCheck(Pid *roots, int rootsLength, int maxErrors, int *errors)
+	{
+		BtShared *bt = Bt;
+		Enter();
+		_assert(InTrans > TRANS::NONE && bt->InTransaction > TRANS::NONE);
+		int refs = bt->Pager->get_Refs();
+		IntegrityCk check;
+		check.Bt = bt;
+		check.Pager = bt->Pager;
+		check.Pages = btreePagecount(bt);
+		check.MaxErrors = maxErrors;
+		check.Errors = 0;
+		check.MallocFailed = false;
+		*errors = 0;
+		if (check.Pages == 0)
+		{
+			Leave();
+			return nullptr;
+		}
 
-			sqlite3_snprintf(sizeof(zContext), zContext, "Page %d: ", iPage);
+		check.PgRefs = SysEx::Alloc((check.Pages / 8) + 1, true);
+		if (!check.PgRefs)
+		{
+			*errors = 1;
+			Leave();
+			return nullptr;
+		}
+		Pid i = PENDING_BYTE_PAGE(bt);
+		if (i <= check.Pages) setPageReferenced(&check, i);
+		char err[100];
+		sqlite3StrAccumInit(&check.ErrMsg, err, sizeof(err), MAX_LENGTH);
+		check.ErrMsg.UseMalloc = 2;
 
-			/* Check that the page exists
-			*/
-			pBt = pCheck->pBt;
-			usableSize = pBt->usableSize;
-			if( iPage==0 ) return 0;
-			if( checkRef(pCheck, iPage, zParentContext) ) return 0;
-			if( (rc = btreeGetPage(pBt, (Pgno)iPage, &pPage, 0))!=0 ){
-				checkAppendMsg(pCheck, zContext,
-					"unable to get the page. error code=%d", rc);
-				return 0;
-			}
+		// Check the integrity of the freelist
+		checkList(&check, true, (Pid)ConvertEx::Get4(&bt->Page1->Data[32]), (int)ConvertEx::Get4(&bt->Page1->Data[36]), "Main freelist: ");
 
-			/* Clear MemPage.isInit to make sure the corruption detection code in
-			** btreeInitPage() is executed.  */
-			pPage->isInit = 0;
-			if( (rc = btreeInitPage(pPage))!=0 ){
-				assert( rc==SQLITE_CORRUPT );  /* The only possible error from InitPage */
-				checkAppendMsg(pCheck, zContext, 
-					"btreeInitPage() returns error code %d", rc);
-				releasePage(pPage);
-				return 0;
-			}
-
-			/* Check out all the cells.
-			*/
-			depth = 0;
-			for(i=0; i<pPage->nCell && pCheck->mxErr; i++){
-				u8 *pCell;
-				u32 sz;
-				CellInfo info;
-
-				/* Check payload overflow pages
-				*/
-				sqlite3_snprintf(sizeof(zContext), zContext,
-					"On tree page %d cell %d: ", iPage, i);
-				pCell = findCell(pPage,i);
-				btreeParseCellPtr(pPage, pCell, &info);
-				sz = info.nData;
-				if( !pPage->intKey ) sz += (int)info.nKey;
-				/* For intKey pages, check that the keys are in order.
-				*/
-				else if( i==0 ) nMinKey = nMaxKey = info.nKey;
-				else{
-					if( info.nKey <= nMaxKey ){
-						checkAppendMsg(pCheck, zContext, 
-							"Rowid %lld out of order (previous was %lld)", info.nKey, nMaxKey);
-					}
-					nMaxKey = info.nKey;
-				}
-				assert( sz==info.nPayload );
-				if( (sz>info.nLocal) 
-					&& (&pCell[info.iOverflow]<=&pPage->aData[pBt->usableSize])
-					){
-						int nPage = (sz - info.nLocal + usableSize - 5)/(usableSize - 4);
-						Pgno pgnoOvfl = get4byte(&pCell[info.iOverflow]);
+		// Check all the tables.
+		for (i = 0; (int)i < rootsLength && check.MaxErrors; i++)
+		{
+			if (roots[i] == 0) continue;
 #ifndef OMIT_AUTOVACUUM
-						if( pBt->autoVacuum ){
-							checkPtrmap(pCheck, pgnoOvfl, PTRMAP_OVERFLOW1, iPage, zContext);
-						}
+			if (bt->AutoVacuum && roots[i] > 1)
+				checkPtrmap(&check, roots[i], PTRMAP::ROOTPAGE, 0, nullptr);
 #endif
-						checkList(pCheck, 0, pgnoOvfl, nPage, zContext);
-				}
+			checkTreePage(&check, roots[i], "List of tree roots: ", nullptr, nullptr);
+		}
 
-				/* Check sanity of left child page.
-				*/
-				if( !pPage->leaf ){
-					pgno = get4byte(pCell);
-#ifndef OMIT_AUTOVACUUM
-					if( pBt->autoVacuum ){
-						checkPtrmap(pCheck, pgno, PTRMAP_BTREE, iPage, zContext);
-					}
-#endif
-					d2 = checkTreePage(pCheck, pgno, zContext, &nMinKey, i==0 ? NULL : &nMaxKey);
-					if( i>0 && d2!=depth ){
-						checkAppendMsg(pCheck, zContext, "Child page depth differs");
-					}
-					depth = d2;
-				}
-			}
-
-			if( !pPage->leaf ){
-				pgno = get4byte(&pPage->aData[pPage->hdrOffset+8]);
-				sqlite3_snprintf(sizeof(zContext), zContext, 
-					"On page %d at right child: ", iPage);
-#ifndef OMIT_AUTOVACUUM
-				if( pBt->autoVacuum ){
-					checkPtrmap(pCheck, pgno, PTRMAP_BTREE, iPage, zContext);
-				}
-#endif
-				checkTreePage(pCheck, pgno, zContext, NULL, !pPage->nCell ? NULL : &nMaxKey);
-			}
-
-			/* For intKey leaf pages, check that the min/max keys are in order
-			** with any left/parent/right pages.
-			*/
-			if( pPage->leaf && pPage->intKey ){
-				/* if we are a left child page */
-				if( pnParentMinKey ){
-					/* if we are the left most child page */
-					if( !pnParentMaxKey ){
-						if( nMaxKey > *pnParentMinKey ){
-							checkAppendMsg(pCheck, zContext, 
-								"Rowid %lld out of order (max larger than parent min of %lld)",
-								nMaxKey, *pnParentMinKey);
-						}
-					}else{
-						if( nMinKey <= *pnParentMinKey ){
-							checkAppendMsg(pCheck, zContext, 
-								"Rowid %lld out of order (min less than parent min of %lld)",
-								nMinKey, *pnParentMinKey);
-						}
-						if( nMaxKey > *pnParentMaxKey ){
-							checkAppendMsg(pCheck, zContext, 
-								"Rowid %lld out of order (max larger than parent max of %lld)",
-								nMaxKey, *pnParentMaxKey);
-						}
-						*pnParentMinKey = nMaxKey;
-					}
-					/* else if we're a right child page */
-				} else if( pnParentMaxKey ){
-					if( nMinKey <= *pnParentMaxKey ){
-						checkAppendMsg(pCheck, zContext, 
-							"Rowid %lld out of order (min less than parent max of %lld)",
-							nMinKey, *pnParentMaxKey);
-					}
-				}
-			}
-
-			/* Check for complete coverage of the page
-			*/
-			data = pPage->aData;
-			hdr = pPage->hdrOffset;
-			hit = sqlite3PageMalloc( pBt->pageSize );
-			if( hit==0 ){
-				pCheck->mallocFailed = 1;
-			}else{
-				int contentOffset = get2byteNotZero(&data[hdr+5]);
-				assert( contentOffset<=usableSize );  /* Enforced by btreeInitPage() */
-				memset(hit+contentOffset, 0, usableSize-contentOffset);
-				memset(hit, 1, contentOffset);
-				nCell = get2byte(&data[hdr+3]);
-				cellStart = hdr + 12 - 4*pPage->leaf;
-				for(i=0; i<nCell; i++){
-					int pc = get2byte(&data[cellStart+i*2]);
-					u32 size = 65536;
-					int j;
-					if( pc<=usableSize-4 ){
-						size = cellSizePtr(pPage, &data[pc]);
-					}
-					if( (int)(pc+size-1)>=usableSize ){
-						checkAppendMsg(pCheck, 0, 
-							"Corruption detected in cell %d on page %d",i,iPage);
-					}else{
-						for(j=pc+size-1; j>=pc; j--) hit[j]++;
-					}
-				}
-				i = get2byte(&data[hdr+1]);
-				while( i>0 ){
-					int size, j;
-					assert( i<=usableSize-4 );     /* Enforced by btreeInitPage() */
-					size = get2byte(&data[i+2]);
-					assert( i+size<=usableSize );  /* Enforced by btreeInitPage() */
-					for(j=i+size-1; j>=i; j--) hit[j]++;
-					j = get2byte(&data[i]);
-					assert( j==0 || j>i+size );  /* Enforced by btreeInitPage() */
-					assert( j<=usableSize-4 );   /* Enforced by btreeInitPage() */
-					i = j;
-				}
-				for(i=cnt=0; i<usableSize; i++){
-					if( hit[i]==0 ){
-						cnt++;
-					}else if( hit[i]>1 ){
-						checkAppendMsg(pCheck, 0,
-							"Multiple uses for byte %d of page %d", i, iPage);
-						break;
-					}
-				}
-				if( cnt!=data[hdr+7] ){
-					checkAppendMsg(pCheck, 0, 
-						"Fragmentation of %d bytes reported as %d on page %d",
-						cnt, data[hdr+7], iPage);
-				}
-			}
-			sqlite3PageFree(hit);
-			releasePage(pPage);
-			return depth+1;
-	}
-
-	char *sqlite3BtreeIntegrityCheck(
-		Btree *p,     /* The btree to be checked */
-		int *aRoot,   /* An array of root pages numbers for individual trees */
-		int nRoot,    /* Number of entries in aRoot[] */
-		int mxErr,    /* Stop reporting errors after this many */
-		int *pnErr    /* Write number of errors seen to this variable */
-		){
-			Pgno i;
-			int nRef;
-			IntegrityCk sCheck;
-			BtShared *pBt = p->pBt;
-			char zErr[100];
-
-			sqlite3BtreeEnter(p);
-			assert( p->inTrans>TRANS_NONE && pBt->inTransaction>TRANS_NONE );
-			nRef = sqlite3PagerRefcount(pBt->pPager);
-			sCheck.pBt = pBt;
-			sCheck.pPager = pBt->pPager;
-			sCheck.nPage = btreePagecount(sCheck.pBt);
-			sCheck.mxErr = mxErr;
-			sCheck.nErr = 0;
-			sCheck.mallocFailed = 0;
-			*pnErr = 0;
-			if( sCheck.nPage==0 ){
-				sqlite3BtreeLeave(p);
-				return 0;
-			}
-
-			sCheck.aPgRef = sqlite3MallocZero((sCheck.nPage / 8)+ 1);
-			if( !sCheck.aPgRef ){
-				*pnErr = 1;
-				sqlite3BtreeLeave(p);
-				return 0;
-			}
-			i = PENDING_BYTE_PAGE(pBt);
-			if( i<=sCheck.nPage ) setPageReferenced(&sCheck, i);
-			sqlite3StrAccumInit(&sCheck.errMsg, zErr, sizeof(zErr), SQLITE_MAX_LENGTH);
-			sCheck.errMsg.useMalloc = 2;
-
-			/* Check the integrity of the freelist
-			*/
-			checkList(&sCheck, 1, get4byte(&pBt->pPage1->aData[32]),
-				get4byte(&pBt->pPage1->aData[36]), "Main freelist: ");
-
-			/* Check all the tables.
-			*/
-			for(i=0; (int)i<nRoot && sCheck.mxErr; i++){
-				if( aRoot[i]==0 ) continue;
-#ifndef OMIT_AUTOVACUUM
-				if( pBt->autoVacuum && aRoot[i]>1 ){
-					checkPtrmap(&sCheck, aRoot[i], PTRMAP_ROOTPAGE, 0, 0);
-				}
-#endif
-				checkTreePage(&sCheck, aRoot[i], "List of tree roots: ", NULL, NULL);
-			}
-
-			/* Make sure every page in the file is referenced
-			*/
-			for(i=1; i<=sCheck.nPage && sCheck.mxErr; i++){
+		// Make sure every page in the file is referenced
+		for (i = 1; i <= check.Pages && check.MaxErrors; i++)
+		{
 #ifdef OMIT_AUTOVACUUM
-				if( getPageReferenced(&sCheck, i)==0 ){
-					checkAppendMsg(&sCheck, 0, "Page %d is never used", i);
-				}
+			if (!getPageReferenced(&check, i))
+				checkAppendMsg(&check, nullptr, "Page %d is never used", i);
 #else
-				/* If the database supports auto-vacuum, make sure no tables contain
-				** references to pointer-map pages.
-				*/
-				if( getPageReferenced(&sCheck, i)==0 && 
-					(PTRMAP_PAGENO(pBt, i)!=i || !pBt->autoVacuum) ){
-						checkAppendMsg(&sCheck, 0, "Page %d is never used", i);
-				}
-				if( getPageReferenced(&sCheck, i)!=0 && 
-					(PTRMAP_PAGENO(pBt, i)==i && pBt->autoVacuum) ){
-						checkAppendMsg(&sCheck, 0, "Pointer map page %d is referenced", i);
-				}
+			// If the database supports auto-vacuum, make sure no tables contain references to pointer-map pages.
+			if (!getPageReferenced(&check, i) && (PTRMAP_PAGENO(bt, i) != i || !bt->AutoVacuum))
+				checkAppendMsg(&check, nullptr, "Page %d is never used", i);
+			if (getPageReferenced(&check, i) && (PTRMAP_PAGENO(bt, i) == i && bt->AutoVacuum))
+				checkAppendMsg(&check, 0, "Pointer map page %d is referenced", i);
 #endif
-			}
+		}
 
-			/* Make sure this analysis did not leave any unref() pages.
-			** This is an internal consistency check; an integrity check
-			** of the integrity check.
-			*/
-			if( NEVER(nRef != sqlite3PagerRefcount(pBt->pPager)) ){
-				checkAppendMsg(&sCheck, 0, 
-					"Outstanding page count goes from %d to %d during this analysis",
-					nRef, sqlite3PagerRefcount(pBt->pPager)
-					);
-			}
+		// Make sure this analysis did not leave any unref() pages. This is an internal consistency check; an integrity check
+		// of the integrity check.
+		if (SysEx_NEVER(refs != bt->Pager->get_Refs()))
+			checkAppendMsg(&check, nullptr, "Outstanding page count goes from %d to %d during this analysis", refs, bt->Pager->get_Refs());
 
-			/* Clean  up and report errors.
-			*/
-			sqlite3BtreeLeave(p);
-			sqlite3_free(sCheck.aPgRef);
-			if( sCheck.mallocFailed ){
-				sqlite3StrAccumReset(&sCheck.errMsg);
-				*pnErr = sCheck.nErr+1;
-				return 0;
-			}
-			*pnErr = sCheck.nErr;
-			if( sCheck.nErr==0 ) sqlite3StrAccumReset(&sCheck.errMsg);
-			return sqlite3StrAccumFinish(&sCheck.errMsg);
+		// Clean  up and report errors.
+		Leave();
+		SysEx::Free(check.PgRefs);
+		if (check.MallocFailed)
+		{
+			sqlite3StrAccumReset(&check.ErrMsg);
+			*errors = check.Errors + 1;
+			return 0;
+		}
+		*errors = check.Errors;
+		if (check.Errors == 0) sqlite3StrAccumReset(&check.ErrMsg);
+		return sqlite3StrAccumFinish(&check.ErrMsg);
 	}
 #endif
 #pragma endregion

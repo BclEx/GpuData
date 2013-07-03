@@ -2,6 +2,7 @@ using Pid = System.UInt32;
 using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
+using System.Text;
 
 namespace Core
 {
@@ -116,8 +117,10 @@ namespace Core
 #if !OMIT_AUTOVACUUM
             public bool AutoVacuum;         // True if auto-vacuum is enabled
             public bool IncrVacuum;         // True if incr-vacuum is enabled
+            public bool DoTruncate;		    // True to truncate db on commit
 #endif
-            public TRANS InTransaction;      // Transaction state
+            public TRANS InTransaction;     // Transaction state
+            public byte Max1bytePayload;	// Maximum first byte of cell for a 1-byte payload
             public BTS BtsFlags;			// Boolean parameters.  See BTS_* macros below
             public ushort MaxLocal;         // Maximum local payload in non-LEAFDATA tables
             public ushort MinLocal;         // Minimum local payload in non-LEAFDATA tables
@@ -127,8 +130,8 @@ namespace Core
             public uint UsableSize;         // Number of usable bytes on each page
             public int Transactions;        // Number of open transactions (read + write)
             public Pid Pages;               // Number of pages in the database
-            public Schema Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
-            public dxFreeSchema FreeSchema; // Destructor for BtShared.pSchema
+            public object Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
+            public Action<object> FreeSchema; // Destructor for BtShared.pSchema
             public MutexEx Mutex;           // Non-recursive mutex required to access this object
             public Bitvec HasContent;       // Set of pages moved to free-list this transaction
 #if !OMIT_SHARED_CACHE
@@ -233,9 +236,9 @@ namespace Core
 
         static uint PENDING_BYTE_PAGE(BtShared bt) { return (uint)PAGER_MJ_PGNO(bt.Pager); }
 
-        static Pid PTRMAP_PAGENO(BtShared pBt, Pid pgno) { return ptrmapPageno(pBt, pgno); }
-        static Pid PTRMAP_PTROFFSET(uint pgptrmap, Pid pgno) { return (5 * (pgno - pgptrmap - 1)); }
-        static bool PTRMAP_ISPAGE(BtShared pBt, Pid pgno) { return (PTRMAP_PAGENO((pBt), (pgno)) == (pgno)); }
+        static Pid PTRMAP_PAGENO(BtShared bt, Pid id) { return ptrmapPageno(bt, id); }
+        static Pid PTRMAP_PTROFFSET(Pid ptrmapID, Pid id) { return (5 * (id - ptrmapID - 1)); }
+        static bool PTRMAP_ISPAGE(BtShared bt, Pid id) { return (PTRMAP_PAGENO((bt), (id)) == (id)); }
 
         public enum PTRMAP : byte
         {
@@ -265,14 +268,14 @@ public static bool ISAUTOVACUUM =false;
 
         public class IntegrityCk
         {
-            public BtShared pBt;      // The tree being checked out
-            public Pager pPager;      // The associated pager.  Also accessible by pBt.pPager
-            public Pid nPage;        // Number of pages in the database
-            public int[] Refs;       // Number of times each page is referenced
-            public int mxErr;         // Stop accumulating errors when this reaches zero
-            public int nErr;          // Number of messages written to zErrMsg so far
-            //public int mallocFailed;  // A memory allocation error has occurred
-            public StrAccum errMsg = new StrAccum(100); // Accumulate the error message text here
+            public BtShared Bt;      // The tree being checked out
+            public Pager Pager;      // The associated pager.  Also accessible by pBt.pPager
+            public Pid Pages;        // Number of pages in the database
+            public int[] PgRefs;       // Number of times each page is referenced
+            public int MaxErrors;         // Stop accumulating errors when this reaches zero
+            public int Errors;          // Number of messages written to zErrMsg so far
+            public bool MallocFailed;
+            public StringBuilder ErrMsg = new StringBuilder(); // Accumulate the error message text here
         };
     }
 }
