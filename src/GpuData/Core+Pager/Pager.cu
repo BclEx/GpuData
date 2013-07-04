@@ -1878,7 +1878,7 @@ end_playback:
 	}
 
 #if !defined(_DEBUG) || defined(TEST)
-	Pid Pager::Pagenumber(IPage *pg)
+	Pid Pager::get_PageID(IPage *pg)
 	{
 		return ((PgHdr *)pg)->ID;
 	}

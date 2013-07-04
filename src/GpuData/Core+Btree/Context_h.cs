@@ -3,11 +3,22 @@ namespace Core
 {
     public class Context
     {
-        public struct BusyHandler
+        const int MAX_ATTACHED = 10;
+
+        public struct BusyHandlerType
         {
-            public Func<object, int, int> Func;     // The busy callback
-            public object Arg;                      // First arg to busy callback
-            public int Busys;                       // Incremented with each busy call
+            public Func<object, int, int> Func; // The busy callback
+            public object Arg;                  // First arg to busy callback
+            public int Busys;                   // Incremented with each busy call
+        }
+
+        public class DB
+        {
+            string Name;					// Name of this database
+            Btree Bt;					    // The B*Tree structure for this database file
+            byte InTrans;				    // 0: not writable.  1: Transaction.  2: Checkpoint
+            byte SafetyLevel;			    // How aggressive at syncing data to disk
+            ISchema Schema;			        // Pointer to database schema (possibly shared)
         }
 
         [Flags]
@@ -40,33 +51,35 @@ namespace Core
 
         public MutexEx Mutex;
         public FLAG Flags;
-        public BusyHandler BusyHandler;
+        public BusyHandlerType BusyHandler;
         public int Savepoints; // Number of non-transaction savepoints
         public int ActiveVdbeCnt;
+        DB[] DBs = new DB[MAX_ATTACHED];	// All backends
+        int DBUsed;				// Number of backends currently in use
 
-        //int sqlite3InvokeBusyHandler()
-        //{
-        //	if (SysEx::NEVER(busyHandler == nullptr) || busyHandler.Func == nullptr || busyHandler.nBusy < 0)
-        //		return 0;
-        //	var rc = busyHandler.xFunc(busyHandler.pArg, busyHandler.nBusy);
-        //	if (rc == 0)
-        //		busyHandler.nBusy = -1;
-        //	else
-        //		busyHandler.nBusy++;
-        //	return rc;
-        //}
-        //
-        //        // HOOKS
-        //#if ENABLE_UNLOCK_NOTIFY
-        //public void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 );
-        //internal void sqlite3ConnectionUnlocked(sqlite3 db);
-        //internal void sqlite3ConnectionClosed(sqlite3 db);
-        //#else
-        //        public static void sqlite3ConnectionBlocked(sqlite3b x, sqlite3b y) { }
-        //        //internal static void sqlite3ConnectionUnlocked(sqlite3 x) { }
-        //        //internal static void sqlite3ConnectionClosed(sqlite3 x) { }
-        //#endif
-        //
+        public int InvokeBusyHandler()
+        {
+            if (SysEx.NEVER(BusyHandler == null) || BusyHandler.Func == null || BusyHandler.Busys < 0)
+                return 0;
+            var rc = BusyHandler.Func(BusyHandler.Arg, BusyHandler.Busys);
+            if (rc == 0)
+                BusyHandler.Busys = -1;
+            else
+                BusyHandler.Busys++;
+            return rc;
+        }
+
+        // HOOKS
+#if ENABLE_UNLOCK_NOTIFY
+        public void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 );
+        internal void sqlite3ConnectionUnlocked(sqlite3 db);
+        internal void sqlite3ConnectionClosed(sqlite3 db);
+#else
+        public static void ConnectionBlocked(Context a, Context b) { }
+        //internal static void sqlite3ConnectionUnlocked(sqlite3 x) { }
+        //internal static void sqlite3ConnectionClosed(sqlite3 x) { }
+#endif
+
         //        public bool sqlite3TempInMemory()
         //        {
         //            return true;

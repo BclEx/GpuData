@@ -22,7 +22,7 @@ namespace Core
 		bool IsInit;			// True if previously initialized. MUST BE FIRST!
 		uint8 Overflows;		// Number of overflow cell bodies in aCell[]
 		bool IntKey;			// True if intkey flag is set
-		bool Leaf;				// True if leaf flag is set
+		byte Leaf;				// 1 if leaf flag is set
 		bool HasData;			// True if this page stores data
 		uint8 HdrOffset;        // 100 for page 1.  0 otherwise
 		uint8 ChildPtrSize;     // 0 if leaf==1.  4 if leaf==0
@@ -164,10 +164,11 @@ namespace Core
 		MemPage *Pages[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 	};
 
-#define PENDING_BYTE_PAGE(bt) PAGER_MJ_PGNO(bt)
+#define MJ_PID(x) ((Pid)((PENDING_BYTE / ((x)->PageSize)) + 1))
+#define PENDING_BYTE_PAGE(bt) MJ_PID(bt)
 
 #define PTRMAP_PAGENO(bt, id) ptrmapPageno(bt, id)
-#define PTRMAP_PTROFFSET(ptrmapID, id) (5 * (id - pgptrmapID - 1))
+#define PTRMAP_PTROFFSET(ptrmapID, id) (5 * (id - ptrmapID - 1))
 #define PTRMAP_ISPAGE(bt, id) (PTRMAP_PAGENO((bt), (id)) == (id))
 
 	enum PTRMAP : uint8
@@ -182,12 +183,6 @@ namespace Core
 #define btreeIntegrity(p) \
 	_assert(p->Bt->InTransaction != TRANS::NONE || p->Bt->Transactions == 0); \
 	_assert(p->Bt->InTransaction >= p->InTrans); 
-
-//#ifndef OMIT_AUTOVACUUM
-//#define ISAUTOVACUUM (pBt->autoVacuum)
-//#else
-//#define ISAUTOVACUUM 0
-//#endif
 
 	typedef struct IntegrityCk IntegrityCk;
 	struct IntegrityCk
@@ -204,4 +199,5 @@ namespace Core
 
 	BTS inline operator |= (BTS a, BTS b) { return (BTS)(a | b); }
 	BTS inline operator &= (BTS a, BTS b) { return (BTS)(a & b); }
+	BTS inline operator &= (BTS a, int b) { return (BTS)(a & b); }
 }

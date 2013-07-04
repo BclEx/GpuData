@@ -79,7 +79,7 @@ namespace Core
 
         static uint JOURNAL_PG_SZ(Pager pager) { return (uint)pager.PageSize + 8; }
         static uint JOURNAL_HDR_SZ(Pager pager) { return pager.SectorSize; }
-        static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
+        internal static Pid MJ_PID(Pager pager) { return ((Pid)((VFile.PENDING_BYTE / ((pager).PageSize)) + 1)); }
 
         const int MAX_PID = 2147483647;
 
@@ -1856,7 +1856,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
 #if !DEBUG || TEST
         // was:sqlite3PagerPagenumber
-        public static Pid GetPageID(IPage pg)
+        public static Pid get_PageID(IPage pg)
         {
             return pg.ID;
         }
@@ -3601,7 +3601,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             return pg.Data;
         }
 
-        public static T GetData<T>(IPage pg)
+        public static T GetExtra<T>(IPage pg)
         {
             return (T)pg.Extra;
         }

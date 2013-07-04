@@ -8,9 +8,36 @@ namespace Core
 #define DEFAULT_AUTOVACUUM 0
 #endif
 
+	typedef struct KeyInfo KeyInfo;
+	typedef struct UnpackedRecord UnpackedRecord;
 	typedef struct Btree Btree;
 	typedef struct BtCursor BtCursor;
 	typedef struct BtShared BtShared;
+
+	struct KeyInfo
+	{
+		Context *Ctx;		// The database connection
+		uint8 Enc;			// Text encoding - one of the SQLITE_UTF* values
+		uint16 Fields;      // Number of entries in aColl[]
+		uint8 *SortOrders;  // Sort order for each column.  May be NULL
+		CollSeq *Colls[1];  // Collating sequence for each term of the key
+	};
+
+	enum UNPACKED : uint8
+	{
+		INCRKEY = 0x01,			// Make this key an epsilon larger
+		PREFIX_MATCH = 0x02,	// A prefix match is considered OK
+		PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
+	};
+
+	struct UnpackedRecord
+	{
+		KeyInfo *KeyInfo;	// Collation and sort-order information
+		uint16 Fields;      // Number of entries in apMem[]
+		UNPACKED Flags;     // Boolean settings.  UNPACKED_... below
+		int64 Rowid;        // Used by UNPACKED_PREFIX_SEARCH
+		Mem *Mems;          // Values
+	};
 
 	class Btree
 	{
@@ -28,31 +55,6 @@ namespace Core
 			MEMORY = 2,         // This is an in-memory DB
 			SINGLE = 4,         // The file contains at most 1 b-tree
 			UNORDERED = 8,      // Use of a hash implementation is OK
-		};
-
-		struct KeyInfo
-		{
-			Context *Ctx;		// The database connection
-			uint8 Enc;			// Text encoding - one of the SQLITE_UTF* values
-			uint16 Fields;      // Number of entries in aColl[]
-			uint8 *SortOrders;  // Sort order for each column.  May be NULL
-			CollSeq *Colls[1];  // Collating sequence for each term of the key
-		};
-
-		enum UNPACKED : uint8
-		{
-			INCRKEY = 0x01,			// Make this key an epsilon larger
-			PREFIX_MATCH = 0x02,	// A prefix match is considered OK
-			PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
-		};
-
-		struct UnpackedRecord
-		{
-			KeyInfo *KeyInfo;	// Collation and sort-order information
-			uint16 Fields;      // Number of entries in apMem[]
-			UNPACKED Flags;     // Boolean settings.  UNPACKED_... below
-			int64 Rowid;        // Used by UNPACKED_PREFIX_SEARCH
-			Mem *Mems;          // Values
 		};
 
 		Context *Ctx;			// The database connection holding this btree
@@ -183,24 +185,24 @@ namespace Core
 
 #ifndef OMIT_SHARED_CACHE
 		void Enter();
-		static void EnterAll(Context *);
+		//static void EnterAll(Context *);
 #else
 #define Enter(X) 
-#define EnterAll(X)
+		//#define EnterAll(X)
 #endif
 
 #ifndef defined(OMIT_SHARED_CACHE)
-		int Sharable();
-		void Leave();
-		static void EnterCursor(BtCursor *);
-		static void LeaveCursor(BtCursor *);
-		static void LeaveAll(Context *);
-#ifndef _DEBUG
+		//int Sharable();
+		inline void Leave() { }
+		//static void EnterCursor(BtCursor *);
+		//static void LeaveCursor(BtCursor *);
+		//static void LeaveAll(Context *);
+		//#ifndef _DEBUG
 		// These routines are used inside assert() statements only.
-		int HoldsMutex();
-		int HoldsAllMutexes(sqlite3*);
-		int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
-#endif
+		inline bool HoldsMutex() { return true; }
+		//int HoldsAllMutexes(sqlite3*);
+		//int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
+		//#endif
 #else
 #define Sharable(X) 0
 #define Leave(X)
@@ -216,4 +218,6 @@ namespace Core
 #endif
 
 	};
+
+	Btree::OPEN inline operator |= (Btree::OPEN a, Btree::OPEN b) { return (Btree::OPEN)(a | b); }
 }

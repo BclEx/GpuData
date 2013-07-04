@@ -218,7 +218,7 @@ namespace Core
 #endif
 		// Functions to support testing and debugging.
 #if !defined(_DEBUG) || defined(TEST)
-		static Pid Pagenumber(IPage *pg);
+		static Pid get_PageID(IPage *pg);
 		static bool Iswriteable(IPage *pg);
 #endif
 #ifdef TEST

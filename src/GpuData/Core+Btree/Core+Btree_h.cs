@@ -3,18 +3,6 @@ namespace Core
 {
     public delegate bool RefAction<T>(ref T value);
 
-    #region IVdbe
-
-    public interface IVdbe
-    {
-        Btree.UnpackedRecord RecordUnpack(Btree.KeyInfo keyInfo, int keyLength, byte[] key, Btree.UnpackedRecord space, int count);
-        void DeleteUnpackedRecord(Btree.UnpackedRecord r);
-        RC RecordCompare(int cells, byte[] cellKey, Btree.UnpackedRecord idxKey);
-        RC RecordCompare(int cells, byte[] cellKey, int offset, Btree.UnpackedRecord idxKey);
-    }
-
-    #endregion
-
     #region CollSeq
 
     public class CollSeq
@@ -41,7 +29,7 @@ namespace Core
     #region ISchema
 
     [Flags]
-    public enum SCHEMA : byte
+    public enum SCHEMA_ : byte
     {
         SchemaLoaded = 0x0001, // The schema has been loaded
         UnresetViews = 0x0002, // Some views have defined column names
@@ -51,7 +39,19 @@ namespace Core
     public class ISchema
     {
         public byte FileFormat;
-        public SCHEMA Flags;
+        public SCHEMA_ Flags;
+    }
+
+    #endregion
+
+    #region IVdbe
+
+    public interface IVdbe
+    {
+        UnpackedRecord RecordUnpack(KeyInfo keyInfo, int keyLength, byte[] key, UnpackedRecord space, int count);
+        void DeleteUnpackedRecord(UnpackedRecord r);
+        RC RecordCompare(int cells, byte[] cellKey, UnpackedRecord idxKey);
+        RC RecordCompare(int cells, byte[] cellKey, int offset, UnpackedRecord idxKey);
     }
 
     #endregion

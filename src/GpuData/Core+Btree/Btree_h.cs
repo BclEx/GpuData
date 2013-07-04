@@ -3,10 +3,36 @@ using Mem = System.Object;
 using System;
 namespace Core
 {
+    public class KeyInfo
+    {
+        public Context Ctx;		// The database connection
+        public byte Enc;			// Text encoding - one of the SQLITE_UTF* values
+        public ushort Fields;      // Number of entries in aColl[]
+        public byte[] SortOrders;  // Sort order for each column.  May be NULL
+        public CollSeq[] Colls = new CollSeq[1];  // Collating sequence for each term of the key
+    }
+
+    [Flags]
+    public enum UNPACKED : byte
+    {
+        INCRKEY = 0x01,			// Make this key an epsilon larger
+        PREFIX_MATCH = 0x02,	// A prefix match is considered OK
+        PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
+    }
+
+    public class UnpackedRecord
+    {
+        public KeyInfo KeyInfo;	// Collation and sort-order information
+        public ushort Fields;      // Number of entries in apMem[]
+        public UNPACKED Flags;     // Boolean settings.  UNPACKED_... below
+        public long Rowid;        // Used by UNPACKED_PREFIX_SEARCH
+        public Mem[] Mems;          // Values
+    }
+
     public partial class Btree
     {
-        //const int SQLITE_N_BTREE_META = 10;
-        //const AUTOVACUUM DEFAULT_AUTOVACUUM = AUTOVACUUM.NONE;
+        const int N_BTREE_META = 10;
+        const AUTOVACUUM DEFAULT_AUTOVACUUM = AUTOVACUUM.NONE;
 
         public enum AUTOVACUUM : byte
         {
@@ -24,32 +50,6 @@ namespace Core
             UNORDERED = 8,      // Use of a hash implementation is OK
         }
 
-		public class KeyInfo
-		{
-            public Context Ctx;		// The database connection
-            public byte Enc;			// Text encoding - one of the SQLITE_UTF* values
-            public ushort Fields;      // Number of entries in aColl[]
-            public byte[] SortOrders;  // Sort order for each column.  May be NULL
-            public CollSeq[] Colls = new CollSeq[1];  // Collating sequence for each term of the key
-		};
-
-        [Flags]
-        public enum UNPACKED : byte
-		{
-			INCRKEY = 0x01,			// Make this key an epsilon larger
-			PREFIX_MATCH = 0x02,	// A prefix match is considered OK
-			PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
-		};
-
-        public class UnpackedRecord
-		{
-            public KeyInfo KeyInfo;	// Collation and sort-order information
-            public ushort Fields;      // Number of entries in apMem[]
-            public UNPACKED Flags;     // Boolean settings.  UNPACKED_... below
-            public long Rowid;        // Used by UNPACKED_PREFIX_SEARCH
-			public Mem[] Mems;          // Values
-		};
-
         public Context Ctx;     // The database connection holding this Btree
         public BtShared Bt;     // Sharable content of this Btree
         public TRANS InTrans;   // TRANS_NONE, TRANS_READ or TRANS_WRITE
@@ -62,7 +62,7 @@ namespace Core
 #if !OMIT_SHARED_CACHE
         public BtLock Lock;     // Object used to lock page 1
 #endif
-        
+
         const int BTREE_INTKEY = 1;
         const int BTREE_BLOBKEY = 2;
 
@@ -78,66 +78,61 @@ namespace Core
             INCR_VACUUM = 7,
         }
 
+#if !OMIT_SHARED_CACHE
+        void Enter() { }
+        static void EnterAll(Context ctx) { }
+#else
+        void Enter() { }
+        static void EnterAll(Context ctx) { }
+#endif
 
-        //#if !OMIT_SHARED_CACHE
-        //        //void sqlite3BtreeEnter(Btree);
-        //        //void sqlite3BtreeEnterAll(sqlite3);
-        //#else
-        //    static void sqlite3BtreeEnter( Btree bt )
-        //    {
-        //    }
-        //    static void sqlite3BtreeEnterAll( sqlite3 p )
-        //    {
-        //    }
-        //#endif
-
-        //#if !(OMIT_SHARED_CACHE) && THREADSAFE
-        ////int sqlite3BtreeSharable(Btree);
-        ////void sqlite3BtreeLeave(Btree);
-        ////void sqlite3BtreeEnterCursor(BtCursor);
-        ////void sqlite3BtreeLeaveCursor(BtCursor);
-        ////void sqlite3BtreeLeaveAll(sqlite3);
+#if !OMIT_SHARED_CACHE
+        //int sqlite3BtreeSharable(Btree);
+        void Leave() { }
+        //void sqlite3BtreeEnterCursor(BtCursor);
+        //void sqlite3BtreeLeaveCursor(BtCursor);
+        //void sqlite3BtreeLeaveAll(sqlite3);
         //#if !DEBUG
-        ///* These routines are used inside Debug.Assert() statements only. */
-        //int sqlite3BtreeHoldsMutex(Btree);
+        // These routines are used inside Debug.Assert() statements only.
+        bool HoldsMutex() { return true; }
         //int sqlite3BtreeHoldsAllMutexes(sqlite3);
         //int sqlite3SchemaMutexHeld(sqlite3*,int,Schema);
         //#endif
-        //#else
-        //        static bool sqlite3BtreeSharable(Btree X)
-        //        {
-        //            return false;
-        //        }
+#else
+                static bool sqlite3BtreeSharable(Btree X)
+                {
+                    return false;
+                }
 
-        //        static void sqlite3BtreeLeave(Btree X)
-        //        {
-        //        }
+                static void sqlite3BtreeLeave(Btree X)
+                {
+                }
 
-        //        static void sqlite3BtreeEnterCursor(BtCursor X)
-        //        {
-        //        }
+                static void sqlite3BtreeEnterCursor(BtCursor X)
+                {
+                }
 
-        //        static void sqlite3BtreeLeaveCursor(BtCursor X)
-        //        {
-        //        }
+                static void sqlite3BtreeLeaveCursor(BtCursor X)
+                {
+                }
 
-        //        static void sqlite3BtreeLeaveAll(object X)
-        //        {
-        //        }
+                static void sqlite3BtreeLeaveAll(object X)
+                {
+                }
 
-        //        static bool sqlite3BtreeHoldsMutex(Btree X)
-        //        {
-        //            return true;
-        //        }
+                static bool sqlite3BtreeHoldsMutex(Btree X)
+                {
+                    return true;
+                }
 
-        //        static bool sqlite3BtreeHoldsAllMutexes(object X)
-        //        {
-        //            return true;
-        //        }
-        //        static bool sqlite3SchemaMutexHeld(object X, int y, Schema z)
-        //        {
-        //            return true;
-        //        }
-        //#endif
+                static bool sqlite3BtreeHoldsAllMutexes(object X)
+                {
+                    return true;
+                }
+                static bool sqlite3SchemaMutexHeld(object X, int y, Schema z)
+                {
+                    return true;
+                }
+#endif
     }
 }

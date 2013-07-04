@@ -3,6 +3,7 @@ using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
 using System.Text;
+using Core.IO;
 
 namespace Core
 {
@@ -18,7 +19,6 @@ namespace Core
         public struct OverflowCell // Cells that will not fit on aData[]
         {
             public byte[] Cell;     // Pointers to the body of the overflow cell
-
             public OverflowCell Copy()
             {
                 var cp = new OverflowCell();
@@ -36,7 +36,7 @@ namespace Core
             public bool IsInit;             // True if previously initialized. MUST BE FIRST!
             public byte Overflows;          // Number of overflow cell bodies in aCell[]
             public bool IntKey;             // True if u8key flag is set
-            public bool Leaf;               // 1 if leaf flag is set
+            public byte Leaf;               // 1 if leaf flag is set
             public bool HasData;            // True if this page stores data
             public byte HdrOffset;          // 100 for page 1.  0 otherwise
             public byte ChildPtrSize;       // 0 if leaf==1.  4 if leaf==0
@@ -56,17 +56,17 @@ namespace Core
             public MemPage Copy()
             {
                 var cp = (MemPage)MemberwiseClone();
-                if (Overflows != null)
-                {
-                    cp.Overflows = new OverflowCell[Overflows.Length];
-                    for (int i = 0; i < Overflows.Length; i++)
-                        cp.Overflows[i] = Overflows[i].Copy();
-                }
-                if (Data != null)
-                {
-                    cp.Data = SysEx.Alloc(Data.Length);
-                    Buffer.BlockCopy(Data, 0, cp.Data, 0, Data.Length);
-                }
+                //if (Overflows != null)
+                //{
+                //    cp.Overflows = new OverflowCell[Overflows.Length];
+                //    for (int i = 0; i < Overflows.Length; i++)
+                //        cp.Overflows[i] = Overflows[i].Copy();
+                //}
+                //if (Data != null)
+                //{
+                //    cp.Data = SysEx.Alloc(Data.Length);
+                //    Buffer.BlockCopy(Data, 0, cp.Data, 0, Data.Length);
+                //}
                 return cp;
             }
         };
@@ -201,7 +201,7 @@ namespace Core
             public bool IsIncrblobHandle;   // True if this cursor is an incr. io handle
 #endif
             public byte Hints;			    // As configured by CursorSetHints()
-            public short PageID;           // Index of current page in apPage
+            public short ID;           // Index of current page in apPage
             public ushort[] Idxs = new ushort[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
             public MemPage[] Pages = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
 
@@ -223,7 +223,7 @@ namespace Core
                 IsIncrblobHandle = false;
                 Overflows = null;
 #endif
-                PageID = 0;
+                ID = 0;
             }
             public BtCursor Copy()
             {
@@ -232,7 +232,7 @@ namespace Core
             }
         }
 
-        static uint PENDING_BYTE_PAGE(BtShared bt) { return (uint)PAGER.MJ_PID(bt.Pager); }
+        static Pid PENDING_BYTE_PAGE(BtShared bt) { return Pager.MJ_PID(bt.Pager); }
 
         static Pid PTRMAP_PAGENO(BtShared bt, Pid id) { return ptrmapPageno(bt, id); }
         static Pid PTRMAP_PTROFFSET(Pid ptrmapID, Pid id) { return (5 * (id - ptrmapID - 1)); }
@@ -255,13 +255,6 @@ namespace Core
         }
 #else
 static void btreeIntegrity(Btree p) { }
-#endif
-
-#if !OMIT_AUTOVACUUM
-        //#define ISAUTOVACUUM (pBt.autoVacuum)
-#else
-//#define ISAUTOVACUUM 0
-public static bool ISAUTOVACUUM =false;
 #endif
 
         public class IntegrityCk

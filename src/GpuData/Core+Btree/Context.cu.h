@@ -1,13 +1,26 @@
 namespace Core
 {
+	typedef struct Btree Btree;
+
 	class Context
 	{
 	public:
-		struct BusyHandler
+		//const int MAX_ATTACHED = 10;
+
+		struct BusyHandlerType
 		{
-			//public Func<object, int, int> xFunc;  // The busy callback
-			void *Arg;                   // First arg to busy callback
-			int Busys;                     // Incremented with each busy call
+			int (*Func)(void *, int);	// The busy callback
+			void *Arg;					// First arg to busy callback
+			int Busys;					// Incremented with each busy call
+		};
+
+		struct DB
+		{
+			char *Name;					// Name of this database
+			Btree *Bt;					// The B*Tree structure for this database file
+			uint8 InTrans;				// 0: not writable.  1: Transaction.  2: Checkpoint
+			uint8 SafetyLevel;			// How aggressive at syncing data to disk
+			ISchema *Schema;			// Pointer to database schema (possibly shared)
 		};
 
 		enum FLAG : uint32
@@ -39,32 +52,34 @@ namespace Core
 
 		MutexEx Mutex;
 		FLAG Flags;
-		BusyHandler BusyHandler;
-		int Savepoints; // Number of non-transaction savepoints
+		BusyHandlerType *BusyHandler;
+		int Savepoints;			// Number of non-transaction savepoints
 		int ActiveVdbeCnt;
+		DB *DBs;				// All backends
+		int DBUsed;				// Number of backends currently in use
 
-		//int sqlite3InvokeBusyHandler()
-		//{
-		//	if (SysEx::NEVER(busyHandler == nullptr) || busyHandler.Func == nullptr || busyHandler.nBusy < 0)
-		//		return 0;
-		//	var rc = busyHandler.xFunc(busyHandler.pArg, busyHandler.nBusy);
-		//	if (rc == 0)
-		//		busyHandler.nBusy = -1;
-		//	else
-		//		busyHandler.nBusy++;
-		//	return rc;
-		//}
-		//
-		//        // HOOKS
-		//#if ENABLE_UNLOCK_NOTIFY
-		//public void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 );
-		//internal void sqlite3ConnectionUnlocked(sqlite3 db);
-		//internal void sqlite3ConnectionClosed(sqlite3 db);
-		//#else
-		//        public static void sqlite3ConnectionBlocked(sqlite3b x, sqlite3b y) { }
-		//        //internal static void sqlite3ConnectionUnlocked(sqlite3 x) { }
-		//        //internal static void sqlite3ConnectionClosed(sqlite3 x) { }
-		//#endif
+		int InvokeBusyHandler()
+		{
+			if (SysEx_NEVER(BusyHandler == nullptr) || BusyHandler->Func == nullptr || BusyHandler->Busys < 0)
+				return 0;
+			int rc = BusyHandler->Func(BusyHandler->Arg, BusyHandler->Busys);
+			if (rc == 0)
+				BusyHandler->Busys = -1;
+			else
+				BusyHandler->Busys++;
+			return rc;
+		}
+
+		// HOOKS
+#if ENABLE_UNLOCK_NOTIFY
+		public void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 );
+		internal void sqlite3ConnectionUnlocked(sqlite3 db);
+		internal void sqlite3ConnectionClosed(sqlite3 db);
+#else
+		static void ConnectionBlocked(Context *a, Context *b) { }
+		//internal static void sqlite3ConnectionUnlocked(sqlite3 x) { }
+		//internal static void sqlite3ConnectionClosed(sqlite3 x) { }
+#endif
 		//
 		//        public bool sqlite3TempInMemory()
 		//        {
