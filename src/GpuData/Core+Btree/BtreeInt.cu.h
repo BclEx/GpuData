@@ -6,7 +6,6 @@ namespace Core
 #define MX_CELL(bt) ((bt->PageSize-8)/6)
 
 	typedef struct MemPage MemPage;
-	typedef struct BtLock BtLock;
 
 #ifndef FILE_HEADER
 #define FILE_HEADER "SQLite format 3"
@@ -22,10 +21,10 @@ namespace Core
 		bool IsInit;			// True if previously initialized. MUST BE FIRST!
 		uint8 Overflows;		// Number of overflow cell bodies in aCell[]
 		bool IntKey;			// True if intkey flag is set
-		byte Leaf;				// 1 if leaf flag is set
+		bool Leaf;				// True if leaf flag is set
 		bool HasData;			// True if this page stores data
 		uint8 HdrOffset;        // 100 for page 1.  0 otherwise
-		uint8 ChildPtrSize;     // 0 if leaf==1.  4 if leaf==0
+		uint8 ChildPtrSize;     // 0 if leaf.  4 if !leaf
 		uint8 Max1bytePayload;  // min(maxLocal,127)
 		uint16 MaxLocal;        // Copy of BtShared.maxLocal or BtShared.maxLeaf
 		uint16 MinLocal;        // Copy of BtShared.minLocal or BtShared.minLeaf
@@ -33,7 +32,7 @@ namespace Core
 		uint16 Frees;           // Number of free bytes on the page
 		uint16 Cells;           // Number of cells on this page, local and ovfl
 		uint16 MaskPage;        // Mask for page offset
-		uint16 OvflIdxs[5];		// Insert the i-th overflow cell before the aiOvfl-thnon-overflow cell
+		uint16 OvflIdxs[5];		// Insert the i-th overflow cell before the aiOvfl-th non-overflow cell
 		uint8 *Ovfls[5];		// Pointers to the body of overflow cells
 		BtShared *Bt;			// Pointer to BtShared that this page is part of
 		uint8 *Data;			// Pointer to disk image of the page data
@@ -49,14 +48,6 @@ namespace Core
 	{
 		READ = 1,
 		WRITE = 2,
-	};
-
-	struct BtLock
-	{
-		Btree *Btree;			// Btree handle holding this lock
-		Pid Table;				// Root page of table
-		LOCK Lock;				// READ_LOCK or WRITE_LOCK
-		BtLock *Next;			// Next in BtShared.pLock list
 	};
 
 	enum TRANS : uint8
@@ -194,7 +185,7 @@ namespace Core
 		int MaxErrors;		// Stop accumulating errors when this reaches zero
 		int Errors;			// Number of messages written to zErrMsg so far
 		bool MallocFailed;	// A memory allocation error has occurred
-		StrAccum ErrMsg;	// Accumulate the error message text here
+		Text::StringBuilder ErrMsg; // Accumulate the error message text here
 	};
 
 	BTS inline operator |= (BTS a, BTS b) { return (BTS)(a | b); }

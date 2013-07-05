@@ -35,11 +35,11 @@ namespace Core
         {
             public bool IsInit;             // True if previously initialized. MUST BE FIRST!
             public byte Overflows;          // Number of overflow cell bodies in aCell[]
-            public bool IntKey;             // True if u8key flag is set
-            public byte Leaf;               // 1 if leaf flag is set
+            public bool IntKey;             // True if intkey flag is set
+            public bool Leaf;               // True if leaf flag is set
             public bool HasData;            // True if this page stores data
             public byte HdrOffset;          // 100 for page 1.  0 otherwise
-            public byte ChildPtrSize;       // 0 if leaf==1.  4 if leaf==0
+            public byte ChildPtrSize;       // 0 if leaf.  4 if !leaf
             public ushort MaxLocal;         // Copy of BtShared.maxLocal or BtShared.maxLeaf
             public ushort MinLocal;         // Copy of BtShared.minLocal or BtShared.minLeaf
             public ushort CellOffset;       // Index in aData of first cell pou16er
@@ -77,14 +77,6 @@ namespace Core
         {
             READ = 1,
             WRITE = 2,
-        }
-
-        public class BtLock
-        {
-            public Btree Btree;            // Btree handle holding this lock
-            public Pid Table;              // Root page of table
-            public LOCK Lock;              // READ_LOCK or WRITE_LOCK
-            public BtLock Next;            // Next in BtShared.pLock list
         }
 
         public enum TRANS : byte

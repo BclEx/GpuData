@@ -1,4 +1,5 @@
 // btree.h
+using Pid = System.UInt32;
 using Mem = System.Object;
 using System;
 namespace Core
@@ -48,6 +49,14 @@ namespace Core
             MEMORY = 2,         // This is an in-memory DB
             SINGLE = 4,         // The file contains at most 1 b-tree
             UNORDERED = 8,      // Use of a hash implementation is OK
+        }
+
+        public class BtLock
+        {
+            public Btree Btree;            // Btree handle holding this lock
+            public Pid Table;              // Root page of table
+            public LOCK Lock;              // READ_LOCK or WRITE_LOCK
+            public BtLock Next;            // Next in BtShared.pLock list
         }
 
         public Context Ctx;     // The database connection holding this Btree

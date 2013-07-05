@@ -8,6 +8,8 @@ namespace Core
 #define DEFAULT_AUTOVACUUM 0
 #endif
 
+	enum LOCK : uint8;
+	enum TRANS : uint8;
 	typedef struct KeyInfo KeyInfo;
 	typedef struct UnpackedRecord UnpackedRecord;
 	typedef struct Btree Btree;
@@ -57,6 +59,14 @@ namespace Core
 			UNORDERED = 8,      // Use of a hash implementation is OK
 		};
 
+		struct BtLock
+		{
+			Btree *Btree;			// Btree handle holding this lock
+			Pid Table;				// Root page of table
+			LOCK Lock;				// READ_LOCK or WRITE_LOCK
+			BtLock *Next;			// Next in BtShared.pLock list
+		};
+
 		Context *Ctx;			// The database connection holding this btree
 		BtShared *Bt;			// Sharable content of this btree
 		TRANS InTrans;			// TRANS_NONE, TRANS_READ or TRANS_WRITE
@@ -96,7 +106,7 @@ namespace Core
 		bool IsInTrans();
 		bool IsInReadTrans();
 		bool IsInBackup();
-		void *Schema(int bytes, void (*free)(void *));
+		ISchema *Schema(int bytes, void (*free)(void *));
 		RC SchemaLocked();
 		RC LockTable(int tableID, bool isWriteLock);
 		RC Savepoint(IPager::SAVEPOINT op, int savepoint);
@@ -144,7 +154,7 @@ namespace Core
 		static RC Insert(BtCursor *cur, const void *key, int64 keyLength, const void *data, int dataLength, int zero, int appendBias, int seekResult);
 		static RC First(BtCursor *cur, int *res);
 		static RC Last(BtCursor *cur, int *res);
-		static RC Next(BtCursor *cur, int *res);
+		static RC Next_(BtCursor *cur, int *res);
 		static bool Eof(BtCursor *cur);
 		static RC Previous(BtCursor *cur, int *res);
 		static RC KeySize(BtCursor *cur, int64 *size);
@@ -155,7 +165,6 @@ namespace Core
 		static RC Data(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
 		static void SetCachedRowID(BtCursor *cur, int64 rowid);
 		static int64 GetCachedRowID(BtCursor *cur);
-		static RC CloseCursor(BtCursor *cur);
 
 		char *IntegrityCheck(Pid *roots, int rootsLength, int maxErrors, int *errors);
 		Pager *get_Pager();
@@ -219,5 +228,6 @@ namespace Core
 
 	};
 
+	typedef struct Btree::BtLock BtLock;
 	Btree::OPEN inline operator |= (Btree::OPEN a, Btree::OPEN b) { return (Btree::OPEN)(a | b); }
 }

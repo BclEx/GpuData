@@ -3,11 +3,11 @@
 	class ConvertEx
 	{
 	public:
-		__device__ static int PutVariant(unsigned char *p, uint64 v);
-		__device__ static int PutVariant4(unsigned char *p, uint32 v);
-		__device__ static uint8 GetVariant(const unsigned char *p, uint64 *v);
-		__device__ static uint8 GetVariant4(const unsigned char *p, uint32 *v);
-		__device__ static int GetVariantLength(uint64 v);
+		__device__ static int PutVarint(unsigned char *p, uint64 v);
+		__device__ static int PutVarint4(unsigned char *p, uint32 v);
+		__device__ static uint8 GetVarint(const unsigned char *p, uint64 *v);
+		__device__ static uint8 GetVarint4(const unsigned char *p, uint32 *v);
+		__device__ static int GetVarintLength(uint64 v);
 		__device__ inline static uint16 Get2nz(const uint8 *p) { return ((( (int)((p[0]<<8) | p[1]) -1)&0xffff)+1); }
 		__device__ inline static uint16 Get2(const uint8 *p) { return (p[0]<<8) | p[1]; }
 		__device__ inline static uint16 Put2(unsigned char *p, uint32 v)

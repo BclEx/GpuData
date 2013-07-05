@@ -15,7 +15,7 @@ namespace Core
 #define getVarint ConvertEx::GetVarint
 #define putVarint ConvertEx::PutVarint
 
-	int ConvertEx::PutVariant(unsigned char *p, uint64 v)
+	int ConvertEx::PutVarint(unsigned char *p, uint64 v)
 	{
 		int i, j, n;
 		if (v & (((uint64)0xff000000) << 32))
@@ -43,7 +43,7 @@ namespace Core
 		return n;
 	}
 
-	int ConvertEx::PutVariant4(unsigned char *p, uint32 v)
+	int ConvertEx::PutVarint4(unsigned char *p, uint32 v)
 	{
 		if ((v & ~0x3fff) == 0)
 		{
@@ -51,10 +51,10 @@ namespace Core
 			p[1] = (uint8)(v & 0x7f);
 			return 2;
 		}
-		return PutVariant(p, v);
+		return PutVarint(p, v);
 	}
 
-	uint8 ConvertEx::GetVariant(const unsigned char *p, uint64 *v)
+	uint8 ConvertEx::GetVarint(const unsigned char *p, uint64 *v)
 	{
 		uint32 a, b, s;
 		a = *p;
@@ -198,7 +198,7 @@ namespace Core
 		return 9;
 	}
 
-	uint8 ConvertEx::GetVariant4(const unsigned char *p, uint32 *v)
+	uint8 ConvertEx::GetVarint4(const unsigned char *p, uint32 *v)
 	{
 		uint32 a, b;
 		// The 1-byte case.  Overwhelmingly the most common.  Handled inline by the getVarin32() macro
@@ -238,7 +238,7 @@ namespace Core
 		{
 			p -= 2;
 			uint64 v64;
-			uint8 n = GetVariant(p, &v64);
+			uint8 n = GetVarint(p, &v64);
 			_assert(n > 3 && n <= 9);
 			*v = ((v64 & MAX_TYPE(uint32)) != v64 ? 0xffffffff : (uint32)v64);
 			return n;
@@ -286,7 +286,7 @@ namespace Core
 #endif
 	}
 
-	int ConvertEx::GetVariantLength(uint64 v)
+	int ConvertEx::GetVarintLength(uint64 v)
 	{
 		int i = 0;
 		do { i++; v >>= 7; }

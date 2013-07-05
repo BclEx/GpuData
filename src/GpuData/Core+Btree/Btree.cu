@@ -214,7 +214,7 @@ namespace Core
 			if (lock->Btree == p)
 			{
 				*iter = lock->Next;
-				_assert(lock->Table != 1 || lock == p.Lock);
+				_assert(lock->Table != 1 || lock == &p->Lock);
 				if (lock->Table != 1)
 					SysEx::Free(lock);
 			}
@@ -429,7 +429,7 @@ namespace Core
 		_assert(cursorHoldsMutex(cur));
 		_assert(cur->State >= CURSOR::REQUIRESEEK);
 		if (cur->State == CURSOR::FAULT)
-			return cur->SkipNext;
+			return (RC)cur->SkipNext;
 		cur->State = CURSOR::INVALID;
 		RC rc = btreeMoveto(cur, cur->Key, cur->KeyLength, 0, &cur->SkipNext);
 		if (rc == RC::OK)
@@ -552,7 +552,7 @@ ptrmap_exit:
 #endif
 
 #define findCell(P,I) ((P)->Data + ((P)->MaskPage & ConvertEx::Get2(&(P)->CellIdx[2*(I)])))
-	//#define findCellv2(D,M,O,I) (D + (M & ConvertEx::Get2(D+(O+2*(I)))))
+#define findCellv2(D,M,O,I) (D + (M & ConvertEx::Get2(D+(O+2*(I)))))
 
 	static uint8 *findOverflowCell(MemPage *page, int cell)
 	{
@@ -575,23 +575,22 @@ ptrmap_exit:
 		_assert(MutexEx::Held(page->Bt->Mutex));
 
 		info->Cell = cell;
-		_assert(page->Leaf == 0 || page->Leaf == 1);
 		uint16 n = page->ChildPtrSize; // Number bytes in cell content header
 		_assert(n == 4 - 4 * page->Leaf);
 		uint32 payloadLength; // Number of bytes of cell payload
 		if (page->IntKey)
 		{
 			if (page->HasData)
-				n += ConvertEx::GetVariant4(&cell[n], &payloadLength);
+				n += ConvertEx::GetVarint4(&cell[n], &payloadLength);
 			else
 				payloadLength = 0;
-			n += ConvertEx::GetVariant(&cell[n], (uint64 *)&info->Key);
+			n += ConvertEx::GetVarint(&cell[n], (uint64 *)&info->Key);
 			info->Data = payloadLength;
 		}
 		else
 		{
 			info->Data = 0;
-			n += ConvertEx::GetVariant4(&cell[n], &payloadLength);
+			n += ConvertEx::GetVarint4(&cell[n], &payloadLength);
 			info->Key = payloadLength;
 		}
 		info->Payload = payloadLength;
@@ -641,7 +640,7 @@ ptrmap_exit:
 		if (page->IntKey)
 		{
 			if (page->HasData)
-				iter += ConvertEx::GetVariant4(iter, &size);
+				iter += ConvertEx::GetVarint4(iter, &size);
 			else
 				size = 0;
 
@@ -651,7 +650,7 @@ ptrmap_exit:
 			while ((*iter++) & 0x80 && iter < end) { }
 		}
 		else
-			iter += ConvertEx::GetVariant4(iter, &size);
+			iter += ConvertEx::GetVarint4(iter, &size);
 
 		ASSERTCOVERAGE(size == page->MaxLocal);
 		ASSERTCOVERAGE(size == page->MaxLocal + 1);
@@ -746,7 +745,7 @@ ptrmap_exit:
 			ASSERTCOVERAGE(cbrk + size == usableSize);
 			ASSERTCOVERAGE(pc + size == usableSize);
 			_memcpy(&data[cbrk], &temp[pc], size);
-			ConvertEx::Put2(data, addr, cbrk);
+			ConvertEx::Put2(addr, cbrk);
 		}
 		_assert(cbrk >= cellFirst);
 		ConvertEx::Put2(&data[hdr + 5], cbrk);
@@ -776,7 +775,7 @@ ptrmap_exit:
 		int frags = data[hdr + 7]; // Number of fragmented bytes on pPage
 		_assert(page->CellOffset == hdr + 12 - 4 * page->Leaf);
 		int gap = page->CellOffset + 2 * page->Cells; // First byte of gap between cell pointers and cell content
-		int top = ConvertEx::Get2nz((&data[hdr + 5]); // First byte of cell content area
+		int top = ConvertEx::Get2nz(&data[hdr + 5]); // First byte of cell content area
 		if (gap > top) return SysEx_CORRUPT_BKPT;
 		ASSERTCOVERAGE(gap + 2 == top);
 		ASSERTCOVERAGE(gap + 1 == top);
@@ -916,21 +915,21 @@ ptrmap_exit:
 	{
 		_assert(page->HdrOffset == (page->ID == 1 ? 100 : 0));
 		_assert(MutexEx::Held(page->Bt->Mutex));
-		page->Leaf = (uint8)(flagByte >> 3); _assert(PTF_LEAF == 1 << 3);
+		page->Leaf = (bool)(flagByte >> 3); _assert(PTF_LEAF == 1 << 3);
 		flagByte &= ~PTF_LEAF;
 		page->ChildPtrSize = 4 - 4 * page->Leaf;
 		BtShared *bt = page->Bt; // A copy of pPage->pBt
 		if (flagByte == (PTF_LEAFDATA | PTF_INTKEY))
 		{
-			page->IntKey = 1;
+			page->IntKey = true;
 			page->HasData = page->Leaf;
 			page->MaxLocal = bt->MaxLeaf;
 			page->MinLocal = bt->MinLeaf;
 		}
 		else if (flagByte == PTF_ZERODATA)
 		{
-			page->IntKey = 0;
-			page->HasData = 0;
+			page->IntKey = false;
+			page->HasData = false;
 			page->MaxLocal = bt->MaxLocal;
 			page->MinLocal = bt->MinLocal;
 		}
@@ -1060,7 +1059,7 @@ ptrmap_exit:
 	static MemPage *btreePageFromDbPage(IPage *dbPage, Pid id, BtShared *bt)
 	{
 		MemPage *page = (MemPage *)Pager::GetExtra(dbPage);
-		page->Data = Pager::GetData(dbPage);
+		page->Data = (uint8 *)Pager::GetData(dbPage);
 		page->DBPage = dbPage;
 		page->Bt = bt;
 		page->ID = id;
@@ -1279,7 +1278,7 @@ ptrmap_exit:
 			_assert(sizeof(uint16) == 2);
 			_assert(sizeof(Pid) == 4);
 
-			bt = SysEx::Alloc(sizeof(*bt), true);
+			bt = (BtShared *)SysEx::Alloc(sizeof(*bt), true);
 			if (bt == nullptr)
 			{
 				rc = RC::NOMEM;
@@ -1393,7 +1392,7 @@ btree_open_out:
 		else
 			// If the B-Tree was successfully opened, set the pager-cache size to the default value. Except, when opening on an existing shared pager-cache,
 			// do not change the pager-cache size.
-			if (Schema(0, nullptr) == null)
+			if (Schema(0, nullptr) == nullptr)
 				p->Bt->Pager->SetCacheSize(DEFAULT_CACHE_SIZE);
 #if THREADSAFE
 		_assert(MutexEx::Held(mutexOpen));
@@ -1496,7 +1495,7 @@ btree_open_out:
 
 #pragma endregion
 
-#pragma region Settings
+#pragma region Settings1
 
 	RC Btree::SetCacheSize(int maxPage)
 	{
@@ -1736,10 +1735,10 @@ btree_open_out:
 		//     4-byte overflow page pointer
 		// So a cell consists of a 2-byte pointer, a header which is as much as 17 bytes long, 0 to N bytes of payload, and an optional 4 byte overflow
 		// page pointer.
-		pt->MaxLocal = (uint16)((bt->UsableSize - 12) * 64 / 255 - 23);
-		pt->MinLocal = (uint16)((bt->UsableSize - 12) * 32 / 255 - 23);
-		pt->MaxLeaf = (uint16)(bt->UsableSize - 35);
-		pt->MinLeaf = (uint16)((bt->UsableSize - 12) * 32 / 255 - 23);
+		bt->MaxLocal = (uint16)((bt->UsableSize - 12) * 64 / 255 - 23);
+		bt->MinLocal = (uint16)((bt->UsableSize - 12) * 32 / 255 - 23);
+		bt->MaxLeaf = (uint16)(bt->UsableSize - 35);
+		bt->MinLeaf = (uint16)((bt->UsableSize - 12) * 32 / 255 - 23);
 		if (bt->MaxLocal > 127)
 			bt->Max1bytePayload = 127;
 		else
@@ -1751,7 +1750,7 @@ btree_open_out:
 
 page1_init_failed:
 		releasePage(page1);
-		pt->Page1 = nullptr;
+		bt->Page1 = nullptr;
 		return rc;
 	}
 
@@ -1846,7 +1845,7 @@ page1_init_failed:
 			blockingCtx = bt->Writer->Ctx;
 		else if (wrflag > 1)
 		{
-			for (BtLock *iIter = bt->Lock; iter; iter = iter->Next)
+			for (BtLock *iter = bt->Lock; iter; iter = iter->Next)
 				if (iter->Btree != this)
 				{
 					blockingCtx = iter->Btree->Ctx;
@@ -1856,7 +1855,7 @@ page1_init_failed:
 
 		if (blockingCtx)
 		{
-			sqlite3ConnectionBlocked(Ctx, blockingCtx);
+			Context::ConnectionBlocked(Ctx, blockingCtx);
 			rc = RC::LOCKED_SHAREDCACHE;
 			goto trans_begun;
 		}
@@ -1874,7 +1873,7 @@ page1_init_failed:
 			// Call lockBtree() until either pBt->pPage1 is populated or lockBtree() returns something other than SQLITE_OK. lockBtree()
 			// may return SQLITE_OK but leave pBt->pPage1 set to 0 if after reading page 1 it discovers that the page-size of the database 
 			// file is not pBt->pageSize. In this case lockBtree() will update pBt->pageSize to the page-size of the file on disk.
-			while (bt->Page1 == nullptr && (rc = lockBtree(bt) == RC::OK));
+			while (bt->Page1 == nullptr && (rc = lockBtree(bt)) == RC::OK);
 
 			if (rc == RC::OK && wrflag)
 			{
@@ -1890,7 +1889,7 @@ page1_init_failed:
 
 			if (rc != RC::OK)
 				unlockBtreeIfUnused(bt);
-		} while ((rc & 0xFF) == RC::BUSY && bt->InTransaction == TRANS_NONE && btreeInvokeBusyHandler(bt));
+		} while ((rc & 0xFF) == RC::BUSY && bt->InTransaction == TRANS::NONE && btreeInvokeBusyHandler(bt));
 
 		if (rc == RC::OK)
 		{
@@ -1937,7 +1936,7 @@ trans_begun:
 		{
 			// This call makes sure that the pager has the correct number of open savepoints. If the second parameter is greater than 0 and
 			// the sub-journal is not already open, then it will be opened here.
-			rc = sqlite3PagerOpenSavepoint(pBt->pPager, p->db->nSavepoint);
+			rc = bt->Pager->OpenSavepoint(Ctx->Savepoints);
 		}
 
 		btreeIntegrity(this);
@@ -2036,7 +2035,7 @@ set_child_ptrmaps_out:
 		return RC::OK;
 	}
 
-	static int relocatePage(BtShared *bt, MemPage *page, PTRMAP type, Pid ptrPageID, Pid freePageID, bool isCommit)
+	static RC relocatePage(BtShared *bt, MemPage *page, PTRMAP type, Pid ptrPageID, Pid freePageID, bool isCommit)
 	{
 		_assert(type == PTRMAP::OVERFLOW2 || type == PTRMAP::OVERFLOW1 || type == PTRMAP::BTREE || type == PTRMAP::ROOTPAGE);
 		_assert(MutexEx::Held(bt->Mutex));
@@ -2147,10 +2146,10 @@ set_child_ptrmaps_out:
 					mode = BTALLOC::LE;
 					nearID = fins;
 				}
+				Pid freePageID; // Index of free page to move pLastPg to
 				do
 				{
 					MemPage *freePage;
-					Pid freePageID; // Index of free page to move pLastPg to
 					rc = allocateBtreePage(bt, &freePage, &freePageID, nearID, mode);
 					if (rc != RC::OK)
 					{
@@ -2234,6 +2233,7 @@ set_child_ptrmaps_out:
 		_assert(MutexEx::Held(bt->Mutex));
 		invalidateAllOverflowCache(bt);
 		_assert(bt->AutoVacuum);
+		RC rc = RC::OK;
 		if (!bt->IncrVacuum)
 		{
 			Pid origs = btreePagecount(bt); // Database size before freeing
@@ -2248,7 +2248,6 @@ set_child_ptrmaps_out:
 			Pid fins = finalDbSize(bt, origs, frees); // Number of pages in database after autovacuuming
 			if (fins > origs) return SysEx_CORRUPT_BKPT;
 
-			RC rc = RC::OK;
 			for (Pid freeID = origs; freeID > fins && rc == RC::OK; freeID--) // The next page to be freed
 				rc = incrVacuumStep(bt, fins, freeID, true);
 			if ((rc == RC::DONE || rc == RC::OK) && frees > 0)
@@ -2389,7 +2388,7 @@ set_child_ptrmaps_out:
 		Enter();
 		for (BtCursor *p = Bt->Cursor; p; p = p->Next)
 		{
-			ClearCursor();
+			ClearCursor(p);
 			p->State = CURSOR::FAULT;
 			p->SkipNext = errCode;
 			for (int i = 0; i <= p->ID; i++)
@@ -3005,8 +3004,8 @@ set_child_ptrmaps_out:
 		{
 			if (cur->State == CURSOR::FAULT)
 			{
-				_assert(cur->SkipNext != RC::OK);
-				return cur->SkipNext;
+				_assert(cur->SkipNext != 0);
+				return (RC)cur->SkipNext;
 			}
 			ClearCursor(cur);
 		}
@@ -3036,7 +3035,6 @@ set_child_ptrmaps_out:
 
 			// If pCur->pKeyInfo is not NULL, then the caller that opened this cursor expected to open it on an index b-tree. Otherwise, if pKeyInfo is
 			// NULL, the caller expects a table b-tree. If this is not the case, return an SQLITE_CORRUPT error.
-			_assert(cur->Pages[0]->IntKey == 1 || cur->Pages[0]->IntKey == 0);
 			if ((cur->KeyInfo == nullptr) != cur->Pages[0]->IntKey)
 				return SysEx_CORRUPT_BKPT;
 		}
@@ -3221,10 +3219,10 @@ set_child_ptrmaps_out:
 					if (page->HasData)
 					{
 						uint32 dummy;
-						cell += ConvertEx::GetVariant4(cell, dummy);
+						cell += ConvertEx::GetVarint4(cell, dummy);
 					}
 					int64 cellKeyLength;
-					ConvertEx::GetVariant(cell, (uint64 *)&cellKeyLength);
+					ConvertEx::GetVarint(cell, (uint64 *)&cellKeyLength);
 					if (cellKeyLength == intKey)
 						c = 0;
 					else if (cellKeyLength < intKey)
@@ -3331,7 +3329,7 @@ moveto_finish:
 		return (cur->State != CURSOR::VALID);
 	}
 
-	RC Btree::Next(BtCursor *cur, int *res)
+	RC Btree::Next_(BtCursor *cur, int *res)
 	{
 		_assert(cursorHoldsMutex(cur));
 		RC rc = restoreCursorPosition(cur);
@@ -3385,7 +3383,7 @@ moveto_finish:
 			} while (cur->Idxs[cur->ID] >= page->Cells);
 			*res = 0;
 			if (page->IntKey)
-				rc = Next(cur, res);
+				rc = Next_(cur, res);
 			else
 				rc = RC::OK;
 			return rc;
@@ -3766,32 +3764,34 @@ end_allocate_page:
 		MemPage *page1 = bt->Page1; // Local reference to page 1
 		RC rc = Pager::Write(page1->DBPage);
 		if (rc) goto freepage_out;
-		Pid frees = ConvertEx::Get4(&page1->Data[36]); // Initial number of pages on free-list
+		int frees = ConvertEx::Get4(&page1->Data[36]); // Initial number of pages on free-list
 		ConvertEx::Put4(&page1->Data[36], frees + 1);
 
 		if (bt->BtsFlags & BTS::SECURE_DELETE)
 		{
 			// If the secure_delete option is enabled, then always fully overwrite deleted information with zeros.
-			if ((!page && (rc = btreeGetPage(bt, pageID, &page, false)) != RC.OK) || (rc = Pager::Write(page->DBPage)) != RC.OK)
+			if ((!page && (rc = btreeGetPage(bt, pageID, &page, false)) != RC:OK) || (rc = Pager::Write(page->DBPage)) != RC::OK)
 				goto freepage_out;
 			_memset(page->Data, 0, page->Bt->PageSize);
 		}
 
 		// If the database supports auto-vacuum, write an entry in the pointer-map to indicate that the page is free.
-		if (ISAUTOVACUUM)
+#if !OMIT_AUTOVACUUM
+		if (bt->AutoVacuum)
 		{
 			ptrmapPut(bt, pageID, PTRMAP::FREEPAGE, 0, &rc);
 			if (rc) goto freepage_out;
 		}
+#endif
 
 		// Now manipulate the actual database free-list structure. There are two possibilities. If the free-list is currently empty, or if the first
 		// trunk page in the free-list is full, then this page will become a new free-list trunk page. Otherwise, it will become a leaf of the
 		// first trunk page in the current free-list. This block tests if it is possible to add the page as a new free-list leaf.
 		Pid trunkID = 0; // Page number of free-list trunk page
+		MemPage *trunk = nullptr; // Free-list trunk page
 		if (frees != 0)
 		{
 			trunkID = ConvertEx::Get4(&page1->Data[32]);
-			MemPage *trunk = nullptr; // Free-list trunk page
 			rc = btreeGetPage(bt, trunkID, &trunk, false);
 			if (rc != RC::OK)
 				goto freepage_out;
@@ -3843,7 +3843,7 @@ freepage_out:
 		if (page)
 			page->IsInit = false;
 		releasePage(page);
-		releasePage(trunkID);
+		releasePage(trunk);
 		return rc;
 	}
 
@@ -3904,7 +3904,7 @@ freepage_out:
 		return RC::OK;
 	}
 
-	static int fillInCell(MemPage *page, unsigned char *cell, const void *key, int64 keyLength, const void *data, int dataLength, int zeros, int *sizeOut)
+	static RC fillInCell(MemPage *page, unsigned char *cell, const void *key, int64 keyLength, const void *data, int dataLength, int zeros, int *sizeOut)
 	{
 		BtShared *bt = page->Bt;
 		_assert(MutexEx::Held(bt->Mutex));
@@ -3917,10 +3917,10 @@ freepage_out:
 		if (!page->Leaf)
 			header += 4;
 		if (page->HasData)
-			header += ConvertEx::PutVariant(&cell[header], dataLength + zeros);
+			header += ConvertEx::PutVarint(&cell[header], dataLength + zeros);
 		else
 			dataLength = zeros = 0;
-		header += ConvertEx::PutVariant(&cell[header], keyLength);
+		header += ConvertEx::PutVarint(&cell[header], keyLength);
 		CellInfo info;
 		btreeParseCellPtr(page, cell, &info);
 		_assert(info.Header == header);
@@ -4153,7 +4153,7 @@ freepage_out:
 		// Check that the page has just been zeroed by zeroPage()
 		const int hdr = page->HdrOffset; // Offset of header on pPage
 		const int usable = page->Bt->UsableSize; // Usable size of page	_assert(page->Cells == 0);
-		_assert(ConvertEx:Get2nz(&data[hdr + 5]) == usable);
+		_assert(ConvertEx::Get2nz(&data[hdr + 5]) == usable);
 
 		uint8 *const data = page->Data; // Pointer to data for pPage
 		uint8 *cellptr = &page->CellIdx[cells * 2]; // Address of next cell pointer
@@ -4168,7 +4168,7 @@ freepage_out:
 		}
 		ConvertEx::Put2(&data[hdr + 3], cells);
 		ConvertEx::Put2(&data[hdr + 5], cellbody);
-		page->Free -= (cells * 2 + usable - cellbody);
+		page->Frees -= (cells * 2 + usable - cellbody);
 		page->Cells = (uint16)cells;
 	}
 
@@ -4288,7 +4288,7 @@ freepage_out:
 
 	static void copyNodeContent(MemPage *from, MemPage *to, RC *rcRef)
 	{
-		if ((*rcRef) == RC::OK)
+		if (*rcRef == RC::OK)
 		{
 			BtShared *const bt = from->Bt;
 			uint8 *const fromData = from->Data;
@@ -4298,7 +4298,7 @@ freepage_out:
 
 			_assert(from->IsInit);
 			_assert(from->Frees >= toHdr);
-			_assert(ConvertEx::Get2(&fromdata[fromHdr + 5]) <= (int)bt->UsableSize);
+			_assert(ConvertEx::Get2(&toData[fromHdr + 5]) <= (int)bt->UsableSize);
 
 			// Copy the b-tree node content from page pFrom to page pTo.
 			int data = ConvertEx::Get2(&fromData[fromHdr + 5]);
@@ -4316,15 +4316,17 @@ freepage_out:
 			}
 
 			// If this is an auto-vacuum database, update the pointer-map entries for any b-tree or overflow pages that pTo now contains the pointers to.
-			if (ISAUTOVACUUM)
+#if !OMIT_AUTOVACUUM
+			if (bt->AutoVacuum)
 				*rcRef = setChildPtrmaps(to);
+#endif
 		}
 	}
 
 #if defined(_MSC_VER) && _MSC_VER >= 1700 && defined(_M_ARM)
 #pragma optimize("", off)
 #endif
-	static int balance_nonroot(MemPage *parent, int parentIdx, uint8 *ovflSpace, bool isRoot, bool bulk)
+	static RC balance_nonroot(MemPage *parent, int parentIdx, uint8 *ovflSpace, bool isRoot, bool bulk)
 	{
 		BtShared *bt = parent->Bt; // The whole database
 		_assert(MutexEx::Held(bt->Mutex));
@@ -4390,7 +4392,7 @@ freepage_out:
 				goto balance_cleanup;
 			}
 			maxCells += 1 + oldPages[i]->Cells + oldPages[i]->Overflows;
-			if ((i--) == 0) break;
+			if (i-- == 0) break;
 
 			if (i + nxDiv == parent->OvflIdxs[0] && parent->Overflows)
 			{
@@ -4423,7 +4425,7 @@ freepage_out:
 					else
 					{
 						_memcpy(&ovflSpace[off], divs[i], sizeNew[i]);
-						divs[i] = &ovflSpace[diva[i] - parent->Data];
+						divs[i] = &ovflSpace[divs[i] - parent->Data];
 					}
 				}
 				dropCell(parent, i + nxDiv - parent->Overflows, sizeNew[i], &rc);
@@ -4450,7 +4452,7 @@ freepage_out:
 
 		uint16 *sizeCell = (uint16 *)&cell[maxCells]; // Local size of all cells in apCell[]
 		int space1Idx = 0; // First unused byte of aSpace1[]
-		byte *space1 = (uint8 *)&sizeCell[maxCells]; // Space for copies of dividers cells
+		uint8 *space1 = (uint8 *)&sizeCell[maxCells]; // Space for copies of dividers cells
 		_assert(EIGHT_BYTE_ALIGNMENT(space1));
 
 		// Load pointers to all cells on sibling pages and the divider cells into the local apCell[] array.  Make copies of the divider cells
@@ -4624,7 +4626,7 @@ freepage_out:
 
 				// Set the pointer-map entry for the new sibling page.
 #if !OMIT_AUTOVACUUM
-				if (bt.AutoVacuum)
+				if (bt->utoVacuum)
 				{
 					ptrmapPut(bt, newPage->ID, PTRMAP::BTREE, parent->ID, &rc);
 					if (rc != RC::OK)
@@ -4714,7 +4716,7 @@ freepage_out:
 					CellInfo info;
 					btreeParseCellPtr(newPage, cell[j], &info);
 					pCell = pTemp;
-					sz = 4 + ConvertEx::PutVariant(&pCell[4], info.Key);
+					sz = 4 + ConvertEx::PutVarint(&pCell[4], info.Key);
 					pTemp = nullptr;
 				}
 				else
@@ -4769,7 +4771,7 @@ freepage_out:
 			freePage(newPages[0], &rc);
 		}
 #if !OMIT_AUTOVACUUM
-		else if (bt.AutoVacuum)
+		else if (bt->AutoVacuum)
 		{
 			// Fix the pointer-map entries for all the cells that were shifted around. There are several different types of pointer-map entries that need to
 			// be dealt with by this routine. Some of these have been set already, but many have not. The following is a summary:
@@ -4813,14 +4815,14 @@ freepage_out:
 					if (oldPage->Overflows)
 					{
 						overflows = oldPage->Overflows;
-						overflowID = i + !leafData + oldPage->OvflIdx[0];
+						overflowID = i + !leafData + oldPage->OvflIdxs[0];
 					}
 					isDivider = !leafData;
 				}
 
 				_assert(overflows > 0 || overflowID < i);
-				_assert(overflows < 2 || oldPages->OvflIdxs[0] == oldPages->OvflIdxs[1] - 1);
-				_assert(overflows < 3 || oldPages->OvflIdxs[1] == oldPages->OvflIdxs[2] - 1);
+				_assert(overflows < 2 || oldPage->OvflIdxs[0] == oldPage->OvflIdxs[1] - 1);
+				_assert(overflows < 3 || oldPage->OvflIdxs[1] == oldPage->OvflIdxs[2] - 1);
 				if (i == overflowID)
 				{
 					isDivider = true;
@@ -4842,7 +4844,7 @@ freepage_out:
 				// page before the balancing, then the pointer map entries associated with any child or overflow pages need to be updated.
 				if (isDivider || oldPage->ID != newPage->ID)
 				{
-					if (!leafCorrection)
+					if (leafCorrection == 0)
 						ptrmapPut(bt, ConvertEx::Get4(cell[i]), PTRMAP::BTREE, newPage->ID, &rc);
 					if (sizeCell[i] > newPage->MinLocal)
 						ptrmapPutOvflPtr(newPage, cell[i], &rc);
@@ -4850,11 +4852,11 @@ freepage_out:
 			}
 #endif
 
-			if (!leafCorrection)
+			if (leafCorrection == 0)
 			{
 				for (i = 0; i < newPagesUsed; i++)
 				{
-					u3int2 key = ConvertEx::Get4(&newPages[i]->Data[8]);
+					uint32 key = ConvertEx::Get4(&newPages[i]->Data[8]);
 					ptrmapPut(bt, key, PTRMAP::BTREE, newPages[i]->ID, &rc);
 				}
 			}
@@ -4884,7 +4886,7 @@ balance_cleanup:
 #pragma optimize("", on)
 #endif
 
-	static int balance_deeper(MemPage *root, MemPage **childOut)
+	static RC balance_deeper(MemPage *root, MemPage **childOut)
 	{
 		BtShared *bt = root->Bt; // The BTree
 
@@ -4895,13 +4897,13 @@ balance_cleanup:
 		// of the node stored on pRoot into the new child page.
 		MemPage *child = nullptr; // Pointer to a new child page
 		Pid childID = 0; // Page number of the new child page 
-		RC rc = Pager.Write(root->DBPage);
+		RC rc = Pager::Write(root->DBPage);
 		if (rc == RC::OK)
 		{
-			rc = allocateBtreePage(bt, &child, &childID, root->ID, 0);
+			rc = allocateBtreePage(bt, &child, &childID, root->ID, BTALLOC::ANY);
 			copyNodeContent(root, child, &rc);
 #if !OMIT_AUTOVACUUM
-			if (bt.AutoVacuum)
+			if (bt->AutoVacuum)
 				ptrmapPut(bt, childID, PTRMAP::BTREE, root->ID, &rc);
 #endif
 		}
@@ -4918,7 +4920,7 @@ balance_cleanup:
 		TRACE("BALANCE: copy root %d into %d\n", root->ID, child->ID);
 
 		// Copy the overflow cells from pRoot to pChild
-		_memcpy(child->OvflIdx, root->OvflIdxs, root->Overflows * sizeof(root->OvflIdx[0]));
+		_memcpy(child->OvflIdxs, root->OvflIdxs, root->Overflows * sizeof(root->OvflIdxs[0]));
 		_memcpy(child->Ovfls, root->Ovfls, root->Overflows * sizeof(root->Ovfls[0]));
 		child->Overflows = root->Overflows;
 
@@ -4930,7 +4932,7 @@ balance_cleanup:
 		return RC::OK;
 	}
 
-	static int balance(BtCursor *cur)
+	static RC balance(BtCursor *cur)
 	{
 		ASSERTONLY(int balance_quick_called = 0);
 		ASSERTONLY(int balance_deeper_called = 0);
@@ -5032,15 +5034,15 @@ balance_cleanup:
 	{
 		if (cur->State == CURSOR::FAULT)
 		{
-			_assert(cur->SkipNext != RC::OK);
-			return cur->SkipNext;
+			_assert(cur->SkipNext != 0);
+			return (RC)cur->SkipNext;
 		}
 
 		Btree *p = cur->Btree;
 		BtShared *bt = p->Bt;
 		_assert(cursorHoldsMutex(cur));
 		_assert(cur->WrFlag && bt->InTransaction == TRANS::WRITE && (bt->BtsFlags & BTS::READ_ONLY) == 0);
-		_assert(hasSharedCacheTableLock(p, cur->IDRoot, cur->KeyInfo != nullptr, 2));
+		_assert(hasSharedCacheTableLock(p, cur->RootID, cur->KeyInfo != nullptr, LOCK::WRITE));
 
 		// Assert that the caller has been consistent. If this cursor was opened expecting an index b-tree, then the caller should be inserting blob
 		// keys with no associated data. If the cursor was opened expecting an intkey table, the caller should be inserting integer keys with a
@@ -5053,13 +5055,13 @@ balance_cleanup:
 		// keys, the VDBE layer invokes sqlite3BtreeLast() to figure out the integer key to use. It then calls this function to actually insert the 
 		// data into the intkey B-Tree. In this case btreeMoveto() recognizes that the cursor is already where it needs to be and returns without
 		// doing any work. To avoid thwarting these optimizations, it is important not to clear the cursor here.
-		RC rc = saveAllCursors(bt, cur->IDRoot, cur);
+		RC rc = saveAllCursors(bt, cur->RootID, cur);
 		if (rc) return rc;
 
 		// If this is an insert into a table b-tree, invalidate any incrblob cursors open on the row being replaced (assuming this is a replace
 		// operation - if it is not, the following is a no-op).
 		if (cur->KeyInfo == nullptr)
-			invalidateIncrblobCursors(p, keyLength, 0);
+			invalidateIncrblobCursors(p, keyLength, false);
 
 		int loc = seekResult; // -1: before desired location  +1: after
 		if (!loc)
@@ -5073,7 +5075,7 @@ balance_cleanup:
 		_assert(page->IntKey || keyLength >= 0);
 		_assert(page->Leaf || !page->IntKey);
 
-		TRACE("INSERT: table=%d nkey=%lld ndata=%d page=%d %s\n", cur->IDRoot, keyLength, dataLength, page->ID, loc == 0 ? "overwrite" : "new entry");
+		TRACE("INSERT: table=%d nkey=%lld ndata=%d page=%d %s\n", cur->RootID, keyLength, dataLength, page->ID, loc == 0 ? "overwrite" : "new entry");
 		_assert(page->IsInit);
 		allocateTempSpace(bt);
 		unsigned char *newCell = bt->TmpSpace;
@@ -5104,7 +5106,7 @@ balance_cleanup:
 			idx = ++cur->Idxs[cur->ID];
 		}
 		else
-			assert(page->Leaf);
+			_assert(page->Leaf);
 		insertCell(page, idx, newCell, sizeNew, 0, 0, &rc);
 		_assert(rc != RC::OK || page->Cells > 0 || page->Overflows > 0);
 
@@ -5141,16 +5143,16 @@ end_insert:
 		Btree *p = cur->Btree;
 		BtShared *bt = p->Bt;
 		_assert(cursorHoldsMutex(cur));
-		_assert(bt->inTransaction == TRANS::WRITE);
+		_assert(bt->InTransaction == TRANS::WRITE);
 		_assert((bt->BtsFlags & BTS::READ_ONLY) == 0);
 		_assert(cur->WrFlag);
-		_assert(hasSharedCacheTableLock(p, cur->IDRoot, cur->KeyInfo != nullptr, 2));
-		_assert(!hasReadConflicts(p, cur->IDRoot));
+		_assert(hasSharedCacheTableLock(p, cur->RootID, cur->KeyInfo != nullptr, LOCK::WRITE));
+		_assert(!hasReadConflicts(p, cur->RootID));
 
 		if (SysEx_NEVER(cur->Idxs[cur->ID] >= cur->Pages[cur->ID]->Cells) || SysEx_NEVER(cur->State != CURSOR::VALID))
 			return RC::ERROR; // Something has gone awry.
 
-		int cellDepth = cur->Page; // Depth of node containing pCell
+		int cellDepth = cur->ID; // Depth of node containing pCell
 		int cellIdx = cur->Idxs[cellDepth]; // Index of cell to delete
 		MemPage *page = cur->Pages[cellDepth]; // Page to delete cell from
 		unsigned char *cell = findCell(page, cellIdx); // Pointer to cell to delete
@@ -5169,12 +5171,12 @@ end_insert:
 
 		// Save the positions of any other cursors open on this table before making any modifications. Make the page containing the entry to be 
 		// deleted writable. Then free any overflow pages associated with the entry and finally remove the cell itself from within the page.  
-		rc = saveAllCursors(bt, cur->IDRoot, cur);
+		rc = saveAllCursors(bt, cur->RootID, cur);
 		if (rc) return rc;
 
 		// If this is a delete operation to remove a row from a table b-tree, invalidate any incrblob cursors open on the row being deleted.
 		if (cur->KeyInfo == 0)
-			invalidateIncrblobCursors(p, cur->Info.Key, 0);
+			invalidateIncrblobCursors(p, cur->Info.Key, false);
 
 		rc = Pager::Write(page->DBPage);
 		if (rc) return rc;
@@ -5224,10 +5226,10 @@ end_insert:
 		return rc;
 	}
 
-	static int btreeCreateTable(Btree *p, int *tableID, int createTabFlags)
+	static RC btreeCreateTable(Btree *p, int *tableID, int createTabFlags)
 	{
 		BtShared *bt = p->Bt;
-		_assert(HoldsMutex(p));
+		_assert(p->HoldsMutex());
 		_assert(bt->InTransaction == TRANS::WRITE);
 		_assert((bt->BtsFlags & BTS::READ_ONLY) == 0);
 
@@ -5241,16 +5243,13 @@ end_insert:
 #else
 		if (bt->AutoVacuum)
 		{
-			Pgno pgnoMove; // Move a page here to make room for the root-page
-			MemPage *pPageMove; // The page to move to.
-
 			// Creating a new table may probably require moving an existing database to make room for the new tables root page. In case this page turns
 			// out to be an overflow page, delete all overflow page-map caches held by open cursors.
 			invalidateAllOverflowCache(bt);
 
 			// Read the value of meta[3] from the database to determine where the root page of the new table should go. meta[3] is the largest root-page
 			// created so far, so the new root-page is (meta[3]+1).
-			GetMeta(p, BTREE::LARGEST_ROOT_PAGE, &rootID);
+			p->GetMeta(BTREE_LARGEST_ROOT_PAGE, &rootID);
 			rootID++;
 
 			// The new root-page may not be allocated on a pointer-map page, or the PENDING_BYTE page.
@@ -5260,6 +5259,8 @@ end_insert:
 
 			// Allocate a page. The page that currently resides at pgnoRoot will be moved to the allocated page (unless the allocated page happens
 			// to reside at pgnoRoot).
+			Pid moveID; // Move a page here to make room for the root-page
+			MemPage *pageMove; // The page to move to.
 			rc = allocateBtreePage(bt, &pageMove, &moveID, rootID, BTALLOC::EXACT);
 			if (rc != RC::OK)
 				return rc;
@@ -5269,14 +5270,14 @@ end_insert:
 				releasePage(pageMove);
 
 				// Move the page currently at pgnoRoot to pgnoMove.
-				rc = btreeGetPage(bt, rootID, &root, 0);
+				rc = btreeGetPage(bt, rootID, &root, false);
 				if (rc != RC::OK)
 					return rc;
 
 				// pgnoRoot is the page that will be used for the root-page of the new table (assuming an error did not occur). But we were
 				// allocated pgnoMove. If required (i.e. if it was not allocated by extending the file), the current page at position pgnoMove
 				// is already journaled.
-				PTRMAP type = 0;
+				PTRMAP type = (PTRMAP)0;
 				Pid ptrPageID = 0;
 				rc = ptrmapGet(bt, rootID, &type, &ptrPageID);
 				if (type == PTRMAP::ROOTPAGE || type == PTRMAP::FREEPAGE)
@@ -5288,16 +5289,16 @@ end_insert:
 				}
 				_assert(type != PTRMAP::ROOTPAGE);
 				_assert(type != PTRMAP::FREEPAGE);
-				rc = relocatePage(bt, root, type, ptrPageID, moveID, 0);
+				rc = relocatePage(bt, root, type, ptrPageID, moveID, false);
 				releasePage(root);
 
 				// Obtain the page at pgnoRoot
 				if (rc != RC::OK)
 					return rc;
-				rc = btreeGetPage(bt, rootID, &root, 0);
+				rc = btreeGetPage(bt, rootID, &root, false);
 				if (rc != RC::OK)
 					return rc;
-				rc = sqlite3PagerWrite(pRoot->pDbPage);
+				rc = Pager::Write(root->DBPage);
 				if (rc != RC::OK)
 				{
 					releasePage(root);
@@ -5308,7 +5309,7 @@ end_insert:
 				root = pageMove;
 
 			// Update the pointer-map and meta-data with the new root-page number.
-			ptrmapPut(bt, rootID, PTRMAP.ROOTPAGE, 0, &rc);
+			ptrmapPut(bt, rootID, PTRMAP::ROOTPAGE, 0, &rc);
 			if (rc)
 			{
 				releasePage(root);
@@ -5318,7 +5319,7 @@ end_insert:
 			// When the new root page was allocated, page 1 was made writable in order either to increase the database filesize, or to decrement the
 			// freelist count.  Hence, the sqlite3BtreeUpdateMeta() call cannot fail.
 			_assert(Pager::Iswriteable(bt->Page1->DBPage));
-			rc = UpdateMeta(p, 4, rootID);
+			rc = p->UpdateMeta(4, rootID);
 			if (SysEx_NEVER(rc))
 			{
 				releasePage(root);
@@ -5341,7 +5342,7 @@ end_insert:
 		Pager::Unref(root->DBPage);
 		_assert((bt->OpenFlags & BTREE_SINGLE) == 0 || rootID == 2);
 		*tableID = (int)rootID;
-		return RC.OK;
+		return RC::OK;
 	}
 
 	RC Btree::CreateTable(int *tableID, int flags)
@@ -5366,7 +5367,7 @@ end_insert:
 			unsigned char *cell = findCell(page, i);
 			if (!page->Leaf)
 			{
-				rc = clearDatabasePage(bt, ConvertEx::Get4(cell), 1, changes);
+				rc = clearDatabasePage(bt, ConvertEx::Get4(cell), true, changes);
 				if (rc) goto cleardatabasepage_out;
 			}
 			rc = clearCell(page, cell);
@@ -5374,13 +5375,13 @@ end_insert:
 		}
 		if (!page->Leaf)
 		{
-			rc = clearDatabasePage(bt, ConvertEx::Get4(&page->Data[8]), 1, changes);
+			rc = clearDatabasePage(bt, ConvertEx::Get4(&page->Data[8]), true, changes);
 			if (rc) goto cleardatabasepage_out;
 		}
 		else if (changes)
 		{
 			_assert(page->IntKey);
-			*change += page->Cells;
+			*changes += page->Cells;
 		}
 		if (freePageFlag)
 			freePage(page, &rc);
@@ -5398,7 +5399,7 @@ cleardatabasepage_out:
 		Enter();
 		_assert(InTrans == TRANS::WRITE);
 		RC rc = saveAllCursors(bt, (Pid)tableID, 0);
-		if (rc == RC.OK)
+		if (rc == RC::OK)
 		{
 			// Invalidate all incrblob cursors open on table iTable (assuming iTable is the root of a table b-tree - if it is not, the following call is a no-op).
 			invalidateIncrblobCursors(this, 0, true);
@@ -5411,7 +5412,7 @@ cleardatabasepage_out:
 	static RC btreeDropTable(Btree *p, Pid tableID, int *movedID)
 	{
 		BtShared *bt = p->Bt;
-		_assert(HoldsMutex(p));
+		_assert(p->HoldsMutex());
 		_assert(p->InTrans == TRANS::WRITE );
 
 		// It is illegal to drop a table if any cursors are open on the database. This is because in auto-vacuum mode the backend may
@@ -5420,7 +5421,7 @@ cleardatabasepage_out:
 		// This error is caught long before control reaches this point.
 		if (SysEx_NEVER(bt->Cursor))
 		{
-			sqlite3ConnectionBlocked(p->Ctx, bt->Cursor->Btree->Ctx);
+			Context::ConnectionBlocked(p->Ctx, bt->Cursor->Btree->Ctx);
 			return RC::LOCKED_SHAREDCACHE;
 		}
 
@@ -5445,7 +5446,7 @@ cleardatabasepage_out:
 			if (bt->AutoVacuum)
 			{
 				Pid maxRootID;
-				p->GetMeta(BTREE::LARGEST_ROOT_PAGE, &maxRootID);
+				p->GetMeta(BTREE_LARGEST_ROOT_PAGE, &maxRootID);
 
 				if (tableID == maxRootID)
 				{
@@ -5557,11 +5558,11 @@ cleardatabasepage_out:
 	}
 
 #ifndef OMIT_BTREECOUNT
-	RC Btree::Count(BtCursor *cur, int64 *entrysOut)
+	RC Btree::Count(BtCursor *cur, int64 *entrysRef)
 	{
 		if (cur->RootID == 0)
 		{
-			*entrysOut = 0;
+			*entrysRef = 0;
 			return RC::OK;
 		}
 		RC rc = moveToRoot(cur);
@@ -5587,7 +5588,7 @@ cleardatabasepage_out:
 					if (cur->ID == 0)
 					{
 						// All pages of the b-tree have been visited. Return successfully.
-						*entrysOut = entrys;
+						*entrysRef = entrys;
 						return RC::OK;
 					}
 					moveToParent(cur);
@@ -5759,7 +5760,7 @@ cleardatabasepage_out:
 		if (checkRef(check, pageID, parentContext)) return 0;
 		RC rc;
 		MemPage *page;
-		if ((rc = btreeGetPage(bt, pageID, &page, 0)) != RC::OK)
+		if ((rc = btreeGetPage(bt, pageID, &page, false)) != RC::OK)
 		{
 			checkAppendMsg(check, context, "unable to get the page. error code=%d", rc);
 			return 0;
@@ -5806,7 +5807,7 @@ cleardatabasepage_out:
 				if (bt->AutoVacuum)
 					checkPtrmap(check, ovflID, PTRMAP::OVERFLOW1, pageID, context);
 #endif
-				checkList(check, 0, ovflID, pages, context);
+				checkList(check, false, ovflID, pages, context);
 			}
 
 			// Check sanity of left child page.
@@ -5993,7 +5994,7 @@ cleardatabasepage_out:
 		{
 			sqlite3StrAccumReset(&check.ErrMsg);
 			*errors = check.Errors + 1;
-			return 0;
+			return nullptr;
 		}
 		*errors = check.Errors;
 		if (check.Errors == 0) sqlite3StrAccumReset(&check.ErrMsg);
@@ -6049,7 +6050,7 @@ cleardatabasepage_out:
 		return (Backups != 0);
 	}
 
-	void *Btree::Schema(int bytes, void (*free)(void *))
+	ISchema *Btree::Schema(int bytes, void (*free)(void *))
 	{
 		BtShared *bt = Bt;
 		Enter();
@@ -6059,7 +6060,7 @@ cleardatabasepage_out:
 			bt->FreeSchema = free;
 		}
 		Leave();
-		return bt->pSchema;
+		return bt->Schema;
 	}
 
 	RC Btree::SchemaLocked()
@@ -6114,8 +6115,8 @@ cleardatabasepage_out:
 		if (!cur->WrFlag)
 			return RC::READONLY;
 		_assert((cur->Bt->BtsFlags & BTS::READ_ONLY) == 0 && cur->Bt->InTransaction == TRANS::WRITE);
-		_assert(hasSharedCacheTableLock(cur->Btree, cur->IDRoot, 0, 2));
-		_assert(!hasReadConflicts(cur->Btree, cur->IDRoot));
+		_assert(hasSharedCacheTableLock(cur->Btree, cur->RootID, 0, 2));
+		_assert(!hasReadConflicts(cur->Btree, cur->RootID));
 		_assert(cur->Pages[cur->Page]->IntKey);
 
 		return accessPayload(cur, offset, amount, (unsigned char *)z, 1);

@@ -16,6 +16,7 @@ namespace Core
         static void TRACE(string x, params object[] args) { }
 #endif
 
+        static void ASSERTCOVERAGE(bool p) { }
         #region Struct
 
         static byte[] _magicHeader = Encoding.UTF8.GetBytes(FILE_HEADER);
@@ -391,7 +392,7 @@ namespace Core
             }
             else
                 idxKey = null;
-            var rc = sqlite3BtreeMovetoUnpacked(cur, idxKey, keyLength, (bias != 0 ? 1 : 0), ref res);
+            var rc = MovetoUnpacked(cur, idxKey, keyLength, (bias != 0 ? 1 : 0), ref res);
             return rc;
         }
 
@@ -400,7 +401,7 @@ namespace Core
             Debug.Assert(cursorHoldsMutex(cur));
             Debug.Assert(cur.State >= CURSOR.REQUIRESEEK);
             if (cur.State == CURSOR.FAULT)
-                return cur.SkipNext;
+                return (RC)cur.SkipNext;
             cur.State = CURSOR.INVALID;
             var rc = btreeMoveto(cur, cur.Key, cur.KeyLength, 0, ref cur.SkipNext);
             if (rc == RC.OK)
@@ -525,22 +526,19 @@ namespace Core
 #endif
 
         static int findCell(MemPage page, int cell) { return ConvertEx.Get2(page.Data, page.CellOffset + 2 * cell); }
-        //static uint8[] findCellv2(u8[] page, u16 cell, u16 o, int i) { Debugger.Break(); return pPage; }
+        static byte[] findCellv2(byte[] page, ushort cell, ushort o, int i) { Debugger.Break(); return page; }
 
         static int findOverflowCell(MemPage page, int cell)
         {
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
             for (var i = page.Overflows - 1; i >= 0; i--)
             {
-                var ovfl = page.Overflows[i];
-                var k = ovfl.Idx;
+                var k = page.OvflIdxs[i];
                 if (k <= cell)
                 {
                     if (k == cell)
-                    {
-                        //return ovfl.Cell;
-                        return -i - 1; // Negative Offset means overflow cells
-                    }
+                        return -i - 1; //page.Ovfls[i]; // Negative Offset means overflow cells
+
                     cell--;
                 }
             }
@@ -555,23 +553,22 @@ namespace Core
 
             if (info.Cell != cell) info.Cell = cell;
             info.CellIdx = cellIdx;
-            Debug.Assert(page.Leaf == 0 || page.Leaf == 1);
             ushort n = page.ChildPtrSize; // Number bytes in cell content header
-            Debug.Assert(n == 4 - 4 * page.Leaf);
+            Debug.Assert(n == (page.Leaf ? 0 : 4));
             uint payloadLength = 0; // Number of bytes of cell payload
-            if (page.IntKey != 0)
+            if (page.IntKey)
             {
-                if (page.HasData != 0)
-                    n += (ushort)ConvertEx.GetVariant4(cell, cellIdx + n, out payloadLength);
+                if (page.HasData)
+                    n += (ushort)ConvertEx.GetVarint4(cell, cellIdx + n, out payloadLength);
                 else
                     payloadLength = 0;
-                n += (ushort)ConvertEx.GetVariant(cell, cellIdx + n, out info.Key);
+                n += (ushort)ConvertEx.GetVarint(cell, cellIdx + n, out info.Key);
                 info.Data = payloadLength;
             }
             else
             {
                 info.Data = 0;
-                n += (ushort)ConvertEx.GetVariant4(cell, cellIdx + n, out payloadLength);
+                n += (ushort)ConvertEx.GetVarint4(cell, cellIdx + n, out payloadLength);
                 info.Key = payloadLength;
             }
             info.Payload = payloadLength;
@@ -645,7 +642,7 @@ namespace Core
             if (page.IntKey)
             {
                 if (page.HasData)
-                    iter += ConvertEx.GetVariant4(cell, out size); // iter += ConvertEx.GetVarint4(iter, out size);
+                    iter += ConvertEx.GetVarint4(cell, out size); // iter += ConvertEx.GetVarint4(iter, out size);
                 else
                     size = 0;
 
@@ -655,7 +652,7 @@ namespace Core
                 while (((cell[iter++]) & 0x80) != 0 && iter < end) { } // while ((iter++) & 0x80 && iter < end);
             }
             else
-                iter += ConvertEx.GetVariant4(cell, iter, out size); //pIter += getVarint32( pIter, out nSize );
+                iter += ConvertEx.GetVarint4(cell, iter, out size); //pIter += getVarint32( pIter, out nSize );
 
             if (size > page.MaxLocal)
             {
@@ -691,10 +688,10 @@ namespace Core
             var info = new CellInfo();
             Debug.Assert(cell != 0);
             btreeParseCellPtr(page, cell, ref info);
-            Debug.Assert((info.Data + (page.IntKey != 0 ? 0 : info.Key)) == info.Payload);
+            Debug.Assert((info.Data + (page.IntKey ? 0 : info.Key)) == info.Payload);
             if (info.Overflow != 0)
             {
-                Pid ovfl = ConvertEx.Get4(page.Data, cell, info.Overflow);
+                Pid ovfl = ConvertEx.Get4(page.Data, cell + info.Overflow);
                 ptrmapPut(page.Bt, ovfl, PTRMAP.OVERFLOW1, page.ID, ref rcRef);
             }
         }
@@ -704,7 +701,7 @@ namespace Core
             Debug.Assert(cell != null);
             var info = new CellInfo();
             btreeParseCellPtr(page, cell, ref info);
-            Debug.Assert((info.Data + (page.IntKey != 0 ? 0 : info.Key)) == info.Payload);
+            Debug.Assert((info.Data + (page.IntKey ? 0 : info.Key)) == info.Payload);
             if (info.Overflow != 0)
             {
                 Pid ovfl = ConvertEx.Get4(cell, info.Overflow);
@@ -780,14 +777,14 @@ namespace Core
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
             Debug.Assert(bytes >= 0);  // Minimum cell size is 4
             Debug.Assert(page.Frees >= bytes);
-            Debug.Assert(page.OverflowsUsed == 0);
+            Debug.Assert(page.Overflows == 0);
             var usableSize = page.Bt.UsableSize; // Usable size of the page
             Debug.Assert(bytes < usableSize - 8);
 
             var hdr = page.HdrOffset;  // Local cache of pPage.hdrOffset
             var data = page.Data;    // Local cache of pPage.aData
             var frags = data[hdr + 7]; // Number of fragmented bytes on pPage
-            Debug.Assert(page.CellOffset == hdr + 12 - 4 * page.Leaf);
+            Debug.Assert(page.CellOffset == hdr + 12 - 4 * (page.Leaf ? 1 : 0));
             var gap = page.CellOffset + 2 * page.Cells; // First byte of gap between cell pointers and cell content
             var top = ConvertEx.Get2nz(data, hdr + 5); // First byte of cell content area
             if (gap > top) return SysEx.CORRUPT_BKPT();
@@ -925,13 +922,13 @@ namespace Core
         {
             Debug.Assert(page.HdrOffset == (page.ID == 1 ? 100 : 0));
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
-            page.Leaf = (byte)(flagByte >> 3); Debug.Assert(PTF_LEAF == 1 << 3);
+            page.Leaf = ((flagByte >> 3) != 0); Debug.Assert(PTF_LEAF == 1 << 3);
             flagByte &= ~PTF_LEAF;
-            page.ChildPtrSize = (byte)(4 - 4 * page.Leaf);
+            page.ChildPtrSize = (byte)(page.Leaf ? 0 : 4);
             BtShared bt = page.Bt; // A copy of pPage.pBt
             if (flagByte == (PTF_LEAFDATA | PTF_INTKEY))
             {
-                page.IntKey = 1;
+                page.IntKey = true;
                 page.HasData = page.Leaf;
                 page.MaxLocal = bt.MaxLeaf;
                 page.MinLocal = bt.MinLeaf;
@@ -954,7 +951,7 @@ namespace Core
             Debug.Assert(page.Bt != null);
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
             Debug.Assert(page.ID == Pager.get_PageID(page.DBPage));
-            Debug.Assert(page == Pager.GetExtra(page.DBPage));
+            Debug.Assert(page == Pager.GetExtra<MemPage>(page.DBPage));
             Debug.Assert(page.Data == Pager.GetData(page.DBPage));
 
             if (!page.IsInit)
@@ -969,7 +966,7 @@ namespace Core
                 page.Overflows = 0;
                 int usableSize = (int)bt.UsableSize; // Amount of usable space on each page
                 ushort cellOffset; // Offset from start of page to first cell pointer
-                page.CellOffset = (cellOffset = (ushort)(hdr + 12 - 4 * page.Leaf));
+                page.CellOffset = (cellOffset = (ushort)(hdr + 12 - 4 * (page.Leaf ? 1 : 0)));
                 int top = ConvertEx.Get2nz(data, hdr + 5); // First byte of the cell content area
                 page.Cells = (ushort)(ConvertEx.Get2(data, hdr + 3));
                 if (page.Cells > MX_CELL(bt))
@@ -985,7 +982,7 @@ namespace Core
                 ushort pc; // Address of a freeblock within pPage.aData[]
 #if ENABLE_OVERSIZE_CELL_CHECK
                 {
-                    if (page.Leaf == 0) cellLast--;
+                    if (!page.Leaf) cellLast--;
                     for (var i = 0; i < page.Cells; i++)
                     {
                         pc = (ushort)ConvertEx.Get2(data, cellOffset + i * 2);
@@ -995,7 +992,7 @@ namespace Core
                         if (pc + sz > usableSize)
                             return SysEx.CORRUPT_BKPT();
                     }
-                    if (page.Leaf == 0) cellLast++;
+                    if (!page.Leaf) cellLast++;
                 }
 #endif
 
@@ -1482,7 +1479,7 @@ namespace Core
 
         #endregion
 
-        #region Settings
+        #region Settings1
 
         public RC SetCacheSize(int maxPage)
         {
@@ -1931,7 +1928,7 @@ namespace Core
         #region Autovacuum
 #if !SQLITE_OMIT_AUTOVACUUM
 
-        static int setChildPtrmaps(MemPage page)
+        static RC setChildPtrmaps(MemPage page)
         {
             var isInitOrig = page.IsInit;
 
@@ -1947,17 +1944,17 @@ namespace Core
             {
                 int cell = findCell(page, i);
                 ptrmapPutOvflPtr(page, cell, ref rc);
-                if (page.Leaf == 0)
+                if (!page.Leaf)
                 {
                     Pid childID = ConvertEx.Get4(page.Data, cell);
-                    ptrmapPut(bt, childID, PTRMAP_BTREE, id, ref rc);
+                    ptrmapPut(bt, childID, PTRMAP.BTREE, id, ref rc);
                 }
             }
 
-            if (page.Leaf == 0)
+            if (!page.Leaf)
             {
                 Pid childID = ConvertEx.Get4(page.Data, page.HdrOffset + 8);
-                ptrmapPut(bt, childID, PTRMAP_BTREE, id, ref rc);
+                ptrmapPut(bt, childID, PTRMAP.BTREE, id, ref rc);
             }
 
         set_child_ptrmaps_out:
@@ -1968,7 +1965,7 @@ namespace Core
         static RC modifyPagePointer(MemPage page, Pid from, Pid to, PTRMAP type)
         {
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
-            Debug.Assert(Pager.Iswriteable(page.DbPage));
+            Debug.Assert(Pager.Iswriteable(page.DBPage));
             if (type == PTRMAP.OVERFLOW2)
             {
                 // The pointer is always the first 4 bytes of the page in this case.
@@ -1991,17 +1988,17 @@ namespace Core
                         var info = new CellInfo();
                         btreeParseCellPtr(page, cell, ref info);
                         if (info.Overflow != 0 &&
-                            cell + info.Overflow + 3 <= page->Data + page->MaskPage &&
-                            from == ConvertEx.Get4(cell, info.Overflow))
+                            //cell + info.Overflow + 3 <= page.Data + page.MaskPage &&
+                            from == ConvertEx.Get4(page.Data, cell + info.Overflow))
                         {
                             ConvertEx.Put4(page.Data, cell + info.Overflow, (int)to);
                             break;
                         }
                     }
                     else
-                        if (ConvertEx.Get4(cell) == from)
+                        if (ConvertEx.Get4(page.Data, cell) == from)
                         {
-                            ConvertEx.Put4(cell, (int)to);
+                            ConvertEx.Put4(page.Data, cell, (int)to);
                             break;
                         }
                 }
@@ -2018,7 +2015,7 @@ namespace Core
             return RC.OK;
         }
 
-        static int relocatePage(BtShared bt, MemPage page, PTRMAP type, Pid ptrPageID, Pid freePageID, bool isCommit)
+        static RC relocatePage(BtShared bt, MemPage page, PTRMAP type, Pid ptrPageID, Pid freePageID, bool isCommit)
         {
             Debug.Assert(type == PTRMAP.OVERFLOW2 || type == PTRMAP.OVERFLOW1 || type == PTRMAP.BTREE || type == PTRMAP.ROOTPAGE);
             Debug.Assert(MutexEx.Held(bt.Mutex));
@@ -2050,7 +2047,7 @@ namespace Core
                 if (nextOvfl != 0)
                 {
                     ptrmapPut(bt, nextOvfl, PTRMAP.OVERFLOW2, freePageID, ref rc);
-                    if (rc != SQLITE.OK)
+                    if (rc != RC.OK)
                         return rc;
                 }
             }
@@ -2062,7 +2059,7 @@ namespace Core
                 rc = btreeGetPage(bt, ptrPageID, ref ptrPage, false);
                 if (rc != RC.OK)
                     return rc;
-                rc = sqlite3PagerWrite(ptrPage.pDbPage);
+                rc = Pager.Write(ptrPage.DBPage);
                 if (rc != RC.OK)
                 {
                     releasePage(ptrPage);
@@ -2112,7 +2109,7 @@ namespace Core
                 }
                 else
                 {
-                    MemPage lastPage;
+                    MemPage lastPage = new MemPage();
                     rc = btreeGetPage(bt, lastPageID, ref lastPage, false);
                     if (rc != RC.OK)
                         return rc;
@@ -2128,10 +2125,10 @@ namespace Core
                         mode = BTALLOC.LE;
                         nearID = fins;
                     }
+                    Pid freePageID = 0; // Index of free page to move pLastPg to
                     do
                     {
-                        MemPage freePage;
-                        Pid freePageID; // Index of free page to move pLastPg to
+                        MemPage freePage = new MemPage();
                         rc = allocateBtreePage(bt, ref freePage, ref freePageID, nearID, mode);
                         if (rc != RC.OK)
                         {
@@ -2140,7 +2137,7 @@ namespace Core
                         }
                         releasePage(freePage);
                     } while (commit && freePageID > fins);
-                    _assert(freePageID < lastPageID);
+                    Debug.Assert(freePageID < lastPageID);
 
                     rc = relocatePage(bt, lastPage, type, ptrPageID, freePageID, commit);
                     releasePage(lastPage);
@@ -2155,16 +2152,16 @@ namespace Core
                 {
                     lastPageID--;
                 } while (lastPageID == PENDING_BYTE_PAGE(bt) || PTRMAP_ISPAGE(bt, lastPageID));
-                bt->DoTruncate = true;
-                bt->Pages = lastPageID;
+                bt.DoTruncate = true;
+                bt.Pages = lastPageID;
             }
             return RC.OK;
         }
 
         static Pid finalDbSize(BtShared bt, Pid origs, Pid frees)
         {
-            int entrys = bt->usableSize / 5; // Number of entries on one ptrmap page
-            Pid ptrmaps = (frees - origs + PTRMAP_PAGENO(bt, origs) + entrys) / entrys; // Number of PtrMap pages to be freed
+            int entrys = (int)(bt.UsableSize / 5); // Number of entries on one ptrmap page
+            Pid ptrmaps = (Pid)((frees - origs + PTRMAP_PAGENO(bt, origs) + entrys) / entrys); // Number of PtrMap pages to be freed
             Pid fins = origs - frees - ptrmaps; // Return value
             if (origs > PENDING_BYTE_PAGE(bt) && fins < PENDING_BYTE_PAGE(bt))
                 fins--;
@@ -2185,7 +2182,7 @@ namespace Core
             else
             {
                 Pid origs = btreePagecount(bt);
-                Pid frees = ConvertEx.Get4(bt->Page1->Data, 36);
+                Pid frees = ConvertEx.Get4(bt.Page1.Data, 36);
                 Pid fins = finalDbSize(bt, origs, frees);
 
                 if (origs < fins)
@@ -2217,15 +2214,9 @@ namespace Core
             Debug.Assert(MutexEx.Held(bt.Mutex));
             invalidateAllOverflowCache(bt);
             Debug.Assert(bt.AutoVacuum);
+            var rc = RC.OK;
             if (!bt.IncrVacuum)
             {
-                Pgno fins;         /* Number of pages in database after autovacuuming */
-                Pgno frees;        /* Number of pages on the freelist initially */
-                Pgno ptrmaps;      /* Number of PtrMap pages to be freed */
-                Pgno freeID;        /* The next page to be freed */
-                int nEntry;        /* Number of entries on one ptrmap page */
-                Pgno origs;        /* Database size before freeing */
-
                 Pid origs = btreePagecount(bt); // Database size before freeing
                 if (PTRMAP_ISPAGE(bt, origs) || origs == PENDING_BYTE_PAGE(bt))
                 {
@@ -2238,12 +2229,11 @@ namespace Core
                 Pid fins = finalDbSize(bt, origs, frees); // Number of pages in database after autovacuuming
                 if (fins > origs) return SysEx.CORRUPT_BKPT();
 
-                var rc = RC.OK;
                 for (var freeID = origs; freeID > fins && rc == RC.OK; freeID--) // The next page to be freed
                     rc = incrVacuumStep(bt, fins, freeID, true);
                 if ((rc == RC.DONE || rc == RC.OK) && frees > 0)
                 {
-                    rc = Pager.Write(bt.pPage1.pDbPage);
+                    rc = Pager.Write(bt.Page1.DBPage);
                     ConvertEx.Put4(bt.Page1.Data, 32, 0);
                     ConvertEx.Put4(bt.Page1.Data, 36, 0);
                     ConvertEx.Put4(bt.Page1.Data, 28, fins);
@@ -2269,7 +2259,7 @@ namespace Core
         public RC CommitPhaseOne(string master)
         {
             var rc = RC.OK;
-            if (inTrans == TRANS.WRITE)
+            if (InTrans == TRANS.WRITE)
             {
                 var bt = p.Bt;
                 Enter();
@@ -2369,7 +2359,7 @@ namespace Core
         {
             int r = 0;
             for (var cur = bt.Cursor; cur != null; cur = cur.Next)
-                if (cur.wrFlag != 0 && cur.State != CURSOR.FAULT) r++;
+                if (cur.WrFlag != 0 && cur.State != CURSOR.FAULT) r++;
             return r;
         }
 #endif
@@ -2379,10 +2369,10 @@ namespace Core
             Enter();
             for (var p = Bt.Cursor; p != null; p = p.Next)
             {
-                ClearCursor();
+                ClearCursor(p);
                 p.State = CURSOR.FAULT;
                 p.SkipNext = errCode;
-                for (var i = 0; i <= p.Page; i++)
+                for (var i = 0; i <= p.ID; i++)
                 {
                     releasePage(p.Pages[i]);
                     p.Pages[i] = null;
@@ -2564,7 +2554,7 @@ namespace Core
                     bt.Cursor = cur.Next;
                 if (cur.Next != null)
                     cur.Next.Prev = cur.Prev;
-                for (var i = 0; i <= cur.Page; i++)
+                for (var i = 0; i <= cur.ID; i++)
                     releasePage(cur.Pages[i]);
                 unlockBtreeIfUnused(bt);
                 invalidateOverflowCache(cur);
@@ -2589,7 +2579,7 @@ namespace Core
             if (cur.Info.Size == 0)
             {
                 int id = cur.ID;
-                btreeParseCell(cur.Page[id], cur.Idxs[id], ref cur.Info);
+                btreeParseCell(cur.ID[id], cur.Idxs[id], ref cur.Info);
                 cur.ValidNKey = true;
             }
             else
@@ -2698,11 +2688,11 @@ namespace Core
 
         static int accessPayload(BtCursor cur, uint offset, uint amount, byte[] buf, int op)
         {
-            MemPage page = cur.Pages[cur.Page]; // Btree page of current entry
+            MemPage page = cur.Pages[cur.ID]; // Btree page of current entry
 
             Debug.Assert(page != null);
             Debug.Assert(cur.State == CURSOR.VALID);
-            Debug.Assert(cur.Idxs[cur.Page] < page.Cells);
+            Debug.Assert(cur.Idxs[cur.ID] < page.Cells);
             Debug.Assert(cursorHoldsMutex(cur));
 
             getCellInfo(cur);
@@ -2844,8 +2834,8 @@ namespace Core
         {
             Debug.Assert(cursorHoldsMutex(cur));
             Debug.Assert(cur.State == CURSOR.VALID);
-            Debug.Assert(cur.Page >= 0 && cur.Pages[cur.Page] != null);
-            Debug.Assert(cur.Idxs[cur.Page] < cur.Pages[cur.Page].Cells);
+            Debug.Assert(cur.ID >= 0 && cur.Pages[cur.ID] != null);
+            Debug.Assert(cur.Idxs[cur.ID] < cur.Pages[cur.ID].Cells);
             return accessPayload(cur, offset, amount, buf, 0);
         }
 
@@ -2861,8 +2851,8 @@ namespace Core
             if (rc == RC.OK)
             {
                 Debug.Assert(cur.State == CURSOR.VALID);
-                Debug.Assert(cur.Page >= 0 && cur.Pages[cur.Page] != null);
-                Debug.Assert(cur.Idxs[cur.Page] < cur.apPage[cur.Page].Cells);
+                Debug.Assert(cur.ID >= 0 && cur.Pages[cur.ID] != null);
+                Debug.Assert(cur.Idxs[cur.ID] < cur.apPage[cur.ID].Cells);
                 rc = accessPayload(cur, offset, amount, buf, 0);
             }
             return rc;
@@ -2870,14 +2860,14 @@ namespace Core
 
         static byte[] fetchPayload(BtCursor cur, ref int amount, bool skipKey, out int payloadOffset)
         {
-            Debug.Assert(cur != null && cur.Page >= 0 && cur.Pages[cur.Page] != null);
+            Debug.Assert(cur != null && cur.ID >= 0 && cur.Pages[cur.ID] != null);
             Debug.Assert(cur.State == CURSOR.VALID);
             Debug.Assert(cursorHoldsMutex(cur));
             outOffset = -1;
-            var page = cur.Pages[cur.Page];
-            Debug.Assert(cur.Idxs[cur.Page] < page.Cells);
+            var page = cur.Pages[cur.ID];
+            Debug.Assert(cur.Idxs[cur.ID] < page.Cells);
             if (SysEx.NEVER(cur.Info.Size == 0))
-                btreeParseCell(cur.Pages[cur.Page], cur.Idxs[cur.Page], ref cur.Info);
+                btreeParseCell(cur.Pages[cur.ID], cur.Idxs[cur.ID], ref cur.Info);
             var payload = SysEx.Alloc(cur.Info.Size - cur.Info.Header); //cur.Info.Cell + cur.Info.Header;
             payloadOffset = (int)(cur.Info.Cell + cur.Info.Header);
             var key = (page.IntKey != 0 ? 0U : (uint)cur.Info.Key);
@@ -2926,18 +2916,18 @@ namespace Core
         {
             Debug.Assert(cursorHoldsMutex(cur));
             Debug.Assert(cur.State == CURSOR.VALID);
-            Debug.Assert(cur.Page < BTCURSOR_MAX_DEPTH);
-            if (cur.Page >= (BTCURSOR_MAX_DEPTH - 1))
+            Debug.Assert(cur.ID < BTCURSOR_MAX_DEPTH);
+            if (cur.ID >= (BTCURSOR_MAX_DEPTH - 1))
                 return SysEx.CORRUPT_BKPT();
             var bt = cur.Bt;
             var newPage = new MemPage();
             var rc = getAndInitPage(bt, newID, ref newPage);
             if (rc != RC.OK)
                 return rc;
-            var i = cur.Page;
+            var i = cur.ID;
             cur.Pages[i + 1] = newPage;
             cur.Idxs[i + 1] = 0;
-            cur.Page++;
+            cur.ID++;
 
             cur.Info.Size = 0;
             cur.ValidNKey = false;
@@ -2963,17 +2953,17 @@ namespace Core
         {
             Debug.Assert(cursorHoldsMutex(cur));
             Debug.Assert(cur.State == CURSOR.VALID);
-            Debug.Assert(cur.Page > 0);
-            Debug.Assert(cur.Pages[cur.Page] != null);
+            Debug.Assert(cur.ID > 0);
+            Debug.Assert(cur.Pages[cur.ID] != null);
 
             // UPDATE: It is actually possible for the condition tested by the assert below to be untrue if the database file is corrupt. This can occur if
             // one cursor has modified page pParent while a reference to it is held by a second cursor. Which can only happen if a single page is linked
             // into more than one b-tree structure in a corrupt database.
 #if false
-            assertParentIndex(cur.Pages[cur.Page - 1], cur.Idxs[cur.Page - 1], cur.Pages[cur.Page].ID);
+            assertParentIndex(cur.Pages[cur.ID - 1], cur.Idxs[cur.ID - 1], cur.Pages[cur.ID].ID);
 #endif
-            releasePage(cur.Pages[cur.Page]);
-            cur.Page--;
+            releasePage(cur.Pages[cur.ID]);
+            cur.ID--;
             cur.Info.Size = 0;
             cur.ValidNKey = false;
         }
@@ -2988,19 +2978,19 @@ namespace Core
             {
                 if (cur.State == CURSOR.FAULT)
                 {
-                    Debug.Assert(cur.SkipNext != RC.OK);
-                    return cur.SkipNext;
+                    Debug.Assert(cur.SkipNext != 0);
+                    return (RC)cur.SkipNext;
                 }
                 ClearCursor(cur);
             }
 
             var rc = RC.OK;
             var bt = cur.Btree.Bt;
-            if (cur.Page >= 0)
+            if (cur.ID >= 0)
             {
-                for (var i = 1; i <= cur.Page; i++)
+                for (var i = 1; i <= cur.ID; i++)
                     releasePage(cur.Pages[i]);
-                cur.Page = 0;
+                cur.ID = 0;
             }
             else if (cur.RootID == 0)
             {
@@ -3015,12 +3005,11 @@ namespace Core
                     cur.State = CURSOR.INVALID;
                     return rc;
                 }
-                cur.Page = 0;
+                cur.ID = 0;
 
                 // If pCur.pKeyInfo is not NULL, then the caller that opened this cursor expected to open it on an index b-tree. Otherwise, if pKeyInfo is
                 // NULL, the caller expects a table b-tree. If this is not the case, return an SQLITE_CORRUPT error.
-                Debug.Assert(cur.Pages[0].IntKey == 1 || cur.Pages[0].IntKey == 0);
-                if ((cur.KeyInfo == null) != (cur.Pages[0].IntKey != 0))
+                if ((cur.KeyInfo == null) != cur.Pages[0].IntKey)
                     return SysEx.CORRUPT_BKPT();
             }
 
@@ -3029,14 +3018,14 @@ namespace Core
             // byte to have been modified while this cursor is holding a reference to the page.
             var root = cur.Pages[0];
             Debug.Assert(root.ID == cur.RootID);
-            Debug.Assert(root.IsInit && (cur.KeyInfo == null) == (root.IntKey != 0));
+            Debug.Assert(root.IsInit && (cur.KeyInfo == null) == root.IntKey);
 
             cur.Idxs[0] = 0;
             cur.Info.Size = 0;
             cur.AtLast = 0;
             cur.ValidNKey = false;
 
-            if (root.Cells == 0 && root.Leaf == 0)
+            if (root.Cells == 0 && !root.Leaf)
             {
                 if (root.ID != 1)
                     return SysEx.CORRUPT_BKPT();
@@ -3055,10 +3044,10 @@ namespace Core
             Debug.Assert(cur.State == CURSOR.VALID);
             MemPage page;
             var rc = RC.OK;
-            while (rc == RC.OK && (page = cur.Pages[cur.Page]).Leaf == 0)
+            while (rc == RC.OK && !(page = cur.Pages[cur.ID]).Leaf)
             {
-                Debug.Assert(cur.Idxs[cur.Page] < page.Cells);
-                Pid id = ConvertEx.Get4(page.Data, findCell(page, cur.Idxs[cur.Page]));
+                Debug.Assert(cur.Idxs[cur.ID] < page.Cells);
+                Pid id = ConvertEx.Get4(page.Data, findCell(page, cur.Idxs[cur.ID]));
                 rc = moveToChild(cur, id);
             }
             return rc;
@@ -3070,15 +3059,15 @@ namespace Core
             Debug.Assert(cur.State == CURSOR.VALID);
             var rc = RC.OK;
             MemPage page = null;
-            while (rc == RC.OK && (page = cur.Pages[cur.Page]).Leaf == 0)
+            while (rc == RC.OK && !(page = cur.Pages[cur.ID]).Leaf)
             {
                 Pid id = ConvertEx.Get4(page.Data, page.HdrOffset + 8);
-                cur.Idxs[cur.Page] = page.Cells;
+                cur.Idxs[cur.ID] = page.Cells;
                 rc = moveToChild(cur, id);
             }
             if (rc == RC.OK)
             {
-                cur.Idxs[cur.Page] = (ushort)(page.Cells - 1);
+                cur.Idxs[cur.ID] = (ushort)(page.Cells - 1);
                 cur.Info.Size = 0;
                 cur.ValidNKey = false;
             }
@@ -3094,12 +3083,12 @@ namespace Core
             {
                 if (cur.State == CURSOR.INVALID)
                 {
-                    Debug.Assert(cur.Pages[cur.Page].Cells == 0);
+                    Debug.Assert(cur.Pages[cur.ID].Cells == 0);
                     res = 1;
                 }
                 else
                 {
-                    Debug.Assert(cur.Pages[cur.Page].Cells > 0);
+                    Debug.Assert(cur.Pages[cur.ID].Cells > 0);
                     res = 0;
                     rc = moveToLeftmost(cur);
                 }
@@ -3113,14 +3102,14 @@ namespace Core
             Debug.Assert(MutexEx.Held(cur.Btree.Ctx.Mutex));
 
             // If the cursor already points to the last entry, this is a no-op.
-            if (CURSOR_VALID == cur.eState && cur.atLast != 0)
+            if (cur.State == CURSOR.VALID && cur.AtLast != 0)
             {
 #if DEBUG
                 // This block serves to Debug.Assert() that the cursor really does point to the last entry in the b-tree.
-                for (var ii = 0; ii < cur.Page; ii++)
+                for (var ii = 0; ii < cur.ID; ii++)
                     Debug.Assert(cur.Idxs[ii] == cur.Pages[ii].Cells);
-                Debug.Assert(cur.Idxs[cur.Page] == cur.Pages[cur.Page].Cells - 1);
-                Debug.Assert(cur.Pages[cur.Page].Leaf != 0);
+                Debug.Assert(cur.Idxs[cur.ID] == cur.Pages[cur.ID].Cells - 1);
+                Debug.Assert(cur.Pages[cur.ID].Leaf);
 #endif
                 return RC.OK;
             }
@@ -3130,7 +3119,7 @@ namespace Core
             {
                 if (cur.State == CURSOR.INVALID)
                 {
-                    Debug.Assert(cur.Pages[cur.Page].Cells == 0);
+                    Debug.Assert(cur.Pages[cur.ID].Cells == 0);
                     res = 1;
                 }
                 else
@@ -3151,14 +3140,14 @@ namespace Core
             Debug.Assert((idxKey == null) == (cur.KeyInfo == null));
 
             // If the cursor is already positioned at the point we are trying to move to, then just return without doing any work
-            if (cur.State == CURSOR.VALID && cur.validNKey && cur.Pages[0].IntKey != 0)
+            if (cur.State == CURSOR.VALID && cur.ValidNKey && cur.Pages[0].IntKey)
             {
-                if (cur.info.nKey == intKey)
+                if (cur.Info.Key == intKey)
                 {
                     res = 0;
                     return RC.OK;
                 }
-                if (cur.atLast != 0 && cur.info.nKey < intKey)
+                if (cur.AtLast != 0 && cur.Info.Key < intKey)
                 {
                     res = -1;
                     return RC.OK;
@@ -3168,46 +3157,46 @@ namespace Core
             var rc = moveToRoot(cur);
             if (rc != RC.OK)
                 return rc;
-            Debug.Assert(cur.RootID == 0 || cur.Pages[cur.Page] != null);
-            Debug.Assert(cur.RootID == 0 || cur.Pages[cur.Page].IsInit);
-            Debug.Assert(cur.State == CURSOR.INVALID || cur.Pages[cur.Page].Cells > 0);
+            Debug.Assert(cur.RootID == 0 || cur.Pages[cur.ID] != null);
+            Debug.Assert(cur.RootID == 0 || cur.Pages[cur.ID].IsInit);
+            Debug.Assert(cur.State == CURSOR.INVALID || cur.Pages[cur.ID].Cells > 0);
             if (cur.State == CURSOR.INVALID)
             {
                 res = -1;
-                Debug.Assert(cur->RootID == 0 || cur.Pages[cur.Page].Cells == 0);
+                Debug.Assert(cur.RootID == 0 || cur.Pages[cur.ID].Cells == 0);
                 return RC.OK;
             }
-            Debug.Assert(cur.Pages[0].IntKey != 0 || idxKey != null);
+            Debug.Assert(cur.Pages[0].IntKey || idxKey != null);
             for (; ; )
             {
                 // pPage->nCell must be greater than zero. If this is the root-page the cursor would have been INVALID above and this for(;;) loop
                 // not run. If this is not the root-page, then the moveToChild() routine would have already detected db corruption. Similarly, pPage must
                 // be the right kind (index or table) of b-tree page. Otherwise a moveToChild() or moveToRoot() call would have detected corruption.
-                MemPage page = cur.Pages[cur.Page];
+                MemPage page = cur.Pages[cur.ID];
                 Debug.Assert(page.Cells > 0);
-                Debug.Assert(page.IntKey == (idxKey == null ? 1 : 0));
+                Debug.Assert(page.IntKey == (idxKey == null));
                 int idx;
                 int lwr = 0;
-                int upr = page.nCell - 1;
+                int upr = page.Cells - 1;
                 if (biasRight != 0)
-                    cur.Idxs[cur.Page] = (ushort)(idx = upr);
+                    cur.Idxs[cur.ID] = (ushort)(idx = upr);
                 else
-                    cur.Idxs[cur.Page] = (ushort)(idx = (upr + lwr) / 2);
+                    cur.Idxs[cur.ID] = (ushort)(idx = (upr + lwr) / 2);
                 for (; ; )
                 {
-                    Debug.Assert(idx == cur.Idx[cur.Page]);
+                    Debug.Assert(idx == cur.Idx[cur.ID]);
                     cur.Info.Size = 0;
                     int cell = findCell(page, idx) + page.ChildPtrSize; // Pointer to current cell in pPage
                     int c;
-                    if (page.IntKey != 0)
+                    if (page.IntKey)
                     {
-                        if (page.HasData != 0)
+                        if (page.HasData)
                         {
                             uint dummy = 0;
-                            cell += ConvertEx.GetVariant4(page.Data, cell, out dummy);
+                            cell += ConvertEx.GetVarint4(page.Data, cell, out dummy);
                         }
                         long cellKeyLength = 0;
-                        ConvertEx.GetVariant(page.Data, cell, out cellKeyLength);
+                        ConvertEx.GetVarint(page.Data, cell, out cellKeyLength);
                         if (cellKeyLength == intKey)
                             c = 0;
                         else if (cellKeyLength < intKey)
@@ -3255,7 +3244,7 @@ namespace Core
                     }
                     if (c == 0)
                     {
-                        if (page.IntKey != 0 && page.Leaf == 0)
+                        if (page.IntKey && !page.Leaf)
                         {
                             lwr = idx;
                             upr = lwr - 1;
@@ -3274,12 +3263,12 @@ namespace Core
                         upr = idx - 1;
                     if (lwr > upr)
                         break;
-                    cur.Idxs[cur.Page] = (ushort)(idx = (lwr + upr) / 2);
+                    cur.Idxs[cur.ID] = (ushort)(idx = (lwr + upr) / 2);
                 }
-                Debug.Assert(lwr == upr + 1 || (page.IntKey != 0 && page.Leaf == 0));
+                Debug.Assert(lwr == upr + 1 || (page.IntKey && !page.Leaf));
                 Debug.Assert(page.IsInit);
                 Pid chldPg;
-                if (page.Leaf != 0)
+                if (page.Leaf)
                     chldPg = 0;
                 else if (lwr >= page.Cells)
                     chldPg = ConvertEx.Get4(page.Data, page.HdrOffset + 8);
@@ -3287,12 +3276,12 @@ namespace Core
                     chldPg = ConvertEx.Get4(page.Data, findCell(page, lwr));
                 if (chldPg == 0)
                 {
-                    Debug.Assert(cur.Idxs[cur.Page] < cur.Page[cur.Page].Cells);
+                    Debug.Assert(cur.Idxs[cur.ID] < cur.Pages[cur.ID].Cells);
                     res = c;
                     rc = RC.OK;
                     goto moveto_finish;
                 }
-                cur.Idxs[cur.Page] = (ushort)lwr;
+                cur.Idxs[cur.ID] = (ushort)lwr;
                 cur.Info.Size = 0;
                 cur.ValidNKey = false;
                 rc = moveToChild(cur, chldPg);
@@ -3309,7 +3298,7 @@ namespace Core
             return (cur.State != CURSOR.VALID);
         }
 
-        public static int Next(BtCursor cur, ref int res)
+        public static RC Next_(BtCursor cur, ref int res)
         {
             Debug.Assert(cursorHoldsMutex(cur));
             var rc = restoreCursorPosition(cur);
@@ -3328,15 +3317,15 @@ namespace Core
             }
             cur.SkipNext = 0;
 
-            MemPage page = cur.Pages[cur.Page];
-            int idx = ++cur.Idxs[cur.Page];
+            MemPage page = cur.Pages[cur.ID];
+            int idx = ++cur.Idxs[cur.ID];
             Debug.Assert(page.IsInit);
 
             cur.Info.Size = 0;
             cur.ValidNKey = false;
             if (idx >= page.Cells)
             {
-                if (page.Leaf == 0)
+                if (!page.Leaf)
                 {
                     rc = moveToChild(cur, ConvertEx.Get4(page.Data, page.HdrOffset + 8));
                     if (rc != RC.OK) return rc;
@@ -3346,24 +3335,24 @@ namespace Core
                 }
                 do
                 {
-                    if (cur.Page == 0)
+                    if (cur.ID == 0)
                     {
                         res = 1;
                         cur.State = CURSOR.INVALID;
                         return RC.OK;
                     }
                     moveToParent(cur);
-                    page = cur.Pages[cur.Page];
-                } while (cur.Idxs[cur.Page] >= page.Cells);
+                    page = cur.Pages[cur.ID];
+                } while (cur.Idxs[cur.ID] >= page.Cells);
                 res = 0;
-                if (page.IntKey != 0)
-                    rc = Next(cur, ref res);
+                if (page.IntKey)
+                    rc = Next_(cur, ref res);
                 else
                     rc = RC.OK;
                 return rc;
             }
             res = 0;
-            if (page.Leaf != 0)
+            if (page.Leaf)
                 return RC.OK;
             rc = moveToLeftmost(cur);
             return rc;
@@ -3389,11 +3378,11 @@ namespace Core
             }
             cur.SkipNext = 0;
 
-            MemPage page = cur.Pages[cur.Page];
+            MemPage page = cur.Pages[cur.ID];
             Debug.Assert(page.IsInit);
-            if (page.Leaf == 0)
+            if (!page.Leaf)
             {
-                int idx = cur.Idxs[cur.Page];
+                int idx = cur.Idxs[cur.ID];
                 rc = moveToChild(cur, ConvertEx.Get4(page.Data, findCell(page, idx)));
                 if (rc != RC.OK)
                     return rc;
@@ -3401,9 +3390,9 @@ namespace Core
             }
             else
             {
-                while (cur.Idxs[cur.Page] == 0)
+                while (cur.Idxs[cur.ID] == 0)
                 {
-                    if (cur.Page == 0)
+                    if (cur.ID == 0)
                     {
                         cur.State = CURSOR.INVALID;
                         res = 1;
@@ -3414,9 +3403,9 @@ namespace Core
                 cur.Info.Size = 0;
                 cur.ValidNKey = false;
 
-                cur.Idxs[cur.Page]--;
-                page = cur.Pages[cur.Page];
-                if (page.IntKey != 0 && page.Leaf == 0)
+                cur.Idxs[cur.ID]--;
+                page = cur.Pages[cur.ID];
+                if (page.IntKey && !page.Leaf)
                     rc = Previous(cur, ref res);
                 else
                     rc = RC.OK;
@@ -3734,13 +3723,8 @@ namespace Core
             return rc;
         }
 
-        static int freePage2(BtShared bt, MemPage memPage, Pid pageID)
+        static RC freePage2(BtShared bt, MemPage memPage, Pid pageID)
         {
-            MemPage trunk = null;                /* Free-list trunk page */
-            MemPage page1 = bt.pPage1;          /* Local reference to page 1 */
-            int rc;                               /* Return Code */
-            int frees;                           /* Initial number of pages on free-list */
-
             Debug.Assert(MutexEx.Held(bt.Mutex));
             Debug.Assert(pageID > 1);
             Debug.Assert(memPage == null || memPage.ID == pageID);
@@ -3749,18 +3733,19 @@ namespace Core
             if (memPage != null)
             {
                 page = memPage;
-                Pager.Refs(page.DBPage);
+                Pager.get_PageRefs(page.DBPage);
             }
             else
                 page = btreePageLookup(bt, pageID);
 
             // Increment the free page count on pPage1
-            rc = Pager.Write(page1.DBPage);
+            MemPage page1 = bt.Page1; // Local reference to page 1
+            RC rc = Pager.Write(page1.DBPage);
             if (rc != RC.OK) goto freepage_out;
-            Pid frees = (int)sqlite3Get4byte(page1.aData, 36);
+            int frees = (int)ConvertEx.Get4(page1.Data, 36); // Initial number of pages on free-list
             ConvertEx.Put4(page1.Data, 36, frees + 1);
 
-            if (bt.BtsFlags & BTS.SECURE_DELETE)
+            if ((bt.BtsFlags & BTS.SECURE_DELETE) != 0)
             {
                 // If the secure_delete option is enabled, then always fully overwrite deleted information with zeros.
                 if ((page == null && (rc = btreeGetPage(bt, pageID, ref page, false)) != RC.OK) || (rc = Pager.Write(page.DBPage)) != RC.OK)
@@ -3781,6 +3766,7 @@ namespace Core
             // trunk page in the free-list is full, then this page will become a new free-list trunk page. Otherwise, it will become a leaf of the
             // first trunk page in the current free-list. This block tests if it is possible to add the page as a new free-list leaf.
             Pid trunkID = 0; // Page number of free-list trunk page
+            MemPage trunk = null; // Free-list trunk page
             if (frees != 0)
             {
                 trunkID = ConvertEx.Get4(page1.Data, 32);
@@ -3896,7 +3882,7 @@ namespace Core
             return RC.OK;
         }
 
-        static int fillInCell(MemPage page, byte[] cell, byte[] key, long keyLength, byte[] data, int dataLength, int zeros, ref int sizeOut)
+        static RC fillInCell(MemPage page, byte[] cell, byte[] key, long keyLength, byte[] data, int dataLength, int zeros, ref int sizeOut)
         {
             BtShared bt = page.Bt;
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
@@ -3906,7 +3892,7 @@ namespace Core
 
             // Fill in the header.
             int header = 0;
-            if (page.Leaf == 0)
+            if (!page.Leaf)
                 header += 4;
             if (page.HasData)
                 header += (int)ConvertEx.PutVarint(cell, header, (int)(dataLength + zeros));
@@ -3920,11 +3906,11 @@ namespace Core
             Debug.Assert(info.Data == (uint)(dataLength + zeros));
 
             // Fill in the payload
-            u8[] src;
+            byte[] src;
             int srcLength;
             int srcIdx = 0;
             int payloadLength = dataLength + zeros;
-            if (page.IntKey != 0)
+            if (page.IntKey)
             {
                 src = data;
                 srcLength = dataLength;
@@ -3997,7 +3983,7 @@ namespace Core
                     payload = ovfl.Data; payloadIdx = 4;
                     spaceLeft = (int)bt.UsableSize - 4;
                 }
-                n = payloadLength;
+                int n = payloadLength;
                 if (n > spaceLeft) n = spaceLeft;
 
                 // If pToRelease is not zero than pPrior points into the data area of pToRelease.  Make sure pToRelease is still writeable.
@@ -4357,7 +4343,7 @@ namespace Core
         }
 #endif
 
-        static void copyNodeContent(MemPage from, MemPage to, ref int rcRef)
+        static void copyNodeContent(MemPage from, MemPage to, ref RC rcRef)
         {
             if (rcRef == RC.OK)
             {
@@ -4368,7 +4354,7 @@ namespace Core
                 int toHdr = (to.ID == 1 ? 100 : 0);
 
                 Debug.Assert(from.IsInit);
-                Debug.Assert(from.Free >= toHdr);
+                Debug.Assert(from.Frees >= toHdr);
                 Debug.Assert(ConvertEx.Get2(fromData, fromHdr + 5) <= (int)bt.UsableSize);
 
                 // Copy the b-tree node content from page pFrom to page pTo.
@@ -4395,7 +4381,7 @@ namespace Core
         }
 
         // under C#; Try to reuse Memory
-        static int balance_nonroot(MemPage parent, int parentIdx, byte[] ovflSpace, bool isRoot, bool bulk)
+        static RC balance_nonroot(MemPage parent, int parentIdx, byte[] ovflSpace, bool isRoot, bool bulk)
         {
             BtShared bt = parent.Bt; // The whole database
             Debug.Assert(MutexEx.Held(bt.Mutex));
@@ -4462,7 +4448,7 @@ namespace Core
                     goto balance_cleanup;
                 }
                 maxCells += 1 + oldPages[i].Cells + oldPages[i].Overflows;
-                if ((i--) == 0) break;
+                if (i-- == 0) break;
 
                 if (i + nxDiv == parent.OvflIdxs[0] && parent.Overflows != 0)
                 {
@@ -4536,8 +4522,8 @@ namespace Core
             //
             // leafCorrection:  4 if pPage is a leaf.  0 if pPage is not a leaf.
             // leafData:  1 if pPage holds key+data and pParent holds only keys.
-            var leafCorrection = (ushort)(oldPages[0].Leaf * 4); // 4 if pPage is a leaf.  0 if not
-            int leafData = oldPages[0].HasData; // True if pPage is a leaf of a LEAFDATA tree
+            ushort leafCorrection = (ushort)(oldPages[0].Leaf ? 4 : 0); // 4 if pPage is a leaf.  0 if not
+            int leafData = (oldPages[0].HasData ? 1 : 0); // True if pPage is a leaf of a LEAFDATA tree
             for (i = 0; i < oldPagesUsed; i++)
             {
                 // Before doing anything else, take a copy of the i'th original sibling The rest of this function will use data from the copies rather
@@ -4581,7 +4567,7 @@ namespace Core
                 //        cells++;
                 //    }
                 //}
-                if (i < oldPagesUsed - 1 && leafData == 0)
+                if (i < oldPagesUsed - 1 && !leafData)
                 {
                     var size = (ushort)sizeNew[i];
                     Debug.Assert(cells < maxCells);
@@ -4594,7 +4580,7 @@ namespace Core
                     Buffer.BlockCopy(temp, leafCorrection, cell[cells], 0, size);
                     Debug.Assert(leafCorrection == 0 || leafCorrection == 4);
                     sizeCell[cells] = (ushort)(sizeCell[cells] - leafCorrection);
-                    if (oldPage.Leaf == 0)
+                    if (!oldPage.Leaf)
                     {
                         Debug.Assert(leafCorrection == 0);
                         Debug.Assert(oldPage.HdrOffset == 0);
@@ -4710,8 +4696,8 @@ namespace Core
 #if !OMIT_AUTOVACUUM
                     if (bt.AutoVacuum)
                     {
-                        ptrmapPut(bt, newPage.pgno, PTRMAP_BTREE, parent.pgno, ref rc);
-                        if (rc != SQLITE_OK)
+                        ptrmapPut(bt, newPage.ID, PTRMAP.BTREE, parent.ID, ref rc);
+                        if (rc != RC.OK)
                             goto balance_cleanup;
                     }
 #endif
@@ -4787,8 +4773,8 @@ namespace Core
                     Debug.Assert(j < maxCells);
                     byte[] pCell = cell[j];
                     int sz = sizeCell[j] + leafCorrection;
-                    byte[] pTemp = new byte[sz];//&aOvflSpace[iOvflSpace];
-                    if (newPage.leaf == 0)
+                    byte[] pTemp = new byte[sz]; //&aOvflSpace[iOvflSpace];
+                    if (!newPage.Leaf)
                         Buffer.BlockCopy(pCell, 0, newPage.Data, 8, 4);
                     else if (leafData != 0)
                     {
@@ -4834,7 +4820,7 @@ namespace Core
             if ((pageFlags & PTF_LEAF) == 0)
                 Buffer.BlockCopy(copyPages[oldPagesUsed - 1].Data, 8, newPages[newPagesUsed - 1].Data, 8, 4); //u8* zChild = &apCopy[nOld - 1].aData[8]; memcpy( apNew[nNew - 1].aData[8], zChild, 4 );
 
-            if (isRoot != 0 && parent.Cells == 0 && parent.HdrOffset <= newPages[0].Frees)
+            if (isRoot && parent.Cells == 0 && parent.HdrOffset <= newPages[0].Frees)
             {
                 // The root page of the b-tree now contains no cells. The only sibling page is the right-child of the parent. Copy the contents of the
                 // child page into the parent, decreasing the overall height of the b-tree structure by one. This is described as the "balance-shallower"
@@ -4878,7 +4864,7 @@ namespace Core
                 MemPage oldPage = copyPages[0];
                 int overflows = oldPage.Overflows;
                 int nextOldID = oldPage.Cells + overflows;
-                int overflowID = (overflows != 0 ? oldPage.OvflIxs[0] : -1);
+                int overflowID = (overflows != 0 ? oldPage.OvflIdxs[0] : -1);
                 j = 0; // Current 'old' sibling page
                 k = 0; // Current 'new' sibling page
                 for (i = 0; i < cells; i++)
@@ -4888,21 +4874,21 @@ namespace Core
                     {
                         // Cell i is the cell immediately following the last cell on old sibling page j. If the siblings are not leaf pages of an
                         // intkey b-tree, then cell i was a divider cell.
-                        Debug.Asssert(j + 1 < copyPages.Length);
-                        Debug.Asssert(j + 1 < oldPagesUsed);
+                        Debug.Assert(j + 1 < copyPages.Length);
+                        Debug.Assert(j + 1 < oldPagesUsed);
                         oldPage = copyPages[++j];
                         nextOldID = i + (leafData == 0 ? 1 : 0) + oldPage.Cells + oldPage.Overflows;
                         if (oldPage.Overflows != 0)
                         {
                             overflows = oldPage.Overflows;
-                            overflowID = i + (leafData == 0 ? 1 : 0) + oldPage.OvflIdx[0];
+                            overflowID = i + (leafData == 0 ? 1 : 0) + oldPage.OvflIdxs[0];
                         }
                         isDivider = (leafData == 0);
                     }
 
                     Debug.Assert(overflows > 0 || overflowID < i);
-                    Debug.Assert(overflows < 2 || oldPage.OvflIdx[0] == oldPage.OvflIdxs[1] - 1);
-                    Debug.Assert(overflows < 3 || oldPage.OvflIdx[1] == oldPage.OvflIdxs[2] - 1);
+                    Debug.Assert(overflows < 2 || oldPage.OvflIdxs[0] == oldPage.OvflIdxs[1] - 1);
+                    Debug.Assert(overflows < 3 || oldPage.OvflIdxs[1] == oldPage.OvflIdxs[2] - 1);
                     if (i == overflowID)
                     {
                         isDivider = true;
@@ -4964,21 +4950,21 @@ namespace Core
             return rc;
         }
 
-        static int balance_deeper(MemPage root, out MemPage childOut)
+        static RC balance_deeper(MemPage root, ref MemPage childOut)
         {
             var bt = root.Bt; // The BTree
 
-            Debug.Assert(root.nOverflow > 0);
-            Debug.Assert(sqlite3_mutex_held(pBt.mutex));
+            Debug.Assert(root.Overflows > 0);
+            Debug.Assert(MutexEx.Held(bt.Mutex));
 
             // Make pRoot, the root page of the b-tree, writable. Allocate a new page that will become the new right-child of pPage. Copy the contents
             // of the node stored on pRoot into the new child page.
             MemPage child = null; // Pointer to a new child page
             Pid childID = 0; // Page number of the new child page
-            var rc = sqlite3PagerWrite(root.pDbPage);
-            if (rc == SQLITE_OK)
+            var rc = Pager.Write(root.DBPage);
+            if (rc == RC.OK)
             {
-                rc = allocateBtreePage(pBt, ref child, ref childID, root.pgno, 0);
+                rc = allocateBtreePage(bt, ref child, ref childID, root.ID, BTALLOC.ANY);
                 copyNodeContent(root, child, ref rc);
 #if !OMIT_AUTOVACUUM
                 if (bt.AutoVacuum)
@@ -5011,7 +4997,7 @@ namespace Core
         }
 
         static byte[] _balanceQuickSpace = new byte[13];
-        static int balance(BtCursor cur)
+        static RC balance(BtCursor cur)
         {
 #if DEBUG
             int balance_quick_called = 0;
@@ -5058,7 +5044,7 @@ namespace Core
                     if (rc == RC.OK)
                     {
 #if !OMIT_QUICKBALANCE
-                        if (page.HasData != 0 && page.Overflows == 1 && page.OvflIdxs[0] == page.Cells && parent.ID != 1 && parent.Cells == idx)
+                        if (page.HasData && page.Overflows == 1 && page.OvflIdxs[0] == page.Cells && parent.ID != 1 && parent.Cells == idx)
                         {
                             // Call balance_quick() to create a new sibling of pPage on which to store the overflow cell. balance_quick() inserts a new cell
                             // into pParent, which may cause pParent overflow. If this happens, the next interation of the do-loop will balance pParent 
@@ -5095,6 +5081,7 @@ namespace Core
 
             return rc;
         }
+
         #endregion
 
         #region Insert / Delete / CreateTable / DropTable
@@ -5103,15 +5090,15 @@ namespace Core
         {
             if (cur.State == CURSOR.FAULT)
             {
-                Debug.Assert(cur.SkipNext != RC.OK);
-                return cur.SkipNext;
+                Debug.Assert(cur.SkipNext != 0);
+                return (RC)cur.SkipNext;
             }
 
-            Btree p = cur.pBtree;
-            BtShared bt = p.pBt;
+            Btree p = cur.Btree;
+            BtShared bt = p.Bt;
             Debug.Assert(cursorHoldsMutex(cur));
-            Debug.Assert(cur.WrFlag != 0 && bt.InTransaction == TRANS.WRITE && (bt.BtsFlags & BTS.READ_ONLY) == 0);
-            Debug.Assert(hasSharedCacheTableLock(p, cur.RootID, cur.KeyInfo != null, 2));
+            Debug.Assert(cur.WrFlag && bt.InTransaction == TRANS.WRITE && (bt.BtsFlags & BTS.READ_ONLY) == 0);
+            Debug.Assert(hasSharedCacheTableLock(p, cur.RootID, cur.KeyInfo != null, LOCK.WRITE));
 
             // Assert that the caller has been consistent. If this cursor was opened expecting an index b-tree, then the caller should be inserting blob
             // keys with no associated data. If the cursor was opened expecting an intkey table, the caller should be inserting integer keys with a
@@ -5124,13 +5111,13 @@ namespace Core
             // keys, the VDBE layer invokes sqlite3BtreeLast() to figure out the integer key to use. It then calls this function to actually insert the 
             // data into the intkey B-Tree. In this case btreeMoveto() recognizes that the cursor is already where it needs to be and returns without
             // doing any work. To avoid thwarting these optimizations, it is important not to clear the cursor here.
-            rc = saveAllCursors(bt, cur.RootID, cur);
+            RC rc = saveAllCursors(bt, cur.RootID, cur);
             if (rc != RC.OK) return rc;
 
             // If this is an insert into a table b-tree, invalidate any incrblob cursors open on the row being replaced (assuming this is a replace
             // operation - if it is not, the following is a no-op).
             if (cur.KeyInfo == null)
-                invalidateIncrblobCursors(p, keyLength, 0);
+                invalidateIncrblobCursors(p, keyLength, false);
 
             int loc = seekResult; // -1: before desired location  +1: after
             if (loc == 0)
@@ -5141,8 +5128,8 @@ namespace Core
             Debug.Assert(cur.State == CURSOR.VALID || (cur.State == CURSOR.INVALID && loc != 0));
 
             MemPage page = cur.Pages[cur.ID];
-            Debug.Assert(page.intKey != 0 || keyLength >= 0);
-            Debug.Assert(page.leaf != 0 || 0 == page.intKey);
+            Debug.Assert(page.IntKey || keyLength >= 0);
+            Debug.Assert(page.Leaf || !page.IntKey);
 
             TRACE("INSERT: table=%d nkey=%lld ndata=%d page=%d %s\n", cur.RootID, keyLength, dataLength, page.ID, loc == 0 ? "overwrite" : "new entry");
             Debug.Assert(page.IsInit);
@@ -5157,12 +5144,12 @@ namespace Core
             int idx = cur.Idxs[cur.ID];
             if (loc == 0)
             {
-                Debug.Assert(idx < page.nCell);
+                Debug.Assert(idx < page.Cells);
                 rc = Pager.Write(page.DBPage);
                 if (rc != RC.OK)
                     goto end_insert;
                 int oldCell = findCell(page, idx);
-                if (page.Leaf == 0)
+                if (!page.Leaf)
                 {
                     //_memcpy(newCell, oldCell, 4);
                     newCell[0] = page.Data[oldCell + 0];
@@ -5177,11 +5164,11 @@ namespace Core
             }
             else if (loc < 0 && page.Cells > 0)
             {
-                Debug.Assert(page.Leaf != 0);
+                Debug.Assert(page.Leaf);
                 idx = ++cur.Idxs[cur.ID];
             }
             else
-                Debug.Assert(page.Leaf != 0);
+                Debug.Assert(page.Leaf);
             insertCell(page, idx, newCell, sizeNew, null, 0, ref rc);
             Debug.Assert(rc != RC.OK || page.Cells > 0 || page.Overflows > 0);
 
@@ -5219,16 +5206,16 @@ namespace Core
             BtShared bt = p.Bt;
             Debug.Assert(cursorHoldsMutex(cur));
             Debug.Assert(bt.InTransaction == TRANS.WRITE);
-            Debug.Assert(!bt.readOnly);
-            Debug.Assert(cur.WrFlag != 0);
-            Debug.Assert(hasSharedCacheTableLock(p, cur.RootID, cur.KeyInfo != null, 2));
+            Debug.Assert((bt.BtsFlags & BTS.READ_ONLY) == 0);
+            Debug.Assert(cur.WrFlag);
+            Debug.Assert(hasSharedCacheTableLock(p, cur.RootID, cur.KeyInfo != null, LOCK.WRITE));
             Debug.Assert(!hasReadConflicts(p, cur.RootID));
 
             if (SysEx.NEVER(cur.Idxs[cur.ID] >= cur.Pages[cur.ID].Cells) || SysEx.NEVER(cur.State != CURSOR.VALID))
                 return RC.ERROR; // Something has gone awry.
 
             int cellDepth = cur.ID; // Depth of node containing pCell
-            int cellIdx = cur.dxs[cellDepth]; // Index of cell to delete
+            int cellIdx = cur.Idxs[cellDepth]; // Index of cell to delete
             MemPage page = cur.Pages[cellDepth]; // Page to delete cell from
             int cell = findCell(page, cellIdx); // Pointer to cell to delete
 
@@ -5237,7 +5224,7 @@ namespace Core
             // of the 'next' entry, as the previous entry is always a part of the sub-tree headed by the child page of the cell being deleted. This makes
             // balancing the tree following the delete operation easier.
             RC rc;
-            if (page.Leaf == 0)
+            if (!page.Leaf)
             {
                 int notUsed = 0;
                 rc = Previous(cur, ref notUsed);
@@ -5251,7 +5238,7 @@ namespace Core
 
             // If this is a delete operation to remove a row from a table b-tree, invalidate any incrblob cursors open on the row being deleted.
             if (cur.KeyInfo == null)
-                invalidateIncrblobCursors(p, cur.Info.Key, 0);
+                invalidateIncrblobCursors(p, cur.Info.Key, false);
 
             rc = Pager.Write(page.DBPage);
             if (rc != RC.OK) return rc;
@@ -5262,7 +5249,7 @@ namespace Core
             // If the cell deleted was not located on a leaf page, then the cursor is currently pointing to the largest entry in the sub-tree headed
             // by the child-page of the cell that was just deleted from an internal node. The cell from the leaf node needs to be moved to the internal
             // node to replace the deleted cell.
-            if (page.Leaf == 0)
+            if (!page.Leaf)
             {
                 MemPage leaf = cur.Pages[cur.ID];
                 Pid n = cur.Pages[cellDepth + 1].ID;
@@ -5301,16 +5288,16 @@ namespace Core
             return rc;
         }
 
-        static int btreeCreateTable(Btree p, ref int tableID, int createTabFlags)
+        static RC btreeCreateTable(Btree p, ref int tableID, int createTabFlags)
         {
             BtShared bt = p.Bt;
             Debug.Assert(p.HoldsMutex());
-            Debug.Assert(bt.inTransaction == TRANS_WRITE);
-            Debug.Assert(!bt.readOnly);
+            Debug.Assert(bt.InTransaction == TRANS.WRITE);
+            Debug.Assert((bt.BtsFlags & BTS.READ_ONLY) == 0);
 
             RC rc;
             MemPage root = new MemPage();
-            Pgno rootID = 0;
+            Pid rootID = 0;
 #if OMIT_AUTOVACUUM
             rc = allocateBtreePage(bt, ref root, ref rootID, 1, BTALLOC.ANY);
             if (rc != RC.OK)
@@ -5318,16 +5305,13 @@ namespace Core
 #else
             if (bt.AutoVacuum)
             {
-                Pid moveID = 0; // Move a page here to make room for the root-page
-                MemPage pageMove = new MemPage();  // The page to move to.
-
                 // Creating a new table may probably require moving an existing database to make room for the new tables root page. In case this page turns
                 // out to be an overflow page, delete all overflow page-map caches held by open cursors.
                 invalidateAllOverflowCache(bt);
 
                 // Read the value of meta[3] from the database to determine where the root page of the new table should go. meta[3] is the largest root-page
                 // created so far, so the new root-page is (meta[3]+1).
-                GetMeta(p, BTREE.LARGEST_ROOT_PAGE, ref rootID);
+                p.GetMeta(BTREE_LARGEST_ROOT_PAGE, ref rootID);
                 rootID++;
 
                 // The new root-page may not be allocated on a pointer-map page, or the PENDING_BYTE page.
@@ -5337,7 +5321,9 @@ namespace Core
 
                 // Allocate a page. The page that currently resides at pgnoRoot will be moved to the allocated page (unless the allocated page happens
                 // to reside at pgnoRoot).
-                rc = allocateBtreePage(bt, ref pageMove, ref pgnoMove, rootID, BTALLOC.EXACT);
+                Pid moveID = 0; // Move a page here to make room for the root-page
+                MemPage pageMove = new MemPage();  // The page to move to.
+                rc = allocateBtreePage(bt, ref pageMove, ref moveID, rootID, BTALLOC.EXACT);
                 if (rc != RC.OK)
                     return rc;
 
@@ -5346,7 +5332,7 @@ namespace Core
                     releasePage(pageMove);
 
                     // Move the page currently at pgnoRoot to pgnoMove.
-                    rc = btreeGetPage(bt, rootID, ref root, 0);
+                    rc = btreeGetPage(bt, rootID, ref root, false);
                     if (rc != RC.OK)
                         return rc;
 
@@ -5365,13 +5351,13 @@ namespace Core
                     }
                     Debug.Assert(type != PTRMAP.ROOTPAGE);
                     Debug.Assert(type != PTRMAP.FREEPAGE);
-                    rc = relocatePage(bt, root, type, ptrPageID, moveID, 0);
+                    rc = relocatePage(bt, root, type, ptrPageID, moveID, false);
                     releasePage(root);
 
                     // Obtain the page at pgnoRoot
                     if (rc != RC.OK)
                         return rc;
-                    rc = btreeGetPage(bt, rootID, ref root, 0);
+                    rc = btreeGetPage(bt, rootID, ref root, false);
                     if (rc != RC.OK)
                         return rc;
                     rc = Pager.Write(root.DBPage);
@@ -5395,7 +5381,7 @@ namespace Core
                 // When the new root page was allocated, page 1 was made writable in order either to increase the database filesize, or to decrement the
                 // freelist count.  Hence, the sqlite3BtreeUpdateMeta() call cannot fail.
                 Debug.Assert(Pager.Iswriteable(bt.Page1.DBPage));
-                rc = UpdateMeta(p, 4, rootID);
+                rc = p.UpdateMeta(4, rootID);
                 if (SysEx.NEVER(rc != RC.OK))
                 {
                     releasePage(root);
@@ -5440,29 +5426,29 @@ namespace Core
             if (rc != RC.OK) return rc;
             for (int i = 0; i < page.Cells; i++)
             {
-                int cellIdx = findCell(page, i);
-                if (page.Leaf = 0)
+                int cell = findCell(page, i);
+                if (!page.Leaf)
                 {
-                    rc = clearDatabasePage(bt, ConvertEx.Get4(page.Data, cellIdx), 1, ref changes);
+                    rc = clearDatabasePage(bt, ConvertEx.Get4(page.Data, cell), true, ref changes);
                     if (rc != RC.OK) goto cleardatabasepage_out;
                 }
-                rc = clearCell(page, cellIdx);
+                rc = clearCell(page, cell);
                 if (rc != RC.OK) goto cleardatabasepage_out;
             }
-            if (page.leaf == 0)
+            if (!page.Leaf)
             {
-                rc = clearDatabasePage(bt, ConvertEx.Get4(page.Data, 8), 1, ref changes);
+                rc = clearDatabasePage(bt, ConvertEx.Get4(page.Data, 8), true, ref changes);
                 if (rc != RC.OK) goto cleardatabasepage_out;
             }
             else
             {
-                Debug.Assert(page.IintKey != 0);
+                Debug.Assert(page.IntKey);
                 changes += page.Cells;
             }
             if (freePageFlag)
                 freePage(page, ref rc);
             else if ((rc = Pager.Write(page.DBPage)) == 0)
-                zeroPage(page, page.aData[0] | PTF_LEAF);
+                zeroPage(page, page.Data[0] | PTF_LEAF);
 
         cleardatabasepage_out:
             releasePage(page);
@@ -5471,10 +5457,10 @@ namespace Core
 
         public RC ClearTable(int tableID, ref int changes)
         {
-            BtShared pt = Bt;
+            BtShared bt = Bt;
             Enter();
             Debug.Assert(InTrans == TRANS.WRITE);
-            rc = saveAllCursors(bt, (Pid)tableID, null);
+            RC rc = saveAllCursors(bt, (Pid)tableID, null);
             if (rc == RC.OK)
             {
                 // Invalidate all incrblob cursors open on table iTable (assuming iTable is the root of a table b-tree - if it is not, the following call is a no-op).
@@ -5488,16 +5474,16 @@ namespace Core
         static RC btreeDropTable(Btree p, Pid tableID, ref int movedID)
         {
             BtShared bt = p.Bt;
-            Debug.Assert(HoldsMutex(p));
+            Debug.Assert(p.HoldsMutex());
             Debug.Assert(p.InTrans == TRANS.WRITE);
 
             // It is illegal to drop a table if any cursors are open on the database. This is because in auto-vacuum mode the backend may
             // need to move another root-page to fill a gap left by the deleted root page. If an open cursor was using this page a problem would occur.
             //
             // This error is caught long before control reaches this point.
-            if (SysEx.NEVER(bt.Cursor))
+            if (SysEx.NEVER(bt.Cursor != null))
             {
-                sqlite3ConnectionBlocked(p.Ctx, bt.Cursor.Btree.Ctx);
+                Context.ConnectionBlocked(p.Ctx, bt.Cursor.Btree.Ctx);
                 return RC.LOCKED_SHAREDCACHE;
             }
 
@@ -5523,7 +5509,7 @@ namespace Core
                 if (bt.AutoVacuum)
                 {
                     Pid maxRootID = 0;
-                    p.GetMeta(BTREE.LARGEST_ROOT_PAGE, ref maxRootID);
+                    p.GetMeta(BTREE_LARGEST_ROOT_PAGE, ref maxRootID);
 
                     if (tableID == maxRootID)
                     {
@@ -5635,11 +5621,11 @@ namespace Core
         }
 
 #if !OMIT_BTREECOUNT
-        public static RC Count(BtCursor cur, ref long entrysOut)
+        public static RC Count(BtCursor cur, ref long entrysRef)
         {
             if (cur.RootID == 0)
             {
-                entrysOut = 0;
+                entrysRef = 0;
                 return RC.OK;
             }
             var rc = moveToRoot(cur);
@@ -5650,7 +5636,7 @@ namespace Core
             {
                 // If this is a leaf page or the tree is not an int-key tree, then this page contains countable entries. Increment the entry counter accordingly.
                 MemPage page = cur.Pages[cur.ID]; // Current page of the b-tree
-                if (page.Leaf != 0 || page.IntKey == 0)
+                if (page.Leaf || !page.IntKey)
                     entrys += page.Cells;
 
                 // pPage is a leaf node. This loop navigates the cursor so that it points to the first interior cell that it points to the parent of
@@ -5658,7 +5644,7 @@ namespace Core
                 // of the page, or to the number of cells in the page if the next page to visit is the right-child of its parent.
                 //
                 // If all pages in the tree have been visited, return SQLITE_OK to the caller.
-                if (page.Leaf != 0)
+                if (page.Leaf)
                 {
                     do
                     {
@@ -5838,12 +5824,12 @@ namespace Core
                     }
                 }
 #endif
-                pageID = (int)ConvertEx.Get4(ovflData);
+                pageID = (Pid)ConvertEx.Get4(ovflData);
                 Pager.Unref(ovflPage);
             }
         }
 
-        static object _nullRef_ = null;
+        static long _nullRef_ = null;
         static int checkTreePage(IntegrityCk check, Pid pageID, string parentContext, ref long parentMinKey, bool hasParentMinKey, ref long parentMaxKey, bool hasParentMaxKey)
         {
             var context = new StringBuilder(100);
@@ -5853,10 +5839,10 @@ namespace Core
             var bt = check.Bt;
             var usableSize = (int)bt.UsableSize;
             if (pageID == 0) return 0;
-            if (checkRef(check, pageID, parentContext) != 0) return 0;
+            if (checkRef(check, pageID, parentContext)) return 0;
             RC rc;
             MemPage page = new MemPage();
-            if ((rc = btreeGetPage(bt, pageID, ref page, 0)) != RC.OK)
+            if ((rc = btreeGetPage(bt, pageID, ref page, false)) != RC.OK)
             {
                 checkAppendMsg(check, context.ToString(), "unable to get the page. error code=%d", rc);
                 return 0;
@@ -5866,7 +5852,7 @@ namespace Core
             page.IsInit = false;
             if ((rc = btreeInitPage(page)) != RC.OK)
             {
-                Debug.Assert(rc == SQLITE_CORRUPT); // The only possible error from InitPage
+                Debug.Assert(rc == RC.CORRUPT); // The only possible error from InitPage
                 checkAppendMsg(check, context.ToString(), "btreeInitPage() returns error code %d", rc);
                 releasePage(page);
                 return 0;
@@ -5885,7 +5871,7 @@ namespace Core
                 var info = new CellInfo();
                 btreeParseCellPtr(page, cell, ref info);
                 uint sizeCell = info.Data;
-                if (page.intKey == 0) sizeCell += (uint)info.Key;
+                if (!page.IntKey) sizeCell += (uint)info.Key;
                 // For intKey pages, check that the keys are in order.
                 else if (i == 0) minKey = maxKey = info.Key;
                 else
@@ -5898,18 +5884,18 @@ namespace Core
                 if (sizeCell > info.Local) //&& pCell[info.iOverflow]<=&pPage.aData[pBt.usableSize]
                 {
                     int pages = (int)(sizeCell - info.Local + usableSize - 5) / (usableSize - 4);
-                    Pid ovflID = ConvertEx.Get4(page.Data, cell, info.Overflow);
+                    Pid ovflID = ConvertEx.Get4(page.Data, cell + info.Overflow);
 #if !OMIT_AUTOVACUUM
                     if (bt.AutoVacuum)
                         checkPtrmap(check, ovflID, PTRMAP.OVERFLOW1, pageID, context.ToString());
 #endif
-                    checkList(check, 0, ovflID, pages, context.ToString());
+                    checkList(check, false, ovflID, pages, context.ToString());
                 }
 
                 // Check sanity of left child page.
-                if (page.Leaf == 0)
+                if (!page.Leaf)
                 {
-                    id = (int)ConvertEx.Get4(page.Data, cell);
+                    id = (Pid)ConvertEx.Get4(page.Data, cell);
 #if !OMIT_AUTOVACUUM
                     if (bt.AutoVacuum)
                         checkPtrmap(check, id, PTRMAP.BTREE, pageID, context.ToString());
@@ -5925,7 +5911,7 @@ namespace Core
                     depth = depth2;
                 }
             }
-            if (page.Leaf == 0)
+            if (!page.Leaf)
             {
                 id = (Pid)ConvertEx.Get4(page.Data, page.HdrOffset + 8);
                 sqlite3_snprintf(200, context, "On page %d at right child: ", pageID);
@@ -5940,7 +5926,7 @@ namespace Core
             }
 
             // For intKey leaf pages, check that the min/max keys are in order with any left/parent/right pages.
-            if (page.Leaf != 0 && page.IntKey != 0)
+            if (page.Leaf && page.IntKey)
             {
                 // if we are a left child page
                 if (hasParentMinKey)
@@ -5971,9 +5957,9 @@ namespace Core
             // Check for complete coverage of the page
             byte[] data = page.Data;
             int hdr = page.HdrOffset;
-            int hit = sqlite3Malloc(bt.PageSize);
-            if (hit == nullptr)
-                check->MallocFailed = true;
+            byte[] hit = sqlite3PageMalloc(bt.PageSize);
+            if (hit == null)
+                check.MallocFailed = true;
             else
             {
                 int contentOffset = ConvertEx.Get2nz(data, hdr + 5);
@@ -5981,7 +5967,7 @@ namespace Core
                 Array.Clear(hit, contentOffset, usableSize - contentOffset);
                 { for (int z = contentOffset - 1; z >= 0; z--) hit[z] = 1; }// memset(hit, 1, contentOffset);
                 int cells = ConvertEx.Get2(data, hdr + 3);
-                int cellStart = hdr + 12 - 4 * page.leaf;
+                int cellStart = hdr + 12 - 4 * (page.Leaf ? 1 : 0);
                 for (i = 0; i < cells; i++)
                 {
                     var sizeCell = 65536U;
@@ -5989,7 +5975,7 @@ namespace Core
                     if (pc <= usableSize - 4)
                         sizeCell = cellSizePtr(page, data, pc);
                     if ((int)(pc + sizeCell - 1) >= usableSize)
-                        checkAppendMsg(check, null, "Corruption detected in cell %d on page %d", i, pageID);
+                        checkAppendMsg(check, (string)null, "Corruption detected in cell %d on page %d", i, pageID);
                     else
                         for (var j = (int)(pc + sizeCell - 1); j >= pc; j--) hit[j]++;
                 }
@@ -6013,12 +5999,12 @@ namespace Core
                         cnt++;
                     else if (hit[i] > 1)
                     {
-                        checkAppendMsg(check, null, "Multiple uses for byte %d of page %d", i, pageID);
+                        checkAppendMsg(check, (string)null, "Multiple uses for byte %d of page %d", i, pageID);
                         break;
                     }
                 }
                 if (cnt != data[hdr + 7])
-                    checkAppendMsg(check, null, "Fragmentation of %d bytes reported as %d on page %d", cnt, data[hdr + 7], pageID);
+                    checkAppendMsg(check, (string)null, "Fragmentation of %d bytes reported as %d on page %d", cnt, data[hdr + 7], pageID);
             }
             sqlite3PageFree(ref hit);
             releasePage(page);
@@ -6053,7 +6039,7 @@ namespace Core
             }
             Pid i = PENDING_BYTE_PAGE(bt);
             if (i <= check.Pages) setPageReferenced(check, i);
-            sqlite3StrAccumInit(check.errMsg, null, 1000, 20000);
+            sqlite3StrAccumInit(check.ErrMsg, null, 1000, 20000);
 
             // Check the integrity of the freelist
             checkList(check, true, (Pid)ConvertEx.Get4(bt.Page1.Data, 32), (int)ConvertEx.Get4(bt.Page1.Data, 36), "Main freelist: ");
@@ -6078,16 +6064,16 @@ namespace Core
 #else
                 // If the database supports auto-vacuum, make sure no tables contain references to pointer-map pages.
                 if (!getPageReferenced(check, i) && (PTRMAP_PAGENO(bt, i) != i || !bt.AutoVacuum))
-                    checkAppendMsg(check, null, "Page %d is never used", i);
+                    checkAppendMsg(check, (string)null, "Page %d is never used", i);
                 if (getPageReferenced(check, i) && (PTRMAP_PAGENO(bt, i) == i && bt.AutoVacuum))
-                    checkAppendMsg(check, null, "Pointer map page %d is referenced", i);
+                    checkAppendMsg(check, (string)null, "Pointer map page %d is referenced", i);
 #endif
             }
 
             // Make sure this analysis did not leave any unref() pages. This is an internal consistency check; an integrity check
             // of the integrity check.
             if (SysEx.NEVER(refs != bt.Pager.get_Refs()))
-                checkAppendMsg(check, null, "Outstanding page count goes from %d to %d during this analysis", refs, bt.Pager.get_Refs());
+                checkAppendMsg(check, (string)null, "Outstanding page count goes from %d to %d during this analysis", refs, bt.Pager.get_Refs());
 
             // Clean  up and report errors.
             Leave();
@@ -6096,7 +6082,7 @@ namespace Core
             {
                 sqlite3StrAccumReset(check.ErrMsg);
                 errors = check.Errors + 1;
-                return 0;
+                return null;
             }
             errors = check.Errors;
             if (check.Errors == 0)
@@ -6107,7 +6093,7 @@ namespace Core
 #endif
         #endregion
 
-        #region Settings
+        #region Settings2
 
         public string GetFilename()
         {
@@ -6154,17 +6140,17 @@ namespace Core
             return (Backups != 0);
         }
 
-        public Schema Schema(int bytes, Action<object> free)
+        public ISchema Schema(int bytes, Action<object> free)
         {
             BtShared bt = Bt;
             Enter();
             if (bt.Schema == null && bytes != 0)
             {
-                bt.Schema = new Schema();
+                bt.Schema = new ISchema();
                 bt.FreeSchema = free;
             }
             Leave();
-            return bt.pSchema;
+            return bt.Schema;
         }
 
         public RC SchemaLocked()

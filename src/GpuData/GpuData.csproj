@@ -82,6 +82,7 @@
     <Compile Include="Core\10.ConvertEx.cs" />
     <Compile Include="Core\40.StatusEx.cs" />
     <Compile Include="Core\cs.cs" />
+    <Compile Include="Core\Text\00.StringBuilder.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Core\50.SysEx.cs" />
     <Compile Include="Core\30.RC.cs" />
@@ -117,6 +118,8 @@
     <None Include="Core\50.SysEx.cu" />
     <None Include="Core\IO\25.JournalVFile.cu" />
     <Compile Include="Core\IO\25.JournalVFile.cs" />
+    <Content Include="Core\Text\00.StringBuilder.cu.h" />
+    <None Include="Core\Text\00.StringBuilder.cu" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />

@@ -5,7 +5,7 @@ namespace Core
     {
         const int MAX_ATTACHED = 10;
 
-        public struct BusyHandlerType
+        public class BusyHandlerType
         {
             public Func<object, int, int> Func; // The busy callback
             public object Arg;                  // First arg to busy callback
