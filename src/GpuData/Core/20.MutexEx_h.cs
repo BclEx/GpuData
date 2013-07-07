@@ -33,12 +33,12 @@ namespace Core
         public static bool NotHeld(MutexEx mutex) { return true; }
         public static void Free(MutexEx mutex) { }
 
-        public object mutex;    /* Mutex controlling the lock */
-        public int id;          /* Mutex type */
-        public int nRef;        /* Number of enterances */
-        public int owner;       /* Thread holding this mutex */
+        public object mutex;    // Mutex controlling the lock
+        public int id;          // Mutex type
+        public int nRef;        // Number of enterances
+        public int owner;       // Thread holding this mutex
 #if DEBUG
-        public int trace;       /* True to trace changes */
+        public int trace;       // True to trace changes
 #endif
 
         public MutexEx()

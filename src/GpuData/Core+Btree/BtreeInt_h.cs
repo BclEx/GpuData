@@ -9,7 +9,12 @@ namespace Core
 {
     public partial class Btree
     {
+        static ushort MX_CELL_SIZE(BtShared bt) { return (ushort)(bt.PageSize - 8); }
+        static ushort MX_CELL(BtShared bt) { return (ushort)((bt.PageSize - 8) / 6); }
+
         const string FILE_HEADER = "SQLite format 3\0";
+        const int DEFAULT_CACHE_SIZE = 2000;
+        const int MASTER_ROOT = 1;
 
         const byte PTF_INTKEY = 0x01;
         const byte PTF_ZERODATA = 0x02;
@@ -18,8 +23,8 @@ namespace Core
 
         public struct OverflowCell // Cells that will not fit on aData[]
         {
-            public byte[] Cell;     // Pointers to the body of the overflow cell
-            public OverflowCell Copy()
+            internal byte[] Cell;     // Pointers to the body of the overflow cell
+            internal OverflowCell Copy()
             {
                 var cp = new OverflowCell();
                 if (Cell != null)
@@ -33,27 +38,30 @@ namespace Core
 
         public class MemPage
         {
-            public bool IsInit;             // True if previously initialized. MUST BE FIRST!
-            public byte Overflows;          // Number of overflow cell bodies in aCell[]
-            public bool IntKey;             // True if intkey flag is set
-            public bool Leaf;               // True if leaf flag is set
-            public bool HasData;            // True if this page stores data
-            public byte HdrOffset;          // 100 for page 1.  0 otherwise
-            public byte ChildPtrSize;       // 0 if leaf.  4 if !leaf
-            public ushort MaxLocal;         // Copy of BtShared.maxLocal or BtShared.maxLeaf
-            public ushort MinLocal;         // Copy of BtShared.minLocal or BtShared.minLeaf
-            public ushort CellOffset;       // Index in aData of first cell pou16er
-            public ushort Frees;            // Number of free bytes on the page
-            public ushort Cells;            // Number of cells on this page, local and ovfl
-            public ushort MaskPage;         // Mask for page offset
-            public ushort[] OvflIdxs = new ushort[5];
-            public OverflowCell[] Ovfls = new OverflowCell[5];
-            public BtShared Bt;             // Pointer to BtShared that this page is part of
-            public byte[] Data;             // Pointer to disk image of the page data
-            public IPage DBPage;            // Pager page handle
-            public Pid ID;                  // Page number for this page
+            internal bool IsInit;               // True if previously initialized. MUST BE FIRST!
+            internal byte Overflows;            // Number of overflow cell bodies in aCell[]
+            internal bool IntKey;               // True if intkey flag is set
+            internal bool Leaf;                 // True if leaf flag is set
+            internal bool HasData;              // True if this page stores data
+            internal byte HdrOffset;            // 100 for page 1.  0 otherwise
+            internal byte ChildPtrSize;         // 0 if leaf.  4 if !leaf
+            internal byte Max1bytePayload;      // min(maxLocal,127)
+            internal ushort MaxLocal;           // Copy of BtShared.maxLocal or BtShared.maxLeaf
+            internal ushort MinLocal;           // Copy of BtShared.minLocal or BtShared.minLeaf
+            internal ushort CellOffset;         // Index in aData of first cell pou16er
+            internal ushort Frees;              // Number of free bytes on the page
+            internal ushort Cells;              // Number of cells on this page, local and ovfl
+            internal ushort MaskPage;           // Mask for page offset
+            internal ushort[] OvflIdxs = new ushort[5];
+            internal OverflowCell[] Ovfls = new OverflowCell[5];
+            internal BtShared Bt;               // Pointer to BtShared that this page is part of
+            internal byte[] Data;               // Pointer to disk image of the page data
+            //object byte[] DataEnd;			// One byte past the end of usable data
+            //object byte[] CellIdx;			// The cell index area
+            internal IPage DBPage;              // Pager page handle
+            internal Pid ID;                    // Page number for this page
 
-            public MemPage Copy()
+            internal MemPage Copy()
             {
                 var cp = (MemPage)MemberwiseClone();
                 //if (Overflows != null)
@@ -73,19 +81,6 @@ namespace Core
 
         const int EXTRA_SIZE = 0; // No used in C#, since we use create a class; was MemPage.Length;
 
-        public enum LOCK : byte
-        {
-            READ = 1,
-            WRITE = 2,
-        }
-
-        public enum TRANS : byte
-        {
-            NONE = 0,
-            READ = 1,
-            WRITE = 2,
-        }
-
         public enum BTS : ushort
         {
             READ_ONLY = 0x0001,		// Underlying file is readonly
@@ -99,56 +94,60 @@ namespace Core
 
         public class BtShared
         {
-            public Pager Pager;             // The page cache
-            public Context Ctx;             // Database connection currently using this Btree
-            public BtCursor Cursor;         // A list of all open cursors
-            public MemPage Page1;           // First page of the database
-            public byte OpenFlags;          // Flags to sqlite3BtreeOpen()
+            static int _autoID; // For C#
+            internal int AutoID; // For C#
+            public BtShared() { AutoID = _autoID++; } // For C#
+
+            internal Pager Pager;             // The page cache
+            internal Context Ctx;             // Database connection currently using this Btree
+            internal BtCursor Cursor;         // A list of all open cursors
+            internal MemPage Page1;           // First page of the database
+            internal Btree.OPEN OpenFlags;    // Flags to sqlite3BtreeOpen()
 #if !OMIT_AUTOVACUUM
-            public bool AutoVacuum;         // True if auto-vacuum is enabled
-            public bool IncrVacuum;         // True if incr-vacuum is enabled
-            public bool DoTruncate;		    // True to truncate db on commit
+            internal bool AutoVacuum;         // True if auto-vacuum is enabled
+            internal bool IncrVacuum;         // True if incr-vacuum is enabled
+            internal bool DoTruncate;		    // True to truncate db on commit
 #endif
-            public TRANS InTransaction;     // Transaction state
-            public byte Max1bytePayload;	// Maximum first byte of cell for a 1-byte payload
-            public BTS BtsFlags;			// Boolean parameters.  See BTS_* macros below
-            public ushort MaxLocal;         // Maximum local payload in non-LEAFDATA tables
-            public ushort MinLocal;         // Minimum local payload in non-LEAFDATA tables
-            public ushort MaxLeaf;          // Maximum local payload in a LEAFDATA table
-            public ushort MinLeaf;          // Minimum local payload in a LEAFDATA table
-            public uint PageSize;           // Total number of bytes on a page
-            public uint UsableSize;         // Number of usable bytes on each page
-            public int Transactions;        // Number of open transactions (read + write)
-            public Pid Pages;               // Number of pages in the database
-            public ISchema Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
-            public Action<object> FreeSchema; // Destructor for BtShared.pSchema
-            public MutexEx Mutex;           // Non-recursive mutex required to access this object
-            public Bitvec HasContent;       // Set of pages moved to free-list this transaction
+            internal TRANS InTransaction;     // Transaction state
+            internal byte Max1bytePayload;	// Maximum first byte of cell for a 1-byte payload
+            internal BTS BtsFlags;			// Boolean parameters.  See BTS_* macros below
+            internal ushort MaxLocal;         // Maximum local payload in non-LEAFDATA tables
+            internal ushort MinLocal;         // Minimum local payload in non-LEAFDATA tables
+            internal ushort MaxLeaf;          // Maximum local payload in a LEAFDATA table
+            internal ushort MinLeaf;          // Minimum local payload in a LEAFDATA table
+            internal uint PageSize;           // Total number of bytes on a page
+            internal uint UsableSize;         // Number of usable bytes on each page
+            internal int Transactions;        // Number of open transactions (read + write)
+            internal Pid Pages;               // Number of pages in the database
+            internal ISchema Schema;           // Pointer to space allocated by sqlite3BtreeSchema()
+            internal Action<object> FreeSchema; // Destructor for BtShared.pSchema
+            internal MutexEx Mutex;           // Non-recursive mutex required to access this object
+            internal Bitvec HasContent;       // Set of pages moved to free-list this transaction
 #if !OMIT_SHARED_CACHE
-            public int Refs;                // Number of references to this structure
-            public BtShared Next;           // Next on a list of sharable BtShared structs
-            public BtLock Lock;             // List of locks held on this shared-btree struct
-            public Btree Writer;            // Btree with currently open write transaction
+            internal int Refs;                // Number of references to this structure
+            internal BtShared Next;           // Next on a list of sharable BtShared structs
+            internal BtLock Lock;             // List of locks held on this shared-btree struct
+            internal Btree Writer;            // Btree with currently open write transaction
 #endif
-            public byte[] TmpSpace;         // BtShared.pageSize bytes of space for tmp use
+            internal byte[] TmpSpace;         // BtShared.pageSize bytes of space for tmp use
         }
 
         public struct CellInfo
         {
-            public int CellIdx;     // Offset to start of cell content -- Needed for C#
-            public long Key;        // The key for INTKEY tables, or number of bytes in key
-            public byte[] Cell;     // Pointer to the start of cell content
-            public uint Data;       // Number of bytes of data
-            public uint Payload;    // Total amount of payload
-            public ushort Header;   // Size of the cell content header in bytes
-            public ushort Local;    // Amount of payload held locally
-            public ushort Overflow; // Offset to overflow page number.  Zero if no overflow
-            public ushort Size;     // Size of the cell content on the main b-tree page
-            public bool Equals(CellInfo ci)
+            internal uint Cell_;    // Offset to start of cell content -- Needed for C#
+            internal long Key;        // The key for INTKEY tables, or number of bytes in key
+            internal byte[] Cell;     // Pointer to the start of cell content
+            internal uint Data;       // Number of bytes of data
+            internal uint Payload;    // Total amount of payload
+            internal ushort Header;   // Size of the cell content header in bytes
+            internal ushort Local;    // Amount of payload held locally
+            internal ushort Overflow; // Offset to overflow page number.  Zero if no overflow
+            internal ushort Size;     // Size of the cell content on the main b-tree page
+            internal bool Equals(CellInfo ci)
             {
-                if (ci.CellIdx >= ci.Cell.Length || CellIdx >= this.Cell.Length)
+                if (ci.Cell_ >= ci.Cell.Length || Cell_ >= this.Cell.Length)
                     return false;
-                if (ci.Cell[ci.CellIdx] != this.Cell[CellIdx])
+                if (ci.Cell[ci.Cell_] != this.Cell[Cell_])
                     return false;
                 if (ci.Key != this.Key || ci.Data != this.Data || ci.Payload != this.Payload)
                     return false;
@@ -172,32 +171,31 @@ namespace Core
 
         public class BtCursor
         {
-            public Btree Btree;             // The Btree to which this cursor belongs
-            public BtShared Bt;             // The BtShared this cursor points to
-            public BtCursor Next, Prev;     // Forms a linked list of all cursors
-            public KeyInfo KeyInfo;         // Argument passed to comparison function
+            internal Btree Btree;             // The Btree to which this cursor belongs
+            internal BtShared Bt;             // The BtShared this cursor points to
+            internal BtCursor Next, Prev;     // Forms a linked list of all cursors
+            internal KeyInfo KeyInfo;         // Argument passed to comparison function
 #if !OMIT_INCRBLOB
-            public Pid[] Overflows;         // Cache of overflow page locations
+            internal Pid[] Overflows;         // Cache of overflow page locations
 #endif
-            public Pid RootID;              // The root page of this tree
-            public long CachedRowID;        // Next rowid cache.  0 means not valid
-            public CellInfo Info = new CellInfo();           // A parse of the cell we are pointing at
-            public long KeyLength;          // Size of pKey, or last integer key
-            public byte[] Key;              // Saved key that was cursor's last known position
-            public int SkipNext;            // Prev() is noop if negative. Next() is noop if positive
-            public bool WrFlag;             // True if writable
-            public byte AtLast;             // VdbeCursor pointing to the last entry
-            public bool ValidNKey;          // True if info.nKey is valid
-            public CURSOR State;            // One of the CURSOR_XXX constants (see below)
+            internal Pid RootID;              // The root page of this tree
+            internal long CachedRowID;        // Next rowid cache.  0 means not valid
+            internal CellInfo Info = new CellInfo();           // A parse of the cell we are pointing at
+            internal long KeyLength;          // Size of pKey, or last integer key
+            internal byte[] Key;              // Saved key that was cursor's last known position
+            internal int SkipNext;            // Prev() is noop if negative. Next() is noop if positive
+            internal bool WrFlag;             // True if writable
+            internal byte AtLast;             // VdbeCursor pointing to the last entry
+            internal bool ValidNKey;          // True if info.nKey is valid
+            internal CURSOR State;            // One of the CURSOR_XXX constants (see below)
 #if !OMIT_INCRBLOB
-            public bool IsIncrblobHandle;   // True if this cursor is an incr. io handle
+            internal bool IsIncrblobHandle;   // True if this cursor is an incr. io handle
 #endif
-            public byte Hints;			    // As configured by CursorSetHints()
-            public short ID;           // Index of current page in apPage
-            public ushort[] Idxs = new ushort[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
-            public MemPage[] Pages = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
-
-            public void memset()
+            internal byte Hints;			    // As configured by CursorSetHints()
+            internal short ID;           // Index of current page in apPage
+            internal ushort[] Idxs = new ushort[BTCURSOR_MAX_DEPTH]; // Current index in apPage[i]
+            internal MemPage[] Pages = new MemPage[BTCURSOR_MAX_DEPTH]; // Pages from root to current page
+            internal void memset()
             {
                 Next = Prev = null;
                 KeyInfo = null;
@@ -230,7 +228,7 @@ namespace Core
         static Pid PTRMAP_PTROFFSET(Pid ptrmapID, Pid id) { return (5 * (id - ptrmapID - 1)); }
         static bool PTRMAP_ISPAGE(BtShared bt, Pid id) { return (PTRMAP_PAGENO((bt), (id)) == (id)); }
 
-        public enum PTRMAP : byte
+        internal enum PTRMAP : byte
         {
             ROOTPAGE = 1,
             FREEPAGE = 2,
@@ -249,15 +247,15 @@ namespace Core
 static void btreeIntegrity(Btree p) { }
 #endif
 
-        public class IntegrityCk
+        internal class IntegrityCk
         {
-            public BtShared Bt;      // The tree being checked out
-            public Pager Pager;      // The associated pager.  Also accessible by pBt.pPager
-            public Pid Pages;        // Number of pages in the database
-            public int[] PgRefs;       // Number of times each page is referenced
-            public int MaxErrors;         // Stop accumulating errors when this reaches zero
+            public BtShared Bt;         // The tree being checked out
+            public Pager Pager;         // The associated pager.  Also accessible by pBt.pPager
+            public byte[] PgRefs;		// 1 bit per page in the db (see above)
+            public Pid Pages;           // Number of pages in the database
+            public int MaxErrors;       // Stop accumulating errors when this reaches zero
             public int Errors;          // Number of messages written to zErrMsg so far
-            public bool MallocFailed;
+            public bool MallocFailed;   // A memory allocation error has occurred
             public StringBuilder ErrMsg = new StringBuilder(); // Accumulate the error message text here
         };
     }

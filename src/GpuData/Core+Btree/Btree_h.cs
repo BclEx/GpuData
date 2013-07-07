@@ -30,6 +30,19 @@ namespace Core
         public Mem[] Mems;          // Values
     }
 
+    public enum LOCK : byte
+    {
+        READ = 1,
+        WRITE = 2,
+    }
+
+    public enum TRANS : byte
+    {
+        NONE = 0,
+        READ = 1,
+        WRITE = 2,
+    }
+
     public partial class Btree
     {
         const int N_BTREE_META = 10;
@@ -43,7 +56,7 @@ namespace Core
         }
 
         [Flags]
-        enum OPEN : byte
+        public enum OPEN : byte
         {
             OMIT_JOURNAL = 1,   // Do not create or use a rollback journal
             MEMORY = 2,         // This is an in-memory DB
@@ -75,7 +88,7 @@ namespace Core
         const int BTREE_INTKEY = 1;
         const int BTREE_BLOBKEY = 2;
 
-        enum META : byte
+        public enum META : byte
         {
             FREE_PAGE_COUNT = 0,
             SCHEMA_VERSION = 1,
@@ -86,6 +99,8 @@ namespace Core
             USER_VERSION = 6,
             INCR_VACUUM = 7,
         }
+
+        const int BTREE_BULKLOAD  = 0x00000001;
 
 #if !OMIT_SHARED_CACHE
         void Enter() { }

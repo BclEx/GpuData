@@ -437,5 +437,34 @@ namespace Core
 #if TEST
 #endif
         #endregion
+
+        #region FromPCache1
+
+        public static void PageBufferSetup(object buffer, int size, int n)
+        {
+            PCache1.BufferSetup(buffer, size, n);
+        }
+
+        public static PgHdr PageAlloc(int size)
+        {
+            return PCache1.Alloc(size);
+        }
+
+        public static byte[] PageAlloc2(int size)
+        {
+            return SysEx.Alloc(size);
+        }
+
+        public static void PageFree(ref PgHdr p)
+        {
+            PCache1.Free(ref p);
+        }
+
+        public static void PageFree2(ref byte[] p)
+        {
+            SysEx.Free(ref p);
+        }
+
+        #endregion
     }
 }

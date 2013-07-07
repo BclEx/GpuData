@@ -22,13 +22,13 @@ namespace Core
         // 49 bits - BBBBBBA
         // 56 bits - BBBBBBBA
         // 64 bits - BBBBBBBBC
-        public static byte GetVarint(byte[] p, out int v) { v = p[0]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarintL(p, 0, out uv); v = (int)uv; return r; }
-        public static byte GetVarint(byte[] p, out uint v) { v = p[0]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarintL(p, 0, out uv); v = (uint)uv; return r; }
-        public static byte GetVarint(byte[] p, uint offset, out int v) { v = p[offset]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarintL(p, offset, out uv); v = (int)uv; return r; }
-        public static byte GetVarint(byte[] p, uint offset, out uint v) { v = p[offset]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarintL(p, offset, out uv); v = (uint)uv; return r; }
-        public static byte GetVarintL(byte[] p, uint offset, out long v) { v = p[offset]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarintL(p, offset, out uv); v = (long)uv; return r; }
-        public static byte GetVarintL(byte[] p, uint offset, out ulong v) { v = p[offset]; if (v <= 0x7F) return 1; var r = _getVarintL(p, offset, out v); return r; }
-        private static byte _getVarintL(byte[] p, uint offset, out ulong v)
+        public static byte GetVarint(byte[] p, out int v) { v = p[0]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarint(p, 0, out uv); v = (int)uv; return r; }
+        public static byte GetVarint(byte[] p, out uint v) { v = p[0]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarint(p, 0, out uv); v = (uint)uv; return r; }
+        public static byte GetVarint(byte[] p, uint offset, out int v) { v = p[offset]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarint(p, offset, out uv); v = (int)uv; return r; }
+        public static byte GetVarint(byte[] p, uint offset, out uint v) { v = p[offset]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarint(p, offset, out uv); v = (uint)uv; return r; }
+        public static byte GetVarint(byte[] p, uint offset, out long v) { v = p[offset]; if (v <= 0x7F) return 1; ulong uv; var r = _getVarint(p, offset, out uv); v = (long)uv; return r; }
+        public static byte GetVarint(byte[] p, uint offset, out ulong v) { v = p[offset]; if (v <= 0x7F) return 1; var r = _getVarint(p, offset, out v); return r; }
+        private static byte _getVarint(byte[] p, uint offset, out ulong v)
         {
             uint a, b, s;
             a = p[offset + 0];
@@ -197,7 +197,7 @@ namespace Core
             // We only unroll the first 1-, 2-, and 3- byte cases.  The very rare larger cases can be handled by the slower 64-bit varint routine.
             {
                 ulong ulong_v = 0;
-                byte n = _getVarintL(p, offset, out ulong_v);
+                byte n = _getVarint(p, offset, out ulong_v);
                 Debug.Assert(n > 3 && n <= 9);
                 v = ((ulong_v & MAX_U32) != ulong_v ? 0xffffffff : (uint)ulong_v);
                 return n;
@@ -224,10 +224,10 @@ namespace Core
             return _getVarint4(a, 0, out v);
         }
 
-        public static byte PutVarint(byte[] p, int v) { return PutVarintL(p, 0, (ulong)v); }
-        public static byte PutVarint(byte[] p, uint offset, int v) { return PutVarintL(p, offset, (ulong)v); }
-        public static byte PutVarintL(byte[] p, ulong v) { return PutVarintL(p, 0, (ulong)v); }
-        public static byte PutVarintL(byte[] p, uint offset, ulong v)
+        public static byte PutVarint(byte[] p, int v) { return PutVarint(p, 0, (ulong)v); }
+        public static byte PutVarint(byte[] p, uint offset, int v) { return PutVarint(p, offset, (ulong)v); }
+        public static byte PutVarint(byte[] p, ulong v) { return PutVarint(p, 0, (ulong)v); }
+        public static byte PutVarint(byte[] p, uint offset, ulong v)
         {
             int i, j; byte n;
             if ((v & (((ulong)0xff000000) << 32)) != 0)

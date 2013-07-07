@@ -430,4 +430,27 @@ namespace Core
 #endif
 
 #pragma endregion
+
+#pragma region FromPCache1
+
+	extern void BufferSetup(void *buffer, int size, int n);
+	extern void *Alloc(int bytes);
+	extern int Free(void *p);
+
+	void PCache::PageBufferSetup(void *buffer, int size, int n)
+	{
+		BufferSetup(buffer, size, n);
+	}
+
+	void *PCache::PageAlloc(int size)
+	{
+		return Alloc(size);
+	}
+
+	void PCache::PageFree(void *p)
+	{
+		Free(p);
+	}
+
+#pragma endregion
 }

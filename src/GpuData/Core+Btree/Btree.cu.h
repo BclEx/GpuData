@@ -5,11 +5,11 @@ namespace Core
 #define N_BTREE_META 10
 
 #ifndef DEFAULT_AUTOVACUUM
-#define DEFAULT_AUTOVACUUM 0
+#define DEFAULT_AUTOVACUUM AUTOVACUUM::NONE
 #endif
 
-	enum LOCK : uint8;
-	enum TRANS : uint8;
+	//enum class LOCK : uint8;
+	//enum class TRANS : uint8;
 	typedef struct KeyInfo KeyInfo;
 	typedef struct UnpackedRecord UnpackedRecord;
 	typedef struct Btree Btree;
@@ -25,7 +25,7 @@ namespace Core
 		CollSeq *Colls[1];  // Collating sequence for each term of the key
 	};
 
-	enum UNPACKED : uint8
+	enum class UNPACKED : uint8
 	{
 		INCRKEY = 0x01,			// Make this key an epsilon larger
 		PREFIX_MATCH = 0x02,	// A prefix match is considered OK
@@ -41,17 +41,30 @@ namespace Core
 		Mem *Mems;          // Values
 	};
 
+	enum class LOCK : uint8
+	{
+		READ = 1,
+		WRITE = 2,
+	};
+
+	enum class TRANS : uint8
+	{
+		NONE = 0,
+		READ = 1,
+		WRITE = 2,
+	};
+
 	class Btree
 	{
 	public:
-		enum AUTOVACUUM : uint8
+		enum class AUTOVACUUM : uint8
 		{
 			NONE = 0,        // Do not do auto-vacuum
 			FULL = 1,        // Do full auto-vacuum
 			INCR = 2,        // Incremental vacuum
 		};
 
-		enum OPEN : uint8
+		enum class OPEN : uint8
 		{
 			OMIT_JOURNAL = 1,   // Do not create or use a rollback journal
 			MEMORY = 2,         // This is an in-memory DB
@@ -108,11 +121,11 @@ namespace Core
 		bool IsInBackup();
 		ISchema *Schema(int bytes, void (*free)(void *));
 		RC SchemaLocked();
-		RC LockTable(int tableID, bool isWriteLock);
+		RC LockTable(Pid tableID, bool isWriteLock);
 		RC Savepoint(IPager::SAVEPOINT op, int savepoint);
 
-		const char *GetFilename();
-		const char *GetJournalname();
+		const char *get_Filename();
+		const char *get_Journalname();
 		//int sqlite3BtreeCopyFile(Btree *, Btree *);
 
 		RC IncrVacuum();
@@ -124,12 +137,7 @@ namespace Core
 		RC ClearTable(int tableID, int *changes);
 		void TripAllCursors(RC errCode);
 
-		void GetMeta(int idx, uint32 *meta);
-		RC UpdateMeta(int idx, uint32 meta);
-
-		RC NewDb();
-
-		enum META : uint8
+		enum class META : uint8
 		{
 			FREE_PAGE_COUNT = 0,
 			SCHEMA_VERSION = 1,
@@ -140,6 +148,10 @@ namespace Core
 			USER_VERSION = 6,
 			INCR_VACUUM = 7,
 		};
+		void GetMeta(META id, uint32 *meta);
+		RC UpdateMeta(META id, uint32 meta);
+
+		RC NewDb();
 
 #define BTREE_BULKLOAD 0x00000001
 
@@ -229,5 +241,6 @@ namespace Core
 	};
 
 	typedef struct Btree::BtLock BtLock;
-	Btree::OPEN inline operator |= (Btree::OPEN a, Btree::OPEN b) { return (Btree::OPEN)(a | b); }
+	Btree::OPEN inline operator |= (Btree::OPEN a, Btree::OPEN b) { return (Btree::OPEN)((uint8)a | (uint8)b); }
+	uint8 inline operator & (Btree::OPEN a, Btree::OPEN b) { return ((uint8)a & (uint8)b); }
 }

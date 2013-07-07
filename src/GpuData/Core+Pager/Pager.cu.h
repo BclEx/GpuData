@@ -142,7 +142,7 @@ namespace Core
 #endif
 		// Open and close a Pager connection. 
 		static RC Open(VFileSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VFileSystem::OPEN vfsFlags, void (*reinit)(IPage *));
-		static RC Close(Pager *pager);
+		RC Close();
 		RC ReadFileheader(int n, unsigned char *dest);
 
 		// Functions used to configure a Pager object.

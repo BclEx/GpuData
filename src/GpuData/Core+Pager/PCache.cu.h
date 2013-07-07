@@ -67,7 +67,6 @@ namespace Core
 		IPCache *Cache;				// Pluggable cache module
 		PgHdr *Page1;				// Reference to page 1
 	public:
-		//	void sqlite3PCacheBufferSetup(void *, int sz, int n);
 		__device__ static int Initialize();
 		__device__ static void Shutdown();
 		__device__ static int SizeOf();
@@ -101,8 +100,9 @@ namespace Core
 #ifdef TEST
 		__device__ void PCache1_testStats(uint *current, uint *max, uint *min, uint *recyclables);
 #endif
+		// from pcache1
+		__device__ static void PageBufferSetup(void *buffer, int size, int n);
+		__device__ static void *PageAlloc(int size);
+		__device__ static void PageFree(void *p);
 	};
-
-	__device__ void *PCache_PageAlloc(int size);
-	__device__ void PCache_PageFree(void *p);
 }

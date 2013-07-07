@@ -48,10 +48,10 @@ namespace Core
 
     public interface IVdbe
     {
-        UnpackedRecord RecordUnpack(KeyInfo keyInfo, int keyLength, byte[] key, UnpackedRecord space, int count);
+        UnpackedRecord AllocUnpackedRecord(KeyInfo keyInfo, byte[] space, int spaceLength, out object free);
+        void RecordUnpack(KeyInfo keyInfo, int keyLength, byte[] key, UnpackedRecord p);
         void DeleteUnpackedRecord(UnpackedRecord r);
-        RC RecordCompare(int cells, byte[] cellKey, UnpackedRecord idxKey);
-        RC RecordCompare(int cells, byte[] cellKey, int offset, UnpackedRecord idxKey);
+        int RecordCompare(int cells, byte[] cellKey, uint offset_, UnpackedRecord idxKey);
     }
 
     #endregion

@@ -5,7 +5,7 @@ namespace Core
 	class Context
 	{
 	public:
-		//const int MAX_ATTACHED = 10;
+		static const int MAX_ATTACHED = 10;
 
 		struct BusyHandlerType
 		{
@@ -53,10 +53,10 @@ namespace Core
 		MutexEx Mutex;
 		FLAG Flags;
 		BusyHandlerType *BusyHandler;
-		int Savepoints;			// Number of non-transaction savepoints
+		int Savepoints;					// Number of non-transaction savepoints
 		int ActiveVdbeCnt;
-		DB *DBs;				// All backends
-		int DBUsed;				// Number of backends currently in use
+		DB *DBs;						// All backends
+		int DBsUsed;					// Number of backends currently in use
 
 		int InvokeBusyHandler()
 		{
@@ -80,15 +80,15 @@ namespace Core
 		//internal static void sqlite3ConnectionUnlocked(sqlite3 x) { }
 		//internal static void sqlite3ConnectionClosed(sqlite3 x) { }
 #endif
-		//
-		//        public bool sqlite3TempInMemory()
-		//        {
-		//            return true;
-		//            //if (SQLITE_TEMP_STORE == 1) return (temp_store == 2);
-		//            //if (SQLITE_TEMP_STORE == 2) return (temp_store != 1);
-		//            //if (SQLITE_TEMP_STORE == 3) return true;
-		//            //if (SQLITE_TEMP_STORE < 1 || SQLITE_TEMP_STORE > 3) return false;
-		//            //return false;
-		//        }
+
+		inline bool TempInMemory()
+		{
+			return true;
+			//if (SQLITE_TEMP_STORE == 1) return (temp_store == 2);
+			//if (SQLITE_TEMP_STORE == 2) return (temp_store != 1);
+			//if (SQLITE_TEMP_STORE == 3) return true;
+			//if (SQLITE_TEMP_STORE < 1 || SQLITE_TEMP_STORE > 3) return false;
+			//return false;
+		}
 	};
 }

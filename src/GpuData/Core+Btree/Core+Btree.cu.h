@@ -40,9 +40,10 @@ struct ISchema
 class IVdbe
 {
 public:
-	virtual UnpackedRecord RecordUnpack(KeyInfo *keyInfo, int keyLength, uint8 *key, UnpackedRecord *space, int count);
+	virtual UnpackedRecord *AllocUnpackedRecord(KeyInfo *keyInfo, char *space, int spaceLength, char **free);
+	virtual void RecordUnpack(KeyInfo *keyInfo, int keyLength, const void *key, UnpackedRecord *p);
 	virtual void DeleteUnpackedRecord(UnpackedRecord *r);
-	virtual RC RecordCompare(int cells, uint8 *cellKey, UnpackedRecord idxKey);
+	virtual int RecordCompare(int cells, const void *cellKey, UnpackedRecord *idxKey);
 };
 
 #pragma endregion

@@ -54,7 +54,7 @@ namespace Core
     public partial class Pager
     {
         // sqliteLimit.h
-        const int MAX_PAGE_SIZE = 65535;
+        public const int MAX_PAGE_SIZE = 65535;
 
         enum PAGER : byte
         {

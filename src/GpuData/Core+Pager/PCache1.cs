@@ -6,6 +6,8 @@ using System.Text;
 
 namespace Core
 {
+    #region Struct
+
     public class PGroup
     {
         public MutexEx Mutex;           // MUTEX_STATIC_LRU or NULL
@@ -89,6 +91,8 @@ namespace Core
         public bool UnderPressure;  // True if low on PAGECACHE memory
     }
 
+    #endregion
+
     public partial class PCache1
     {
         private static PCacheGlobal _pcache1;
@@ -96,7 +100,7 @@ namespace Core
 
         #region Page Allocation
 
-        private static void BufferSetup(object buffer, int size, int n)
+        internal static void BufferSetup(object buffer, int size, int n)
         {
             if (_pcache1.IsInit)
             {
@@ -119,7 +123,7 @@ namespace Core
             }
         }
 
-        private static PgHdr Alloc(int bytes)
+        internal static PgHdr Alloc(int bytes)
         {
             Debug.Assert(MutexEx.NotHeld(_pcache1.Mutex));
             StatusEx.StatusSet(StatusEx.STATUS.PAGECACHE_SIZE, bytes);
@@ -154,7 +158,7 @@ namespace Core
             return p;
         }
 
-        private static int Free(ref PgHdr p)
+        internal static int Free(ref PgHdr p)
         {
             int freed = 0;
             if (p == null)
@@ -235,24 +239,6 @@ namespace Core
                 if (cache.Purgeable)
                     cache.Group.CurrentPages--;
             }
-        }
-
-        public static PgHdr PageAlloc(int size)
-        {
-            return Alloc(size);
-        }
-
-        public static void PageFree(ref byte[] p)
-        {
-            if (p != null)
-            {
-                SysEx.Free(ref p);
-                p = null;
-            }
-        }
-        public static void PageFree(ref PgHdr p)
-        {
-            Free(ref p);
         }
 
         private bool UnderMemoryPressure()

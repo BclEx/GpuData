@@ -1692,7 +1692,7 @@ end_playback:
 			char *tempSpace = nullptr; // New temp space
 			if (rc == RC::OK)
 			{
-				tempSpace = (char *)PCache_PageAlloc(pageSize);
+				tempSpace = (char *)PCache::PageAlloc(pageSize);
 				if (!tempSpace) rc = RC::NOMEM;
 			}
 			if (rc == RC::OK)
@@ -1700,7 +1700,7 @@ end_playback:
 				pager_reset(this);
 				DBSize = (Pid)((bytes + pageSize - 1) / pageSize);
 				PageSize = (int)pageSize;
-				PCache_PageFree(TmpSpace);
+				PCache::PageFree(TmpSpace);
 				TmpSpace = tempSpace;
 				PCache->SetPageSize(pageSize);
 			}
@@ -1830,21 +1830,21 @@ end_playback:
 		return rc;
 	}
 
-	RC Pager::Close(Pager *pager)
+	RC Pager::Close()
 	{
-		_assert(assert_pager_state(pager));
+		_assert(assert_pager_state(this));
 		disable_simulated_io_errors();
 		SysEx::BeginBenignAlloc();
-		//pager->ErrorCode = 0;
-		pager->ExclusiveMode = false;
-		uint8 *tmp = (uint8 *)pager->TmpSpace;
+		ErrorCode = RC::OK;
+		ExclusiveMode = false;
+		uint8 *tmp = (uint8 *)TmpSpace;
 #ifndef OMIT_WAL
-		pager->Wal->Close(pager->CheckpointSyncFlags, pager->PageSize, tmp);
-		pager->Wal = nullptr;
+		Wal->Close(CheckpointSyncFlags, PageSize, tmp);
+		Wal = nullptr;
 #endif
-		pager_reset(pager);
-		if (pager->MemoryDB)
-			pager_unlock(pager);
+		pager_reset(this);
+		if (MemoryDB)
+			pager_unlock(this);
 		else
 		{
 			// If it is open, sync the journal file before calling UnlockAndRollback. If this is not done, then an unsynced portion of the open journal 
@@ -1853,27 +1853,27 @@ end_playback:
 			// If an error occurs while trying to sync the journal, shift the pager into the ERROR state. This causes UnlockAndRollback to unlock the
 			// database and close the journal file without attempting to roll it back or finalize it. The next database user will have to do hot-journal
 			// rollback before accessing the database file.
-			if (pager->JournalFile->Opened)
-				pager_error(pager, pagerSyncHotJournal(pager));
-			pagerUnlockAndRollback(pager);
+			if (JournalFile->Opened)
+				pager_error(this, pagerSyncHotJournal(this));
+			pagerUnlockAndRollback(this);
 		}
 		SysEx::EndBenignAlloc();
 		enable_simulated_io_errors();
-		PAGERTRACE("CLOSE %d\n", PAGERID(pager));
-		SysEx_IOTRACE("CLOSE %p\n", pager);
-		pager->JournalFile->Close();
-		pager->File->Close();
-		PCache_PageFree(tmp);
-		pager->PCache->Close();
+		PAGERTRACE("CLOSE %d\n", PAGERID(this));
+		SysEx_IOTRACE("CLOSE %p\n", this);
+		JournalFile->Close();
+		File->Close();
+		PCache::PageFree(tmp);
+		PCache->Close();
 
 #ifdef HAS_CODEC
-		if (pager->CodecFree) pager->CodecFree(pager->Codec);
+		if (CodecFree) CodecFree(Codec);
 #endif
 
-		_assert(!pager->Savepoints && !pager->InJournal);
-		_assert(!pager->JournalFile->Opened && !pager->SubJournalFile->Opened);
+		_assert(!Savepoints && !InJournal);
+		_assert(!JournalFile->Opened && !SubJournalFile->Opened);
 
-		SysEx::Free(pager);
+		SysEx::Free(this);
 		return RC::OK;
 	}
 

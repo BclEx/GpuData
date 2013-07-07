@@ -15,6 +15,7 @@ namespace Core.IO
             EXCLUSIVE = 0x00000010,         // VFS only 
             AUTOPROXY = 0x00000020,         // VFS only 
             URI = 0x00000040,               // Ok for sqlite3_open_v2() 
+            MEMORY = 0x00000080,            // Ok for sqlite3_open_v2()
             MAIN_DB = 0x00000100,           // VFS only 
             TEMP_DB = 0x00000200,           // VFS only 
             TRANSIENT_DB = 0x00000400,      // VFS only 

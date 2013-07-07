@@ -1672,13 +1672,13 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                     rc = File.get_FileSize(out bytes);
                 byte[] tempSpace = null; // New temp space
                 if (rc == RC.OK)
-                    tempSpace = SysEx.Alloc((int)pageSize); //PCache1.PageAlloc((int)pageSize);
+                    tempSpace = PCache.PageAlloc2((int)pageSize);
                 if (rc == RC.OK)
                 {
                     pager_reset();
                     DBSize = (Pid)((bytes + pageSize - 1) / pageSize);
                     PageSize = (int)pageSize;
-                    PCache1.PageFree(ref TmpSpace);
+                    PCache.PageFree2(ref TmpSpace);
                     TmpSpace = tempSpace;
                     PCache.SetPageSize((int)pageSize);
                 }
@@ -1814,6 +1814,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             Debug.Assert(assert_pager_state());
             disable_simulated_io_errors();
             SysEx.BeginBenignAlloc();
+            ErrorCode = RC.OK;
             ExclusiveMode = false;
             var tmp = TmpSpace;
 #if !OMIT_WAL
@@ -1840,7 +1841,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             SysEx.IOTRACE("CLOSE {0:x}", GetHashCode());
             JournalFile.Close();
             File.Close();
-            PCache1.PageFree(ref tmp);
+            PCache.PageFree2(ref tmp);
             PCache.Close();
 
 #if HAS_CODEC

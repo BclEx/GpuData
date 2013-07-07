@@ -14,11 +14,11 @@ namespace Core
 
         public class DB
         {
-            string Name;					// Name of this database
-            Btree Bt;					    // The B*Tree structure for this database file
-            byte InTrans;				    // 0: not writable.  1: Transaction.  2: Checkpoint
-            byte SafetyLevel;			    // How aggressive at syncing data to disk
-            ISchema Schema;			        // Pointer to database schema (possibly shared)
+            public string Name;					// Name of this database
+            public Btree Bt;					// The B*Tree structure for this database file
+            public byte InTrans;				// 0: not writable.  1: Transaction.  2: Checkpoint
+            public byte SafetyLevel;			// How aggressive at syncing data to disk
+            public ISchema Schema;			    // Pointer to database schema (possibly shared)
         }
 
         [Flags]
@@ -52,10 +52,10 @@ namespace Core
         public MutexEx Mutex;
         public FLAG Flags;
         public BusyHandlerType BusyHandler;
-        public int Savepoints; // Number of non-transaction savepoints
+        public int Savepoints;                      // Number of non-transaction savepoints
         public int ActiveVdbeCnt;
-        DB[] DBs = new DB[MAX_ATTACHED];	// All backends
-        int DBUsed;				// Number of backends currently in use
+        public DB[] DBs = new DB[MAX_ATTACHED];     // All backends
+        public int DBsUsed;                          // Number of backends currently in use
 
         public int InvokeBusyHandler()
         {
@@ -80,14 +80,14 @@ namespace Core
         //internal static void sqlite3ConnectionClosed(sqlite3 x) { }
 #endif
 
-        //        public bool sqlite3TempInMemory()
-        //        {
-        //            return true;
-        //            //if (SQLITE_TEMP_STORE == 1) return (temp_store == 2);
-        //            //if (SQLITE_TEMP_STORE == 2) return (temp_store != 1);
-        //            //if (SQLITE_TEMP_STORE == 3) return true;
-        //            //if (SQLITE_TEMP_STORE < 1 || SQLITE_TEMP_STORE > 3) return false;
-        //            //return false;
-        //        }
+        public bool TempInMemory()
+        {
+            return true;
+            //if (SQLITE_TEMP_STORE == 1) return (temp_store == 2);
+            //if (SQLITE_TEMP_STORE == 2) return (temp_store != 1);
+            //if (SQLITE_TEMP_STORE == 3) return true;
+            //if (SQLITE_TEMP_STORE < 1 || SQLITE_TEMP_STORE > 3) return false;
+            //return false;
+        }
     }
 }

@@ -3,6 +3,8 @@
 
 namespace Core
 {
+#pragma region Struct
+
 	typedef struct PgHdr1 PgHdr1;
 
 	struct PGroup 
@@ -65,7 +67,7 @@ namespace Core
 		PgFreeslot *Next;		// Next free slot
 	};
 
-	static struct PCacheGlobal
+	struct PCacheGlobal
 	{
 		PGroup Group;			// The global PGroup for mode (2)
 		// Variables related to SQLITE_CONFIG_PAGECACHE settings.  The szSlot, nSlot, pStart, pEnd, nReserve, and isInit values are all
@@ -82,7 +84,11 @@ namespace Core
 		// The following value requires a mutex to change.  We skip the mutex on reading because (1) most platforms read a 32-bit integer atomically and
 		// (2) even if an incorrect value is read, no great harm is done since this is really just an optimization.
 		bool UnderPressure;		// True if low on PAGECACHE memory
-	} _pcache1;
+	};
+
+#pragma endregion
+
+	static struct PCacheGlobal _pcache1;
 	static bool _config_coreMutex = false;
 
 #pragma region Page Allocation
@@ -236,16 +242,6 @@ namespace Core
 			if (cache->Purgeable)
 				cache->Group->CurrentPages--;
 		}
-	}
-
-	__device__ void *PCache_PageAlloc(int size)
-	{
-		return Alloc(size);
-	}
-
-	__device__ void PCache_PageFree(void *p)
-	{
-		Free(p);
 	}
 
 	__device__ static bool UnderMemoryPressure(PCache1 *cache)

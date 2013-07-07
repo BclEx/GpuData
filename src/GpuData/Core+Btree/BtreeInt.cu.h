@@ -10,6 +10,10 @@ namespace Core
 #ifndef FILE_HEADER
 #define FILE_HEADER "SQLite format 3"
 #endif
+#ifndef DEFAULT_CACHE_SIZE
+#define DEFAULT_CACHE_SIZE 2000
+#endif
+#define MASTER_ROOT 1
 
 #define PTF_INTKEY    0x01
 #define PTF_ZERODATA  0x02
@@ -44,19 +48,6 @@ namespace Core
 
 #define EXTRA_SIZE sizeof(MemPage)
 
-	enum LOCK : uint8
-	{
-		READ = 1,
-		WRITE = 2,
-	};
-
-	enum TRANS : uint8
-	{
-		NONE = 0,
-		READ = 1,
-		WRITE = 2,
-	};
-
 	enum BTS : uint16
 	{
 		READ_ONLY = 0x0001,		// Underlying file is readonly
@@ -74,7 +65,7 @@ namespace Core
 		Context *Ctx;			// Database connection currently using this Btree
 		BtCursor *Cursor;		// A list of all open cursors
 		MemPage *Page1;			// First page of the database
-		byte OpenFlags;			// Flags to sqlite3BtreeOpen()
+		Btree::OPEN OpenFlags;	// Flags to sqlite3BtreeOpen()
 #ifndef OMIT_AUTOVACUUM
 		bool AutoVacuum;		// True if auto-vacuum is enabled
 		bool IncrVacuum;		// True if incr-vacuum is enabled
@@ -119,7 +110,7 @@ namespace Core
 
 #define BTCURSOR_MAX_DEPTH 20
 
-	enum CURSOR : uint8
+	enum class CURSOR : uint8
 	{
 		INVALID = 0,
 		VALID = 1,
@@ -162,7 +153,7 @@ namespace Core
 #define PTRMAP_PTROFFSET(ptrmapID, id) (5 * (id - ptrmapID - 1))
 #define PTRMAP_ISPAGE(bt, id) (PTRMAP_PAGENO((bt), (id)) == (id))
 
-	enum PTRMAP : uint8
+	enum class PTRMAP : uint8
 	{
 		ROOTPAGE = 1,
 		FREEPAGE = 2,
