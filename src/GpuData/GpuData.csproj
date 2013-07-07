@@ -81,6 +81,7 @@
     <Compile Include="Core\20.MutexEx_h.cs" />
     <Compile Include="Core\10.ConvertEx.cs" />
     <Compile Include="Core\40.StatusEx.cs" />
+    <Compile Include="Core\60.MathEx.cs" />
     <Compile Include="Core\cs.cs" />
     <Compile Include="Core\Text\00.StringBuilder.cs" />
     <Compile Include="Main.cs" />
@@ -98,6 +99,7 @@
     <None Include="Core+Pager\PCache1.cu" />
     <Content Include="Core+Pager\Core+Pager.cu.h" />
     <Content Include="Core\10.ConvertEx.cu.h" />
+    <Content Include="Core\60.MathEx.cu.h" />
     <Content Include="Core\IO\40.VFileSystem.cu.h" />
     <None Include="Core\00.Bitvec.cu" />
     <None Include="Core\10.ConvertEx.cu" />

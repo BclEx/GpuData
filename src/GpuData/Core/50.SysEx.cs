@@ -60,8 +60,8 @@ namespace Core
             return p.Length;
         }
         public static void Free(ref byte[] p) { p = null; }
-        public static byte[] StackAlloc(int size) { return new byte[size]; }
-        public static void StackFree(ref byte[] p) { p = null; }
+        public static byte[] ScratchAlloc(int size) { return new byte[size]; }
+        public static void ScratchFree(ref byte[] p) { p = null; }
         public static bool HeapNearlyFull() { return false; }
         public static T[] Realloc<T>(int s, T[] p, int bytes)
         {
@@ -123,5 +123,38 @@ namespace Core
         {
             throw new NotImplementedException();
         }
+
+
+        #region For C#
+
+        static byte[][] _scratch; // Scratch memory
+        public static byte[][] ScratchAlloc(byte[][] cell, int n)
+        {
+            cell = _scratch;
+            if (cell == null)
+                cell = new byte[n < 200 ? 200 : n][];
+            else if (cell.Length < n)
+                Array.Resize(ref cell, n);
+            _scratch = null;
+            return cell;
+        }
+
+        public static void ScratchFree(byte[][] cell)
+        {
+            if (cell != null)
+            {
+                if (_scratch == null || _scratch.Length < cell.Length)
+                {
+                    Debug.Assert(MemdebugHasType(cell, MEMTYPE.SCRATCH));
+                    Debug.Assert(MemdebugNoType(cell, ~MEMTYPE.SCRATCH));
+                    MemdebugSetType(cell, MEMTYPE.HEAP);
+                    _scratch = cell;
+                }
+                // larger Scratch 2 already in use, let the C# GC handle
+                cell = null;
+            }
+        }
+
+        #endregion
     }
 }

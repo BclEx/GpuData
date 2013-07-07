@@ -155,7 +155,7 @@ namespace Core
 
 #define BTREE_BULKLOAD 0x00000001
 
-		RC Cursor(int table, int wrFlag, struct KeyInfo *keyInfo, BtCursor *cur);
+		RC Cursor(Pid tableID, bool wrFlag, struct KeyInfo *keyInfo, BtCursor *cur);
 		static int CursorSize();
 		static void CursorZero(BtCursor *p);
 

@@ -72,11 +72,11 @@ namespace Core
 		__device__ inline static void Free(void *p) { free(p); }
 		__device__ inline static void TagFree(void *tag, void *p) { free(p); }
 #ifndef __CUDACC__
-		__device__ inline static void *StackAlloc(size_t size) { return alloca(size); }
-		__device__ inline static void StackFree(void *p) { }
+		__device__ inline static void *ScratchAlloc(size_t size) { return alloca(size); }
+		__device__ inline static void ScratchFree(void *p) { }
 #else
-		__device__ inline static void *StackAlloc(size_t size) { return malloc(size); }
-		__device__ inline static void StackFree(void *p) { free(p); }
+		__device__ inline static void *ScratchAlloc(size_t size) { return malloc(size); }
+		__device__ inline static void ScratchFree(void *p) { free(p); }
 #endif
 		__device__ inline static bool HeapNearlyFull() { return false; }
 		__device__ inline static void *Realloc(void *old, size_t newSize) { return nullptr; }

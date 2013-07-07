@@ -2,7 +2,6 @@ using Pid = System.UInt32;
 using IPage = Core.PgHdr;
 using System;
 using System.Diagnostics;
-using System.Text;
 using Core.IO;
 
 namespace Core
@@ -61,7 +60,7 @@ namespace Core
             internal IPage DBPage;              // Pager page handle
             internal Pid ID;                    // Page number for this page
 
-            internal MemPage Copy()
+            internal MemPage memcopy()
             {
                 var cp = (MemPage)MemberwiseClone();
                 //if (Overflows != null)
@@ -256,7 +255,7 @@ static void btreeIntegrity(Btree p) { }
             public int MaxErrors;       // Stop accumulating errors when this reaches zero
             public int Errors;          // Number of messages written to zErrMsg so far
             public bool MallocFailed;   // A memory allocation error has occurred
-            public StringBuilder ErrMsg = new StringBuilder(); // Accumulate the error message text here
+            public Text.StringBuilder ErrMsg = new Text.StringBuilder(); // Accumulate the error message text here
         };
     }
 }

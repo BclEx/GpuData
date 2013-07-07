@@ -72,14 +72,14 @@ bitvec_set_rehash:
 		{
 			;
 			uint32 *values;
-			if (!(values = (uint32 *)SysEx::StackAlloc(sizeof(p->u.Hash)))) return RC::NOMEM;
+			if (!(values = (uint32 *)SysEx::ScratchAlloc(sizeof(p->u.Hash)))) return RC::NOMEM;
 			_memcpy(values, p->u.Hash, sizeof(p->u.Hash));
 			_memset(p->u.Sub, 0, sizeof(p->u.Sub));
 			p->_divisor = ((p->_size + BITVEC_NPTR - 1) / BITVEC_NPTR);
 			int rc = p->Set(index);
 			for (unsigned int j = 0; j < BITVEC_NINT; j++)
 				if (values[j]) rc |= p->Set(values[j]);
-			SysEx::StackFree(values);
+			SysEx::ScratchFree(values);
 			return (RC)rc;
 		}
 bitvec_set_end:
