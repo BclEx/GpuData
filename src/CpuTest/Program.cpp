@@ -4,13 +4,13 @@ using namespace Core;
 
 namespace Core
 {
-	int Bitvec_BuiltinTest(int size, int *aOp);
+	int Bitvec_BuiltinTest(int size, int *ops);
 }
 
 void main()
 {
 	PCache::Initialize();
 	PCache::ReleaseMemory(5);
-	int outA;
-	Core::Bitvec_BuiltinTest(16, &outA);
+	int ops[] = { 5, 1, 1, 1, 0 };
+	Core::Bitvec_BuiltinTest(400, ops);
 }

@@ -11,7 +11,7 @@ namespace Core
 #define BITVEC_HASH(X) (((X) * 1) % BITVEC_NINT)
 #define BITVEC_NPTR (BITVEC_USIZE / sizeof(Bitvec *))
 
-	class Bitvec
+	struct Bitvec
 	{
 	private:
 		uint32 _size;      // Maximum bit index.  Max iSize is 4,294,967,296.

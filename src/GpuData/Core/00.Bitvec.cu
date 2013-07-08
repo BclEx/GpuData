@@ -21,7 +21,7 @@ namespace Core
 			p = p->u.Sub[bin];
 			if (!p) return false;
 		}
-		if( p->_size <= BITVEC_NBIT)
+		if (p->_size <= BITVEC_NBIT)
 			return ((p->u.Bitmap[index / BITVEC_SZELEM] & (1 << (index & (BITVEC_SZELEM - 1)))) != 0);
 		uint32 h = BITVEC_HASH(index++);
 		while (p->u.Hash[h])
@@ -70,7 +70,6 @@ namespace Core
 bitvec_set_rehash:
 		if (p->_set >= BITVEC_MXHASH)
 		{
-			;
 			uint32 *values;
 			if (!(values = (uint32 *)SysEx::ScratchAlloc(sizeof(p->u.Hash)))) return RC::NOMEM;
 			_memcpy(values, p->u.Hash, sizeof(p->u.Hash));
@@ -126,11 +125,11 @@ bitvec_set_end:
 #pragma	region Tests
 #ifdef TEST
 
-#define SETBIT(V,I) V[I>>3] |= (1<<(I&7))
-#define CLEARBIT(V,I) V[I>>3] &= ~(1<<(I&7))
-#define TESTBIT(V,I) (V[I>>3]&(1<<(I&7)))!=0
+#define SETBIT(V,I) V[(I) >> 3] |= (1 << ((I) & 7))
+#define CLEARBIT(V,I) V[(I) >> 3] &= ~(1 << ((I) & 7))
+#define TESTBIT(V,I) ((V[(I) >> 3] & (1 << ((I) & 7))) != 0)
 
-	__device__ int Bitvec_BuiltinTest(int size, int *aOp)
+	__device__ int Bitvec_BuiltinTest(int size, int *ops)
 	{
 		int rc = -1;
 		// Allocate the Bitvec to be tested and a linear array of bits to act as the reference
@@ -143,7 +142,7 @@ bitvec_set_end:
 		// Run the program
 		int pc = 0;
 		int i, nx, op;
-		while ((op = aOp[pc]))
+		while ((op = ops[pc]))
 		{
 			switch (op)
 			{
@@ -152,8 +151,8 @@ bitvec_set_end:
 			case 5:
 				{
 					nx = 4;
-					i = aOp[pc + 2] - 1;
-					aOp[pc + 2] += aOp[pc + 3];
+					i = ops[pc + 2] - 1;
+					ops[pc + 2] += ops[pc + 3];
 					break;
 				}
 			case 3:
@@ -165,18 +164,18 @@ bitvec_set_end:
 					break;
 				}
 			}
-			if ((--aOp[pc + 1]) > 0) nx = 0;
+			if ((--ops[pc + 1]) > 0) nx = 0;
 			pc += nx;
 			i = (i & 0x7fffffff) % size;
-			if ((op & 1) !=0)
+			if (op & 1)
 			{
-				SETBIT(v, (i + 1));
+				SETBIT(v, i + 1);
 				if (op != 5)
 					if (bitvec->Set(i + 1)) goto bitvec_end;
 			}
 			else
 			{
-				CLEARBIT(v, (i + 1));
+				CLEARBIT(v, i + 1);
 				bitvec->Clear(i + 1, tmpSpace);
 			}
 		}
@@ -188,7 +187,7 @@ bitvec_set_end:
 			+ (bitvec->get_Length() - size);
 		for (i = 1; i <= size; i++)
 		{
-			if ((TESTBIT(v,i)) != bitvec->Get(i))
+			if (TESTBIT(v, i) != bitvec->Get(i))
 			{
 				rc = i;
 				break;
