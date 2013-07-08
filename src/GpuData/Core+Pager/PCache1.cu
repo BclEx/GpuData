@@ -93,7 +93,7 @@ namespace Core
 
 #pragma region Page Allocation
 
-	static void BufferSetup(void *buffer, int size, int n)
+	void BufferSetup(void *buffer, int size, int n)
 	{
 		if (_pcache1.IsInit)
 		{
@@ -115,7 +115,7 @@ namespace Core
 		}
 	}
 
-	static void *Alloc(int bytes)
+	void *Alloc(int bytes)
 	{
 		_assert(MutexEx::NotHeld(_pcache1.Group.Mutex));
 		StatusEx::StatusSet(StatusEx::STATUS::PAGECACHE_SIZE, bytes);
@@ -152,7 +152,7 @@ namespace Core
 		return p;
 	}
 
-	static int Free(void *p)
+	int Free(void *p)
 	{
 		int freed = 0;
 		if (p == nullptr)

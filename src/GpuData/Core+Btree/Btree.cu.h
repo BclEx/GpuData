@@ -205,7 +205,7 @@ namespace Core
 #endif
 
 #ifndef OMIT_SHARED_CACHE
-		void Enter();
+		inline void Enter() { }
 		//static void EnterAll(Context *);
 #else
 #define Enter(X) 

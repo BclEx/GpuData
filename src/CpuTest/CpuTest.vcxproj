@@ -99,6 +99,7 @@
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h" />
+    <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h" />
     <ClInclude Include="..\Runtime.cu.h" />
   </ItemGroup>
   <ItemGroup>
@@ -149,6 +150,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core+Btree\Btree.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core\Text\00.StringBuilder.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>

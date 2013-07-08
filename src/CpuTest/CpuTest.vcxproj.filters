@@ -13,6 +13,9 @@
     <Filter Include="Core+Btree">
       <UniqueIdentifier>{b414d516-9e04-405a-8531-c81e57f47a7e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core\Text">
+      <UniqueIdentifier>{ecfdf063-6a3d-4762-a51f-4e94d9e8fa11}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core\50.SysEx.cu">
@@ -57,6 +60,9 @@
     </ClCompile>
     <ClCompile Include="..\GpuData\Core+Btree\Btree.cu">
       <Filter>Core+Btree</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GpuData\Core\Text\00.StringBuilder.cu">
+      <Filter>Core\Text</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -111,6 +117,9 @@
     </ClInclude>
     <ClInclude Include="..\GpuData\Core+Btree\Core+Btree.cu.h">
       <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h">
+      <Filter>Core\Text</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

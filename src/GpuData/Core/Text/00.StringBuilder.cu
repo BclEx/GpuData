@@ -13,7 +13,7 @@ namespace Core { namespace Text
 		}
 		_assert(Text != nullptr || Index == 0);
 		if (length < 0)
-			length = _strlen(z);
+			length = _strlen30(z);
 		if (length == 0 || SysEx_NEVER(z == nullptr))
 			return;
 		if (Index + length >= Size)
@@ -40,9 +40,9 @@ namespace Core { namespace Text
 				else
 					Size = (int)newSize;
 				if (UseMalloc == 1)
-					newText = SysEx::TagRealloc(Ctx, oldText, Size);
+					newText = (char *)SysEx::TagRealloc(Ctx, oldText, Size);
 				else
-					newText = SysEx::Realloc(oldText, Size);
+					newText = (char *)SysEx::Realloc(oldText, Size);
 				if (newText)
 				{
 					if (oldText == nullptr && Index > 0) _memcpy(newText, Text, Index);
@@ -69,9 +69,9 @@ namespace Core { namespace Text
 			if (UseMalloc && Text == Base)
 			{
 				if (UseMalloc == 1)
-					Text = SysEx::TagAlloc(Ctx, Index + 1);
+					Text = (char *)SysEx::TagAlloc(Ctx, Index + 1);
 				else
-					Text = SysEx::Alloc(Index + 1);
+					Text = (char *)SysEx::Alloc(Index + 1);
 				if (Text)
 					_memcpy(Text, Base, Index + 1);
 				else
@@ -86,9 +86,9 @@ namespace Core { namespace Text
 		if (Text != Base)
 		{
 			if (UseMalloc == 1)
-				SysEx::TagFree(p->Ctx, p->Text);
+				SysEx::TagFree(Ctx, Text);
 			else
-				SysEx::Free(p->Text);
+				SysEx::Free(Text);
 		}
 		Text = nullptr;
 	}
