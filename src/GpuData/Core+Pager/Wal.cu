@@ -587,7 +587,7 @@ recovery_error:
 
 #pragma region Interface
 
-	RC Wal::Open(VFileSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut)
+	RC Wal::Open(VSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut)
 	{
 		_assert(walName && walName[0]);
 		_assert(dbFile != nullptr);
@@ -618,9 +618,9 @@ recovery_error:
 		r->ExclusiveMode = (noShm ? MODE::HEAPMEMORY : MODE::NORMAL);
 
 		// Open file handle on the write-ahead log file.
-		VFileSystem::OPEN flags = (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::CREATE | VFileSystem::OPEN::WAL);
+		VSystem::OPEN flags = (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::CREATE | VSystem::OPEN::WAL);
 		RC rc = vfs->Open(walName, r->WalFile, flags, &flags);
-		if (rc == RC::OK && flags & VFileSystem::OPEN::READONLY)
+		if (rc == RC::OK && flags & VSystem::OPEN::READONLY)
 			r->ReadOnly = RDONLY::RDONLY;
 
 		if (rc != RC::OK)
@@ -835,7 +835,7 @@ recovery_error:
 		return (wal->Header.SizePage & 0xfe00) + ((wal->Header.SizePage & 0x0001) << 16);
 	}
 
-	static int walCheckpoint(Wal *wal, IPager::CHECKPOINT mode, int (*busyCall)(void *), void *busyArg, VFileSystem::SYNC sync_flags, uint8 *buf)
+	static int walCheckpoint(Wal *wal, IPager::CHECKPOINT mode, int (*busyCall)(void *), void *busyArg, VSystem::SYNC sync_flags, uint8 *buf)
 	{
 		int sizePage = walPagesize(wal); // Database page-size
 		ASSERTCOVERAGE(szPage <= 32768);

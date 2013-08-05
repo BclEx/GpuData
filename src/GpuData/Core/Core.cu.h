@@ -6,9 +6,9 @@
 #include "20.MutexEx.cu.h"
 #include "00.Bitvec.cu.h"
 #include "40.StatusEx.cu.h"
+#include "50.VSystem.cu.h"
 #include "60.MathEx.cu.h"
 //
-#include "IO\40.VFileSystem.cu.h"
 #include "IO\30.VFile.cu.h"
 #include "Text\00.StringBuilder.cu.h"
 using namespace Core;

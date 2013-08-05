@@ -15,12 +15,12 @@ namespace GpuData
 
         //private static void TestVFS()
         //{
-        //    var vfs = VFileSystem.FindVfs("win32");
+        //    var vfs = VSystem.FindVfs("win32");
         //    if (vfs == null)
         //        throw new InvalidOperationException();
         //    var file = new CoreVFile();
-        //    VFileSystem.OPEN flagOut;
-        //    var rc = vfs.Open(@"Test", file, VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.MAIN_DB, out flagOut);
+        //    VSystem.OPEN flagOut;
+        //    var rc = vfs.Open(@"Test", file, VSystem.OPEN.READWRITE | VSystem.OPEN.CREATE | VSystem.OPEN.MAIN_DB, out flagOut);
         //    if (rc != RC.OK)
         //        throw new InvalidOperationException();
         //    file.Close();
@@ -28,7 +28,7 @@ namespace GpuData
 
         //private static void TestPager()
         //{
-        //    var vfs = VFileSystem.FindVfs(null);
+        //    var vfs = VSystem.FindVfs(null);
         //    var pager = vfs.Open();
         //    if (pager == null)
         //        throw new Exception();
@@ -52,12 +52,12 @@ namespace GpuData
         //        pager.Close();
         //}
 
-        //private static Pager Open(VFileSystem vfs)
+        //private static Pager Open(VSystem vfs)
         //{
         //    var zDbHeader = new byte[100]; // Database header content
         //    Pager pager;
         //    Pager.PAGEROPEN flags = 0;
-        //    var vfsFlags = VFileSystem.OPEN.CREATE | VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.MAIN_DB;
+        //    var vfsFlags = VSystem.OPEN.CREATE | VSystem.OPEN.READWRITE | VSystem.OPEN.MAIN_DB;
         //    //
         //    var rc = Pager.Open(vfs, out pager, @"Test", 0, flags, vfsFlags, x => { }, null);
         //    if (rc == RC.OK)

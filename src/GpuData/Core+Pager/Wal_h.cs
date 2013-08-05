@@ -5,7 +5,7 @@ namespace Core
 {
     public partial class Wal
     {
-        internal static RC Open(VFileSystem x, VFile y, string z) { return RC.OK; }
+        internal static RC Open(VSystem x, VFile y, string z) { return RC.OK; }
         internal void Limit(long y) { }
         internal RC Close(int x, int y, byte z) { return 0; }
         internal RC BeginReadTransaction(int z) { return 0; }

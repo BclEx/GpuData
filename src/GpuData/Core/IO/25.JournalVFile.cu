@@ -10,8 +10,8 @@ namespace Core { namespace IO
 		int BufferLength;               // Size of zBuf[] in bytes
 		char *Buffer;					// Space to buffer journal writes
 		int Size;						// Amount of zBuf[] currently used
-		VFileSystem::OPEN Flags;        // xOpen flags
-		VFileSystem *Vfs;				// The "real" underlying VFS
+		VSystem::OPEN Flags;        // xOpen flags
+		VSystem *Vfs;				// The "real" underlying VFS
 		VFile *Real;					// The "real" underlying file descriptor
 		const char *Journal;			// Name of the journal file
 		__device__ RC CreateFile();
@@ -111,7 +111,7 @@ namespace Core { namespace IO
 	}
 
 	// extensions
-	__device__ RC VFile::JournalVFileOpen(VFileSystem *vfs, const char *name, VFile *file, VFileSystem::OPEN flags, int bufferLength)
+	__device__ RC VFile::JournalVFileOpen(VSystem *vfs, const char *name, VFile *file, VSystem::OPEN flags, int bufferLength)
 	{
 		_memset(file, 0, JournalVFileSize(vfs));
 		JournalVFile *p = (JournalVFile *)file;
@@ -143,7 +143,7 @@ namespace Core { namespace IO
 		return (file->Type != 2 || ((JournalVFile *)file)->Real != nullptr);
 	}
 
-	__device__ int VFile::JournalVFileSize(VFileSystem *vfs)
+	__device__ int VFile::JournalVFileSize(VSystem *vfs)
 	{
 		return (vfs->SizeOsFile + sizeof(JournalVFile));
 	}

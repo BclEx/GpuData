@@ -98,7 +98,6 @@
     <ClInclude Include="..\GpuData\Core\Core+Types.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h" />
-    <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h" />
     <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h" />
     <ClInclude Include="..\Runtime.cu.h" />
   </ItemGroup>
@@ -110,15 +109,6 @@
       <FileType>Document</FileType>
     </ClCompile>
     <ClCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu">
-      <FileType>Document</FileType>
-    </ClCompile>
-    <ClCompile Include="..\GpuData\Core\IO\40.VFileSystem.cu">
-      <FileType>Document</FileType>
-    </ClCompile>
-    <ClCompile Include="..\GpuData\Core\IO\00.CoreVFile.cu">
-      <FileType>Document</FileType>
-    </ClCompile>
-    <ClCompile Include="..\GpuData\Core\IO\10.CoreVFileSystem.cu">
       <FileType>Document</FileType>
     </ClCompile>
     <ClCompile Include="..\GpuData\Core\40.StatusEx.cu">

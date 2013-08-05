@@ -3,11 +3,11 @@
 
 namespace Core { namespace IO
 {
-	__device__ static VFileSystem *_vfsList = nullptr;
+	__device__ static VSystem *_vfsList = nullptr;
 
-	VFileSystem *VFileSystem::Find(const char *name)
+	VSystem *VSystem::Find(const char *name)
 	{
-		VFileSystem *vfs = nullptr;
+		VSystem *vfs = nullptr;
 		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER);
 		MutexEx::Enter(mutex);
 		for (vfs = _vfsList; vfs && _strcmp(name, vfs->Name); vfs = vfs->Next) { }
@@ -15,7 +15,7 @@ namespace Core { namespace IO
 		return vfs;
 	}
 
-	__device__ static void UnlinkVfs(VFileSystem *vfs)
+	__device__ static void UnlinkVfs(VSystem *vfs)
 	{
 		_assert(MutexEx::Held(MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER)));
 		if (!vfs) { }
@@ -23,7 +23,7 @@ namespace Core { namespace IO
 			_vfsList = vfs->Next;
 		else if (_vfsList)
 		{
-			VFileSystem *p = _vfsList;
+			VSystem *p = _vfsList;
 			while (p->Next && p->Next != vfs)
 				p = p->Next;
 			if (p->Next == vfs)
@@ -31,7 +31,7 @@ namespace Core { namespace IO
 		}
 	}
 
-	int VFileSystem::RegisterVfs(VFileSystem *vfs, bool _default)
+	int VSystem::RegisterVfs(VSystem *vfs, bool _default)
 	{
 		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER);
 		MutexEx::Enter(mutex);
@@ -51,7 +51,7 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	int VFileSystem::UnregisterVfs(VFileSystem *vfs)
+	int VSystem::UnregisterVfs(VSystem *vfs)
 	{
 		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_MASTER);
 		MutexEx::Enter(mutex);

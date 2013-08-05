@@ -1172,7 +1172,7 @@ namespace Core
             return bt.Ctx.InvokeBusyHandler();
         }
 
-        static RC Open(VFileSystem vfs, string filename, Context ctx, ref Btree btree, OPEN flags, VFileSystem.OPEN vfsFlags)
+        static RC Open(VSystem vfs, string filename, Context ctx, ref Btree btree, OPEN flags, VSystem.OPEN vfsFlags)
         {
             // True if opening an ephemeral, temporary database
             bool tempDB = string.IsNullOrEmpty(filename);
@@ -1180,7 +1180,7 @@ namespace Core
             // Set the variable isMemdb to true for an in-memory database, or false for a file-based database.
             bool memoryDB = (filename == ":memory:") ||
                 (tempDB && ctx.TempInMemory()) ||
-                (vfsFlags & VFileSystem.OPEN.MEMORY) != 0;
+                (vfsFlags & VSystem.OPEN.MEMORY) != 0;
 
             Debug.Assert(ctx != null);
             Debug.Assert(vfs != null);
@@ -1195,8 +1195,8 @@ namespace Core
 
             if (memoryDB)
                 flags |= OPEN.MEMORY;
-            if ((vfsFlags & VFileSystem.OPEN.MAIN_DB) != 0 && (memoryDB || tempDB))
-                vfsFlags = (vfsFlags & ~VFileSystem.OPEN.MAIN_DB) | VFileSystem.OPEN.TEMP_DB;
+            if ((vfsFlags & VSystem.OPEN.MAIN_DB) != 0 && (memoryDB || tempDB))
+                vfsFlags = (vfsFlags & ~VSystem.OPEN.MAIN_DB) | VSystem.OPEN.TEMP_DB;
             var p = new Btree(); // Handle to return
             if (p == null)
                 return RC.NOMEM;
@@ -1212,8 +1212,8 @@ namespace Core
             MutexEx mutexOpen = null;
 #if !OMIT_SHARED_CACHE && !OMIT_DISKIO
             // If this Btree is a candidate for shared cache, try to find an existing BtShared object that we can share with
-            if (!tempDB && (!memoryDB || (vfsFlags & VFileSystem.OPEN.URI) != 0))
-                if ((vfsFlags & VFileSystem.OPEN.SHAREDCACHE) != 0)
+            if (!tempDB && (!memoryDB || (vfsFlags & VSystem.OPEN.URI) != 0))
+                if ((vfsFlags & VSystem.OPEN.SHAREDCACHE) != 0)
                 {
                     string fullPathname;
                     p.Sharable = true;

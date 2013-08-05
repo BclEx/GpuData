@@ -89,7 +89,7 @@ namespace Core
             SHM_RDONLY = 2,		// The SHM file is readonly
         }
 
-        VFileSystem Vfs;			// The VFS used to create pDbFd
+        VSystem Vfs;			// The VFS used to create pDbFd
         VFile DBFile;				// File handle for the database file
         VFile WalFile;				// File handle for WAL file
         uint Callback;				// Value to pass to log callback (or 0)

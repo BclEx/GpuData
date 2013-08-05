@@ -1165,7 +1165,7 @@ ptrmap_exit:
 		return bt->Ctx->InvokeBusyHandler();
 	}
 
-	RC Btree::Open(VFileSystem *vfs, const char *filename, Context *ctx, Btree **btree, OPEN flags, VFileSystem::OPEN vfsFlags)
+	RC Btree::Open(VSystem *vfs, const char *filename, Context *ctx, Btree **btree, OPEN flags, VSystem::OPEN vfsFlags)
 	{
 		// True if opening an ephemeral, temporary database
 		const bool tempDB = (filename == nullptr || filename[0] == 0);
@@ -1173,7 +1173,7 @@ ptrmap_exit:
 		// Set the variable isMemdb to true for an in-memory database, or false for a file-based database.
 		const int memoryDB = (filename && _strcmp(filename, ":memory:") == 0) ||
 			(tempDB && ctx->TempInMemory()) ||
-			(vfsFlags & VFileSystem::OPEN::MEMORY) != 0;
+			(vfsFlags & VSystem::OPEN::MEMORY) != 0;
 
 		_assert(ctx != nullptr);
 		_assert(vfs != nullptr);
@@ -1188,8 +1188,8 @@ ptrmap_exit:
 
 		if (memoryDB)
 			flags |= OPEN::MEMORY;
-		if ((vfsFlags & VFileSystem::OPEN::MAIN_DB) != 0 && (memoryDB || tempDB))
-			vfsFlags = (VFileSystem::OPEN)((vfsFlags & ~VFileSystem::OPEN::MAIN_DB) | VFileSystem::OPEN::TEMP_DB);
+		if ((vfsFlags & VSystem::OPEN::MAIN_DB) != 0 && (memoryDB || tempDB))
+			vfsFlags = (VSystem::OPEN)((vfsFlags & ~VSystem::OPEN::MAIN_DB) | VSystem::OPEN::TEMP_DB);
 		Btree *p = (Btree *)SysEx::Alloc(sizeof(Btree), true); // Handle to return
 		if (!p)
 			return RC::NOMEM;
@@ -1205,8 +1205,8 @@ ptrmap_exit:
 		MutexEx mutexOpen;
 #if !defined(OMIT_SHARED_CACHE) && !defined(OMIT_DISKIO)
 		// If this Btree is a candidate for shared cache, try to find an existing BtShared object that we can share with
-		if (!tempDB && (!memoryDB || (vfsFlags & VFileSystem::OPEN::URI) != 0))
-			if (vfsFlags & VFileSystem::OPEN::SHAREDCACHE)
+		if (!tempDB && (!memoryDB || (vfsFlags & VSystem::OPEN::URI) != 0))
+			if (vfsFlags & VSystem::OPEN::SHAREDCACHE)
 			{
 				int fullPathnameLength = vfs->MaxPathname + 1;
 				char *fullPathname = (char *)SysEx::Alloc(fullPathnameLength);

@@ -93,7 +93,7 @@ namespace Core
 		BtLock Lock;			// Object used to lock page 1
 #endif
 
-		static RC Open(VFileSystem *vfs, const char *filename, Context *ctx, Btree **btree, OPEN flags, VFileSystem::OPEN vfsFlags);
+		static RC Open(VSystem *vfs, const char *filename, Context *ctx, Btree **btree, OPEN flags, VSystem::OPEN vfsFlags);
 		RC Close();
 		RC SetCacheSize(int maxPage);
 		RC SetSafetyLevel(int level, bool fullSync, bool ckptFullSync);

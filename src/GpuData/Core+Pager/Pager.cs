@@ -999,8 +999,8 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             //// Allocate space for both the pJournal and pMaster file descriptors. If successful, open the master journal file for reading.
             //var masterFile = new CoreVFile(); // Malloc'd master-journal file descriptor
             //var journalFile = new CoreVFile(); // Malloc'd child-journal file descriptor
-            //VFileSystem.OPEN dummy;
-            //var rc = vfs.Open(master, masterFile, VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MASTER_JOURNAL, out dummy);
+            //VSystem.OPEN dummy;
+            //var rc = vfs.Open(master, masterFile, VSystem.OPEN.READONLY | VSystem.OPEN.MASTER_JOURNAL, out dummy);
             //if (rc != RC.OK) goto delmaster_out;
 
             //Debugger.Break();
@@ -1022,15 +1022,15 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             //{
             //    var journal = masterJournal;
             //    int exists;
-            //    rc = vfs.Access(journal, VFileSystem.ACCESS.EXISTS, out exists);
+            //    rc = vfs.Access(journal, VSystem.ACCESS.EXISTS, out exists);
             //    if (rc != RC.OK)
             //        goto delmaster_out;
             //    if (exists != 0)
             //    {
             //        // One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
             //        // so, return without deleting the master journal file.
-            //        VFileSystem.OPEN dummy2;
-            //        rc = vfs.Open(journal, journalFile, VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MAIN_JOURNAL, out dummy2);
+            //        VSystem.OPEN dummy2;
+            //        rc = vfs.Open(journal, journalFile, VSystem.OPEN.READONLY | VSystem.OPEN.MAIN_JOURNAL, out dummy2);
             //        if (rc != RC.OK)
             //            goto delmaster_out;
 
@@ -1138,7 +1138,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             var vfs = Vfs;
             rc = readMasterJournal(JournalFile, out master, (uint)vfs.MaxPathname + 1);
             if (rc == RC.OK && master[0] != 0)
-                rc = vfs.Access(master, VFileSystem.ACCESS.EXISTS, out res);
+                rc = vfs.Access(master, VSystem.ACCESS.EXISTS, out res);
             master = null;
             if (rc != RC.OK || res == 0)
                 goto end_playback;
@@ -1481,7 +1481,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                     isWal = 0;
                 }
                 else
-                    rc = pager.Vfs.Access(pager.WalName, VFileSystem.ACCESS.EXISTS, out isWal);
+                    rc = pager.Vfs.Access(pager.WalName, VSystem.ACCESS.EXISTS, out isWal);
                 if (rc == RC.OK)
                 {
                     if (isWal)
@@ -1625,13 +1625,13 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         int _opentemp_count = 0;
 #endif
 
-        private RC pagerOpentemp(ref VFile file, VFileSystem.OPEN vfsFlags)
+        private RC pagerOpentemp(ref VFile file, VSystem.OPEN vfsFlags)
         {
 #if TEST
             _opentemp_count++; // Used for testing and analysis only
 #endif
-            vfsFlags |= VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | VFileSystem.OPEN.EXCLUSIVE | VFileSystem.OPEN.DELETEONCLOSE;
-            VFileSystem.OPEN dummy = 0;
+            vfsFlags |= VSystem.OPEN.READWRITE | VSystem.OPEN.CREATE | VSystem.OPEN.EXCLUSIVE | VSystem.OPEN.DELETEONCLOSE;
+            VSystem.OPEN dummy = 0;
             var rc = Vfs.Open(null, file, vfsFlags, out dummy);
             Debug.Assert(rc != RC.OK || file.Opened);
             return rc;
@@ -2043,7 +2043,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 if (JournalMode == IPager.JOURNALMODE.JMEMORY || SubjInMemory)
                     VFile.MemoryVFileOpen(ref SubJournalFile);
                 else
-                    rc = pagerOpentemp(ref SubJournalFile, VFileSystem.OPEN.SUBJOURNAL);
+                    rc = pagerOpentemp(ref SubJournalFile, VSystem.OPEN.SUBJOURNAL);
             }
             return rc;
         }
@@ -2157,7 +2157,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         }
 
         // was:sqlite3PagerOpen
-        public static RC Open(VFileSystem vfs, out Pager pagerOut, string filename, int extraBytes, IPager.PAGEROPEN flags, VFileSystem.OPEN vfsFlags, Action<PgHdr> reinit, Func<object> memPageBuilder)
+        public static RC Open(VSystem vfs, out Pager pagerOut, string filename, int extraBytes, IPager.PAGEROPEN flags, VSystem.OPEN vfsFlags, Action<PgHdr> reinit, Func<object> memPageBuilder)
         {
             // Figure out how much space is required for each journal file-handle (there are two of them, the main journal and the sub-journal). This
             // is the maximum space required for an in-memory journal file handle and a regular journal file-handle. Note that a "regular journal-handle"
@@ -2231,10 +2231,10 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             uint sizePage = DEFAULT_PAGE_SIZE;  // Default page size
             if (!string.IsNullOrEmpty(filename))
             {
-                VFileSystem.OPEN fout = 0; // VFS flags returned by xOpen()
+                VSystem.OPEN fout = 0; // VFS flags returned by xOpen()
                 rc = vfs.Open(filename, pager.File, vfsFlags, out fout);
                 Debug.Assert(memoryDB);
-                readOnly = ((fout & VFileSystem.OPEN.READONLY) != 0);
+                readOnly = ((fout & VSystem.OPEN.READONLY) != 0);
 
                 // If the file was successfully opened for read/write access, choose a default page size in case we have to create the
                 // database file. The default page size is the maximum of:
@@ -2269,7 +2269,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 tempFile = true;
                 pager.State = PAGER.READER;
                 pager.Lock = VFile.LOCK.EXCLUSIVE;
-                readOnly = (vfsFlags & VFileSystem.OPEN.READONLY) != 0;
+                readOnly = (vfsFlags & VSystem.OPEN.READONLY) != 0;
             }
 
             // The following call to PagerSetPagesize() serves to set the value of Pager.pageSize and to allocate the Pager.pTmpSpace buffer.
@@ -2347,7 +2347,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             var rc = RC.OK;
             var exists = 1; // True if a journal file is present
             if (!journalOpened)
-                rc = vfs.Access(Journal, VFileSystem.ACCESS.EXISTS, out exists);
+                rc = vfs.Access(Journal, VSystem.ACCESS.EXISTS, out exists);
             if (rc == RC.OK && exists != 0)
             {
                 // Race condition here:  Another process might have been holding the the RESERVED lock and have a journal open at the sqlite3OsAccess() 
@@ -2380,7 +2380,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                             // it can be ignored.
                             if (journalOpened)
                             {
-                                var f = VFileSystem.OPEN.READONLY | VFileSystem.OPEN.MAIN_JOURNAL;
+                                var f = VSystem.OPEN.READONLY | VSystem.OPEN.MAIN_JOURNAL;
                                 rc = vfs.Open(Journal, JournalFile, f, out f);
                             }
                             if (rc == RC.OK)
@@ -2467,14 +2467,14 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                     {
                         var vfs = Vfs;
                         int exists; // True if journal file exists
-                        rc = vfs.Access(Journal, VFileSystem.ACCESS.EXISTS, out exists);
+                        rc = vfs.Access(Journal, VSystem.ACCESS.EXISTS, out exists);
                         if (rc == RC.OK && exists != 0)
                         {
                             Debug.Assert(!TempFile);
-                            VFileSystem.OPEN fout = 0;
-                            rc = vfs.Open(Journal, JournalFile, VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.MAIN_JOURNAL, out fout);
+                            VSystem.OPEN fout = 0;
+                            rc = vfs.Open(Journal, JournalFile, VSystem.OPEN.READWRITE | VSystem.OPEN.MAIN_JOURNAL, out fout);
                             Debug.Assert(rc != RC.OK || JournalFile.Opened);
-                            if (rc == RC.OK && (fout & VFileSystem.OPEN.READONLY) != 0)
+                            if (rc == RC.OK && (fout & VSystem.OPEN.READONLY) != 0)
                             {
                                 rc = SysEx.CANTOPEN_BKPT();
                                 JournalFile.Close();
@@ -2709,11 +2709,11 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                         JournalFile = new MemoryVFile();
                     else
                     {
-                        var flags = VFileSystem.OPEN.READWRITE | VFileSystem.OPEN.CREATE | (TempFile ? VFileSystem.OPEN.DELETEONCLOSE | VFileSystem.OPEN.TEMP_JOURNAL : VFileSystem.OPEN.MAIN_JOURNAL);
+                        var flags = VSystem.OPEN.READWRITE | VSystem.OPEN.CREATE | (TempFile ? VSystem.OPEN.DELETEONCLOSE | VSystem.OPEN.TEMP_JOURNAL : VSystem.OPEN.MAIN_JOURNAL);
 #if ENABLE_ATOMIC_WRITE
                         rc = VFile.JournalVFileOpen(Vfs, Journal, ref JournalFile, flags, jrnlBufferSize(this));
 #else
-                        VFileSystem.OPEN dummy;
+                        VSystem.OPEN dummy;
                         rc = Vfs.Open(Journal, JournalFile, flags, out dummy);
 #endif
                     }
@@ -3452,7 +3452,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             return (nullIfMemDb && MemoryDB ? string.Empty : Filename);
         }
 
-        public VFileSystem get_Vfs()
+        public VSystem get_Vfs()
         {
             return Vfs;
         }
@@ -3831,7 +3831,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 rc = pagerLockDb(this, VFile.LOCK.SHARED);
                 int logexists = 0;
                 if (rc == RC.OK)
-                    rc = Vfs.Access(WalName, VFileSystem.ACCESS.EXISTS, out logexists);
+                    rc = Vfs.Access(WalName, VSystem.ACCESS.EXISTS, out logexists);
                 if (rc == RC.OK && logexists)
                     rc = pagerOpenWal(this);
             }

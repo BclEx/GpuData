@@ -4,7 +4,7 @@ namespace Core { namespace IO
 #define PENDING_BYTE 0x40000000
 
 	// sqliteInt.h
-	typedef struct VFileSystem VFileSystem;
+	typedef struct VSystem VSystem;
 	typedef struct VFile VFile;
 
 	class VFile
@@ -93,8 +93,8 @@ namespace Core { namespace IO
 		__device__ virtual RC Sync(int flags) = 0;
 		__device__ virtual RC get_FileSize(int64 &size) = 0;
 
-		__device__ virtual RC Lock(int lock) = 0;
-		__device__ virtual RC Unlock(int lock) = 0;
+		__device__ virtual RC Lock(LOCK lock) = 0;
+		__device__ virtual RC Unlock(LOCK lock) = 0;
 		__device__ virtual RC CheckReservedLock(int &lock) = 0;
 		__device__ virtual RC FileControl(int op, void *arg) = 0;
 
@@ -124,12 +124,12 @@ namespace Core { namespace IO
 
 		// extensions
 #ifdef ENABLE_ATOMIC_WRITE
-		__device__ static RC JournalVFileOpen(VFileSystem *vfs, const char *name, VFile *file, VFileSystem::OPEN flags, int bufferLength);
-		__device__ static int JournalVFileSize(VFileSystem *vfs);
+		__device__ static RC JournalVFileOpen(VSystem *vfs, const char *name, VFile *file, VSystem::OPEN flags, int bufferLength);
+		__device__ static int JournalVFileSize(VSystem *vfs);
 		__device__ static RC JournalVFileCreate(VFile *file);
 		__device__ static bool HasJournalVFile(VFile *file);
 #else
-		__device__ inline static int JournalVFileSize(VFileSystem *vfs) { return vfs->SizeOsFile; }
+		__device__ inline static int JournalVFileSize(VSystem *vfs) { return vfs->SizeOsFile; }
 		__device__ inline bool HasJournalVFile(VFile *file) { return true; }
 		//#define JournalSize(vfs) ((vfs)->SizeOsFile)
 		//#define HasJournal(file) true

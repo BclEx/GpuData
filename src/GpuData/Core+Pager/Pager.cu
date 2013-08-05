@@ -997,7 +997,7 @@ namespace Core
 
 	static RC pager_delmaster(Pager *pager, const char *master)
 	{
-		VFileSystem *vfs = pager->Vfs;
+		VSystem *vfs = pager->Vfs;
 
 		// Allocate space for both the pJournal and pMaster file descriptors. If successful, open the master journal file for reading.         
 		VFile *masterFile = (VFile *)SysEx::Alloc(vfs->SizeOsFile * 2, true); // Malloc'd master-journal file descriptor
@@ -1006,7 +1006,7 @@ namespace Core
 		if (!masterFile)
 			rc = RC::NOMEM;
 		else
-			rc = vfs->Open(master, masterFile, (VFileSystem::OPEN)(VFileSystem::OPEN::READONLY | VFileSystem::OPEN::MASTER_JOURNAL), 0);
+			rc = vfs->Open(master, masterFile, (VSystem::OPEN)(VSystem::OPEN::READONLY | VSystem::OPEN::MASTER_JOURNAL), 0);
 		if (rc != RC::OK) goto delmaster_out;
 
 		// Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
@@ -1030,14 +1030,14 @@ namespace Core
 		while ((journal - masterJournal) < masterJournalSize)
 		{
 			int exists;
-			rc = vfs->Access(journal, VFileSystem::ACCESS::EXISTS, &exists);
+			rc = vfs->Access(journal, VSystem::ACCESS::EXISTS, &exists);
 			if (rc != RC::OK)
 				goto delmaster_out;
 			if (exists)
 			{
 				// One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
 				// so, return without deleting the master journal file.
-				rc = vfs->Open(journal, journalFile, (VFileSystem::OPEN)(VFileSystem::OPEN::READONLY | VFileSystem::OPEN::MAIN_JOURNAL), 0);
+				rc = vfs->Open(journal, journalFile, (VSystem::OPEN)(VSystem::OPEN::READONLY | VSystem::OPEN::MAIN_JOURNAL), 0);
 				if (rc != RC::OK)
 					goto delmaster_out;
 
@@ -1144,11 +1144,11 @@ delmaster_out:
 		// TODO: Technically the following is an error because it assumes that buffer Pager.pTmpSpace is (mxPathname+1) bytes or larger. i.e. that
 		// (pPager->pageSize >= pPager->pVfs->mxPathname+1). Using os_unix.c, mxPathname is 512, which is the same as the minimum allowable value
 		// for pageSize.
-		VFileSystem *vfs = pager->Vfs;
+		VSystem *vfs = pager->Vfs;
 		master = (char *)pager->TmpSpace; // Name of master journal file if any
 		rc = readMasterJournal(pager->JournalFile, master, vfs->MaxPathname + 1);
 		if (rc == RC::OK && master[0])
-			rc = vfs->Access(master, VFileSystem::ACCESS::EXISTS, &res);
+			rc = vfs->Access(master, VSystem::ACCESS::EXISTS, &res);
 		master = nullptr;
 		if (rc != RC::OK || !res)
 			goto end_playback;
@@ -1497,7 +1497,7 @@ end_playback:
 				isWal = 0;
 			}
 			else
-				rc = pager->Vfs->Access(pager->WalName, VFileSystem::ACCESS::EXISTS, &isWal);
+				rc = pager->Vfs->Access(pager->WalName, VSystem::ACCESS::EXISTS, &isWal);
 			if (rc == RC::OK)
 			{
 				if (isWal)
@@ -1647,12 +1647,12 @@ end_playback:
 	int _opentemp_count = 0;
 #endif
 
-	static RC pagerOpentemp(Pager *pager, VFile *file, VFileSystem::OPEN vfsFlags)
+	static RC pagerOpentemp(Pager *pager, VFile *file, VSystem::OPEN vfsFlags)
 	{
 #ifdef TEST
 		_opentemp_count++; // Used for testing and analysis only
 #endif
-		vfsFlags |= (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::CREATE | VFileSystem::OPEN::EXCLUSIVE | VFileSystem::OPEN::DELETEONCLOSE);
+		vfsFlags |= (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::CREATE | VSystem::OPEN::EXCLUSIVE | VSystem::OPEN::DELETEONCLOSE);
 		RC rc = pager->Vfs->Open(nullptr, file, vfsFlags, nullptr);
 		_assert(rc != RC::OK || file->Opened);
 		return rc;
@@ -2061,7 +2061,7 @@ end_playback:
 			if (pager->JournalMode == IPager::JOURNALMODE::JMEMORY || pager->SubjInMemory)
 				VFile::MemoryVFileOpen(pager->SubJournalFile);
 			else
-				rc = pagerOpentemp(pager, pager->SubJournalFile, VFileSystem::OPEN::SUBJOURNAL);
+				rc = pagerOpentemp(pager, pager->SubJournalFile, VSystem::OPEN::SUBJOURNAL);
 		}
 		return rc;
 	}
@@ -2178,7 +2178,7 @@ end_playback:
 		return pager_error(pager, rc); 
 	}
 
-	RC Pager::Open(VFileSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VFileSystem::OPEN vfsFlags, void (*reinit)(IPage *))
+	RC Pager::Open(VSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VSystem::OPEN vfsFlags, void (*reinit)(IPage *))
 	{
 		// Figure out how much space is required for each journal file-handle (there are two of them, the main journal and the sub-journal). This
 		// is the maximum space required for an in-memory journal file handle and a regular journal file-handle. Note that a "regular journal-handle"
@@ -2295,10 +2295,10 @@ end_playback:
 		uint32 sizePage = DEFAULT_PAGE_SIZE;  // Default page size
 		if (filename && filename[0])
 		{
-			VFileSystem::OPEN fout = (VFileSystem::OPEN)0; // VFS flags returned by xOpen()
+			VSystem::OPEN fout = (VSystem::OPEN)0; // VFS flags returned by xOpen()
 			rc = vfs->Open(pager->Filename, pager->File, vfsFlags, &fout);
 			_assert(!memoryDB);
-			readOnly = (fout & VFileSystem::OPEN::READONLY);
+			readOnly = (fout & VSystem::OPEN::READONLY);
 
 			// If the file was successfully opened for read/write access, choose a default page size in case we have to create the
 			// database file. The default page size is the maximum of:
@@ -2335,7 +2335,7 @@ end_playback:
 			tempFile = true;
 			pager->State = PAGER::READER;
 			pager->Lock = VFile::LOCK::EXCLUSIVE;
-			readOnly = (vfsFlags & VFileSystem::OPEN::READONLY);
+			readOnly = (vfsFlags & VSystem::OPEN::READONLY);
 		}
 
 		// The following call to PagerSetPagesize() serves to set the value of Pager.pageSize and to allocate the Pager.pTmpSpace buffer.
@@ -2412,11 +2412,11 @@ end_playback:
 		_assert(!journalOpened || (pager->JournalFile->get_DeviceCharacteristics() & VFile::IOCAP::UNDELETABLE_WHEN_OPEN));
 
 		*existsOut = false;
-		VFileSystem *const vfs = pager->Vfs;
+		VSystem *const vfs = pager->Vfs;
 		RC rc = RC::OK;
 		int exists = 1; // True if a journal file is present
 		if (!journalOpened)
-			rc = vfs->Access(pager->Journal, VFileSystem::ACCESS::EXISTS, &exists);
+			rc = vfs->Access(pager->Journal, VSystem::ACCESS::EXISTS, &exists);
 		if (rc == RC::OK && exists)
 		{
 			// Race condition here:  Another process might have been holding the the RESERVED lock and have a journal open at the sqlite3OsAccess() 
@@ -2449,7 +2449,7 @@ end_playback:
 						// it can be ignored.
 						if (!journalOpened)
 						{
-							VFileSystem::OPEN f = (VFileSystem::OPEN)(VFileSystem::OPEN::READONLY | VFileSystem::OPEN::MAIN_JOURNAL);
+							VSystem::OPEN f = (VSystem::OPEN)(VSystem::OPEN::READONLY | VSystem::OPEN::MAIN_JOURNAL);
 							rc = vfs->Open(pager->Journal, pager->JournalFile, f, &f);
 						}
 						if (rc == RC::OK)
@@ -2534,16 +2534,16 @@ end_playback:
 				// function was called and the journal file does not exist.
 				if (!JournalFile->Opened)
 				{
-					VFileSystem *const vfs = Vfs;
+					VSystem *const vfs = Vfs;
 					int exists; // True if journal file exists
-					rc = vfs->Access(Journal, VFileSystem::ACCESS::EXISTS, &exists);
+					rc = vfs->Access(Journal, VSystem::ACCESS::EXISTS, &exists);
 					if (rc == RC::OK && exists)
 					{
 						_assert(!TempFile);
-						VFileSystem::OPEN fout = (VFileSystem::OPEN)0;
-						rc = vfs->Open(Journal, JournalFile, (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::MAIN_JOURNAL), &fout);
+						VSystem::OPEN fout = (VSystem::OPEN)0;
+						rc = vfs->Open(Journal, JournalFile, (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::MAIN_JOURNAL), &fout);
 						_assert(rc != RC::OK || JournalFile->Opened);
-						if (rc == RC::OK && fout & VFileSystem::OPEN::READONLY)
+						if (rc == RC::OK && fout & VSystem::OPEN::READONLY)
 						{
 							rc = SysEx_CANTOPEN_BKPT;
 							JournalFile->Close();
@@ -2773,7 +2773,7 @@ pager_acquire_err:
 		if (SysEx_NEVER(pager->ErrorCode)) return pager->ErrorCode;
 
 		RC rc = RC::OK;
-		VFileSystem *const vfs = pager->Vfs; // Local cache of vfs pointer
+		VSystem *const vfs = pager->Vfs; // Local cache of vfs pointer
 		if (!UseWal(pager) && pager->JournalMode != IPager::JOURNALMODE::OFF)
 		{
 			pager->InJournal = new Bitvec(pager->DBSize);
@@ -2787,7 +2787,7 @@ pager_acquire_err:
 					VFile::MemoryVFileOpen(pager->JournalFile);
 				else
 				{
-					const VFileSystem::OPEN flags = (VFileSystem::OPEN)(VFileSystem::OPEN::OREADWRITE | VFileSystem::OPEN::CREATE | (pager->TempFile ? VFileSystem::OPEN::DELETEONCLOSE | VFileSystem::OPEN::TEMP_JOURNAL : VFileSystem::OPEN::MAIN_JOURNAL));
+					const VSystem::OPEN flags = (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::CREATE | (pager->TempFile ? VSystem::OPEN::DELETEONCLOSE | VSystem::OPEN::TEMP_JOURNAL : VSystem::OPEN::MAIN_JOURNAL));
 #ifdef ENABLE_ATOMIC_WRITE
 					rc = VFile::JournalVFileOpen(pager->Vfs, pager->Journal, pager->JournalFile, flags, jrnlBufferSize(pager));
 #else
@@ -3526,7 +3526,7 @@ commit_phase_one_exit:
 		return (nullIfMemDb && MemoryDB ? "" : Filename);
 	}
 
-	const VFileSystem *Pager::get_Vfs()
+	const VSystem *Pager::get_Vfs()
 	{
 		return Vfs;
 	}
@@ -3906,7 +3906,7 @@ commit_phase_one_exit:
 			rc = pagerLockDb(this, VFile::LOCK::SHARED);
 			int logexists = 0;
 			if (rc == RC::OK)
-				rc = Vfs->Access(WalName, VFileSystem::ACCESS::EXISTS, &logexists);
+				rc = Vfs->Access(WalName, VSystem::ACCESS::EXISTS, &logexists);
 			if (rc == RC::OK && logexists)
 				rc = pagerOpenWal(this);
 		}

@@ -28,15 +28,6 @@
     <ClCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu">
       <Filter>Core\IO</Filter>
     </ClCompile>
-    <ClCompile Include="..\GpuData\Core\IO\40.VFileSystem.cu">
-      <Filter>Core\IO</Filter>
-    </ClCompile>
-    <ClCompile Include="..\GpuData\Core\IO\00.CoreVFile.cu">
-      <Filter>Core\IO</Filter>
-    </ClCompile>
-    <ClCompile Include="..\GpuData\Core\IO\10.CoreVFileSystem.cu">
-      <Filter>Core\IO</Filter>
-    </ClCompile>
     <ClCompile Include="..\GpuData\Core\40.StatusEx.cu">
       <Filter>Core</Filter>
     </ClCompile>
@@ -86,9 +77,6 @@
     </ClInclude>
     <ClInclude Include="..\Runtime.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h">
-      <Filter>Core\IO</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h">
       <Filter>Core\IO</Filter>
     </ClInclude>
     <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h">

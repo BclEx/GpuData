@@ -69,7 +69,7 @@ namespace Core
 			ERROR = 6,
 		};
 
-		VFileSystem *Vfs;			// OS functions to use for IO
+		VSystem *Vfs;			// OS functions to use for IO
 		bool ExclusiveMode;			// Boolean. True if locking_mode==EXCLUSIVE
 		IPager::JOURNALMODE JournalMode; // One of the PAGER_JOURNALMODE_* values
 		bool UseJournal;			// Use a rollback journal on this file
@@ -112,7 +112,7 @@ namespace Core
 		// End of the routinely-changing class members
 		uint16 ExtraBytes;          // Add this many bytes to each in-memory page
 		int16 ReserveBytes;         // Number of unused bytes at end of each page
-		VFileSystem::OPEN VfsFlags; // Flags for sqlite3_vfs.xOpen()
+		VSystem::OPEN VfsFlags; // Flags for sqlite3_vfs.xOpen()
 		uint32 SectorSize;          // Assumed sector size during rollback
 		int PageSize;               // Number of bytes in a page
 		Pid MaxPid;					// Maximum allowed size of the database
@@ -141,7 +141,7 @@ namespace Core
 		Wal *Wal;
 #endif
 		// Open and close a Pager connection. 
-		static RC Open(VFileSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VFileSystem::OPEN vfsFlags, void (*reinit)(IPage *));
+		static RC Open(VSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VSystem::OPEN vfsFlags, void (*reinit)(IPage *));
 		RC Close();
 		RC ReadFileheader(int n, unsigned char *dest);
 
@@ -200,7 +200,7 @@ namespace Core
 		int get_Refs();
 		int get_MemUsed();
 		const char *get_Filename(bool nullIfMemDb);
-		const VFileSystem *get_Vfs();
+		const VSystem *get_Vfs();
 		VFile *get_File();
 		const char *get_Journalname();
 		int get_NoSync();

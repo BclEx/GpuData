@@ -23,20 +23,20 @@ namespace Core
 
         internal const int VERSION_NUMBER = 3007016;
 
-        internal static RC OSError(RC rc, string func, string path)
-        {
-            var sf = new StackTrace(new StackFrame(true)).GetFrame(0);
-            var errorID = (uint)Marshal.GetLastWin32Error();
-            var message = Marshal.GetLastWin32Error().ToString();
-            Debug.Assert(rc != RC.OK);
-            if (path == null)
-                path = string.Empty;
-            int i;
-            for (i = 0; i < message.Length && message[i] != '\r' && message[i] != '\n'; i++) ;
-            message = message.Substring(0, i);
-            //sqlite3_log("os_win.c:%d: (%d) %s(%s) - %s", sf.GetFileLineNumber(), errorID, func, sf.GetFileName(), message);
-            return rc;
-        }
+        //internal static RC OSError(RC rc, string func, string path)
+        //{
+        //    var sf = new StackTrace(new StackFrame(true)).GetFrame(0);
+        //    var errorID = (uint)Marshal.GetLastWin32Error();
+        //    var message = Marshal.GetLastWin32Error().ToString();
+        //    Debug.Assert(rc != RC.OK);
+        //    if (path == null)
+        //        path = string.Empty;
+        //    int i;
+        //    for (i = 0; i < message.Length && message[i] != '\r' && message[i] != '\n'; i++) ;
+        //    message = message.Substring(0, i);
+        //    //sqlite3_log("os_win.c:%d: (%d) %s(%s) - %s", sf.GetFileLineNumber(), errorID, func, sf.GetFileName(), message);
+        //    return rc;
+        //}
 
         [Flags]
         public enum MEMTYPE : byte

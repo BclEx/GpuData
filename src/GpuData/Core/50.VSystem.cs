@@ -1,9 +1,10 @@
+using System;
 using System.Diagnostics;
 namespace Core.IO
 {
-    public abstract class VFileSystem
+    public abstract class VSystem
     {
-        internal static VFileSystem _vfsList;
+        internal static VSystem _vfsList;
         internal static bool isInit = false;
 
         public enum OPEN : uint
@@ -37,18 +38,18 @@ namespace Core.IO
             READ = 2,       // Unused
         }
 
-        public VFileSystem Next;        // Next registered VFS
+        public VSystem Next;        // Next registered VFS
         public string Name = "win32";   // Name of this virtual file system
         public object Tag;              // Pointer to application-specific data
         public int SizeOsFile = -1;     // Size of subclassed VirtualFile
         public int MaxPathname = 256;   // Maximum file pathname length
 
-        static VFileSystem()
+        static VSystem()
         {
-            //RegisterVfs(new CoreVFileSystem(), true);
+            RegisterVfs(new WinVSystem(), true);
         }
 
-        public void CopyTo(VFileSystem ct)
+        public void CopyTo(VSystem ct)
         {
             ct.SizeOsFile = this.SizeOsFile;
             ct.MaxPathname = this.MaxPathname;
@@ -62,11 +63,11 @@ namespace Core.IO
         public abstract RC Access(string path, ACCESS flags, out int outRC);
         public abstract RC FullPathname(string path, out string outPath);
 
-        public static VFileSystem FindVfs(string name)
+        public static VSystem FindVfs(string name)
         {
             if (string.IsNullOrEmpty(name))
                 return null;
-            VFileSystem vfs = null;
+            VSystem vfs = null;
             var mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
             MutexEx.Enter(mutex);
             for (vfs = _vfsList; vfs != null && name != vfs.Name; vfs = vfs.Next) { }
@@ -74,7 +75,7 @@ namespace Core.IO
             return vfs;
         }
 
-        internal static void UnlinkVfs(VFileSystem vfs)
+        internal static void UnlinkVfs(VSystem vfs)
         {
             Debug.Assert(MutexEx.Held(MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER)));
             if (vfs == null) { }
@@ -90,7 +91,7 @@ namespace Core.IO
             }
         }
 
-        public static RC RegisterVfs(VFileSystem vfs, bool @default)
+        public static RC RegisterVfs(VSystem vfs, bool @default)
         {
             var mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
             MutexEx.Enter(mutex);
@@ -110,7 +111,7 @@ namespace Core.IO
             return RC.OK;
         }
 
-        public static RC UnregisterVfs(VFileSystem vfs)
+        public static RC UnregisterVfs(VSystem vfs)
         {
             var mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
             MutexEx.Enter(mutex);
@@ -118,5 +119,39 @@ namespace Core.IO
             MutexEx.Leave(mutex);
             return RC.OK;
         }
+
+
+#if TEST || DEBUG
+        static bool OsTrace = false;
+        protected static void OSTRACE(string x, params object[] args) { if (OsTrace) Console.WriteLine("b:" + string.Format(x, args)); }
+#else
+        protected static void OSTRACE(string x, params object[] args) { }
+#endif
+
+#if TEST
+        static int io_error_hit = 0;            // Total number of I/O Errors
+        static int io_error_hardhit = 0;        // Number of non-benign errors
+        static int io_error_pending = 0;        // Count down to first I/O error
+        static bool io_error_persist = false;   // True if I/O errors persist
+        static bool io_error_benign = false;    // True if errors are benign
+        static int diskfull_pending = 0;
+        static bool diskfull = false;
+        protected static void SimulateIOErrorBenign(bool X) { io_error_benign = X; }
+        protected static bool SimulateIOError() { if ((io_error_persist && io_error_hit > 0) || io_error_pending-- == 1) { local_ioerr(); return true; } return false; }
+        protected static void local_ioerr() { OSTRACE("IOERR\n"); io_error_hit++; if (!io_error_benign) io_error_hardhit++; }
+        protected static bool SimulateDiskfullError() { if (diskfull_pending > 0) { if (diskfull_pending == 1) { local_ioerr(); diskfull = true; io_error_hit = 1; return true; } else diskfull_pending--; } return false; }
+#else
+        protected static void SimulateIOErrorBenign(bool X) { }
+        protected static bool SimulateIOError() { return false; }
+        protected static bool SimulateDiskfullError() { return false; }
+#endif
+
+        // When testing, keep a count of the number of open files.
+#if TEST
+        static int open_file_count = 0;
+        protected static void OpenCounter(int X) { open_file_count += X; }
+#else
+        protected static void OpenCounter(int X) { }
+#endif
     }
 }

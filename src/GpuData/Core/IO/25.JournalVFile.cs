@@ -9,8 +9,8 @@ namespace Core.IO
         public int BufferLength;			// Size of zBuf[] in bytes
         public byte[] Buffer;				// Space to buffer journal writes
         public int Size;					// Amount of zBuf[] currently used
-        public VFileSystem.OPEN Flags;		// xOpen flags
-        public VFileSystem Vfs;				// The "real" underlying VFS
+        public VSystem.OPEN Flags;		// xOpen flags
+        public VSystem Vfs;				// The "real" underlying VFS
         public VFile Real;					// The "real" underlying file descriptor
         public string Journal;				// Name of the journal file
 
@@ -20,7 +20,7 @@ namespace Core.IO
             if (Real == null)
             {
                 VFile real = null;
-                VFileSystem.OPEN dummy;
+                VSystem.OPEN dummy;
                 rc = Vfs.Open(Journal, Real, Flags, out dummy);
                 if (rc == RC.OK)
                 {

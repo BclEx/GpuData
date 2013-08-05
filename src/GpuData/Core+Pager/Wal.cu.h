@@ -7,7 +7,7 @@ namespace Core
 	{
 #ifdef OMIT_WAL
 
-		inline static RC Open(VFileSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut) { return RC::OK; }
+		inline static RC Open(VSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut) { return RC::OK; }
 		inline void Limit(int64 limit) { }
 		inline RC Close(VFile::SYNC sync_flags, int bufLength, uint8 *buf) { return RC::OK; }
 		inline RC BeginReadTransaction(bool *changed) { return RC::OK; }
@@ -44,7 +44,7 @@ namespace Core
 		};
 
 
-		VFileSystem *Vfs;				// The VFS used to create pDbFd
+		VSystem *Vfs;				// The VFS used to create pDbFd
 		VFile *DBFile;					// File handle for the database file
 		VFile *WalFile;					// File handle for WAL file
 		uint32 Callback;				// Value to pass to log callback (or 0)
@@ -82,7 +82,7 @@ namespace Core
 		uint8 LockError;				// True if a locking error has occurred
 #endif
 		//
-		static RC Open(VFileSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut);
+		static RC Open(VSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut);
 		void Limit(int64 limit);
 		RC Close(VFile::SYNC sync_flags, int bufLength, uint8 *buf);
 		RC BeginReadTransaction(bool *changed);
