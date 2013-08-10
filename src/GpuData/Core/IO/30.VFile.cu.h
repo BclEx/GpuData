@@ -2,6 +2,9 @@
 namespace Core { namespace IO
 {
 #define PENDING_BYTE 0x40000000
+#define RESERVED_BYTE (PENDING_BYTE+1)
+#define SHARED_FIRST (PENDING_BYTE+2)
+#define SHARED_SIZE 510
 
 	// sqliteInt.h
 	typedef struct VSystem VSystem;
@@ -46,7 +49,7 @@ namespace Core { namespace IO
 			PERSIST_WAL = 10,
 			OVERWRITE = 11,
 			VFSNAME = 12,
-			FCNTL_POWERSAFE_OVERWRITE = 13,
+			POWERSAFE_OVERWRITE = 13,
 			PRAGMA = 14,
 			BUSYHANDLER = 15,
 			TEMPFILENAME = 16,
@@ -96,15 +99,15 @@ namespace Core { namespace IO
 		__device__ virtual RC Lock(LOCK lock) = 0;
 		__device__ virtual RC Unlock(LOCK lock) = 0;
 		__device__ virtual RC CheckReservedLock(int &lock) = 0;
-		__device__ virtual RC FileControl(int op, void *arg) = 0;
+		__device__ virtual RC FileControl(FCNTL op, void *arg) = 0;
 
-		__device__ virtual int SectorSize() = 0;
-		__device__ virtual int get_DeviceCharacteristics() = 0;
+		__device__ virtual uint get_SectorSize() = 0;
+		__device__ virtual IOCAP get_DeviceCharacteristics() = 0;
 
 		__device__ virtual RC ShmLock(int offset, int n, SHM flags) = 0;
 		__device__ virtual void ShmBarrier() = 0;
 		__device__ virtual RC ShmUnmap(int deleteFlag) = 0;
-		__device__ virtual RC ShmMap(int page, int pageSize, int extend, void volatile **p) = 0;
+		__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp) = 0;
 
 		__device__ inline RC Read4(int64 offset, uint32 *valueOut)
 		{

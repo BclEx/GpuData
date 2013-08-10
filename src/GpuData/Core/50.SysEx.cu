@@ -6,6 +6,16 @@ namespace Core
 	bool OSTrace;
 	bool IOTrace;
 
+	RC SysEx::Initialize()
+	{
+		return RC::OK;
+	}
+
+	RC SysEx::Shutdown()
+	{
+		return RC::OK;
+	}
+
 	static uint8 randomByte()
 	{
 		return 1;

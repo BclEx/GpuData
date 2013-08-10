@@ -113,6 +113,8 @@ namespace Core
 		}
 
 #pragma endregion
+		__device__ static RC Initialize();
+		__device__ static RC Shutdown();
 		__device__ static void PutRandom(int length, void *buffer);
 	};
 

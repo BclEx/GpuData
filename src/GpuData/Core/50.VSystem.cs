@@ -63,6 +63,17 @@ namespace Core.IO
         public abstract RC Access(string path, ACCESS flags, out int outRC);
         public abstract RC FullPathname(string path, out string outPath);
 
+        public abstract object DlOpen(string filename);
+        public abstract void DlError(int bufLength, string buf);
+        public abstract object DlSym(object handle, string symbol);
+        public abstract void DlClose(object handle);
+
+        public abstract int Randomness(int bufLength, byte[] buf);
+        public abstract int Sleep(int microseconds);
+        public abstract RC CurrentTimeInt64(ref long now);
+        public abstract RC CurrentTime(ref double now);
+        public abstract RC GetLastError(int bufLength, ref string buf);
+
         public static VSystem FindVfs(string name)
         {
             if (string.IsNullOrEmpty(name))

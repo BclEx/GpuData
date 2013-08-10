@@ -55,6 +55,9 @@
     <ClCompile Include="..\GpuData\Core\Text\00.StringBuilder.cu">
       <Filter>Core\Text</Filter>
     </ClCompile>
+    <ClCompile Include="..\GpuData\Core\55.WinVSystem.cu">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h">
@@ -108,6 +111,9 @@
     </ClInclude>
     <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h">
       <Filter>Core\Text</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\45.VAlloc.cu.h">
+      <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1097,7 +1097,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         public uint get_SectorSize(VFile file)
         {
-            var ret = file.SectorSize();
+            var ret = file.get_SectorSize();
             if (ret < 32)
                 ret = 512;
             else if (ret > MAX_SECTOR_SIZE)
@@ -1114,7 +1114,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             if (TempFile || (File.get_DeviceCharacteristics() & VFile.IOCAP.IOCAP_POWERSAFE_OVERWRITE) != 0)
                 SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
             else
-                SectorSize = File.SectorSize();
+                SectorSize = File.get_SectorSize();
         }
 
         private RC pager_playback(bool isHot)

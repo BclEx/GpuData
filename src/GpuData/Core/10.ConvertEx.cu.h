@@ -23,5 +23,7 @@
 			p[2] = (uint8)(v>>8);
 			p[3] = (uint8)v;
 		}
+
+		__device__ inline static bool IsAlpha(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 	};
 }

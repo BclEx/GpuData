@@ -2,6 +2,7 @@
 namespace Core { namespace IO
 {
 	typedef class VFile VFile;
+	typedef void (*syscall_ptr)();
 
 	class VSystem
 	{
@@ -30,10 +31,10 @@ namespace Core { namespace IO
 			WAL = 0x00080000,               // VFS only 
 		};
 
-		enum ACCESS
+		enum class ACCESS
 		{
 			EXISTS = 0,
-			AREADWRITE = 1,	// Used by PRAGMA temp_store_directory
+			READWRITE = 1,	// Used by PRAGMA temp_store_directory
 			READ = 2,		// Unused
 		};
 
@@ -46,11 +47,26 @@ namespace Core { namespace IO
 		__device__ static VSystem *Find(const char *name);
 		__device__ static int RegisterVfs(VSystem *vfs, bool _default);
 		__device__ static int UnregisterVfs(VSystem *vfs);
-		//
+		
 		__device__ virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags) = 0;
 		__device__ virtual RC Delete(const char *path, bool syncDirectory) = 0;
 		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;
 		__device__ virtual RC FullPathname(const char *path, int pathOutLength, char *pathOut) = 0;
+		
+		__device__ virtual void *DlOpen(const char *filename) = 0;
+		__device__ virtual void DlError(int bufLength, char *buf) = 0;
+		__device__ virtual void (*DlSym(void *handle, const char *symbol))() = 0;
+		__device__ virtual void DlClose(void *handle) = 0;
+		
+		__device__ virtual int Randomness(int bufLength, char *buf) = 0;
+		__device__ virtual int Sleep(int microseconds) = 0;
+		__device__ virtual RC CurrentTimeInt64(int64 *now) = 0;
+		__device__ virtual RC CurrentTime(double *now) = 0;
+		__device__ virtual RC GetLastError(int bufLength, char *buf) = 0;
+
+		__device__ virtual RC SetSystemCall(const char *name, syscall_ptr newFunc) = 0;
+		__device__ virtual syscall_ptr GetSystemCall(const char *name) = 0;
+		__device__ virtual const char *NextSystemCall(const char *name) = 0;
 	};
 
 #if defined(TEST) || defined(_DEBUG)

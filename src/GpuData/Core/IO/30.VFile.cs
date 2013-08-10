@@ -6,6 +6,9 @@ namespace Core.IO
     public abstract class VFile
     {
         public static int PENDING_BYTE = 0x40000000;
+        public static int RESERVED_BYTE = (PENDING_BYTE + 1);
+        public static int SHARED_FIRST = (PENDING_BYTE + 2);
+        public static int SHARED_SIZE = 510;
 
         public enum LOCK : byte
         {
@@ -44,7 +47,7 @@ namespace Core.IO
             PERSIST_WAL = 10,
             OVERWRITE = 11,
             VFSNAME = 12,
-            FCNTL_POWERSAFE_OVERWRITE = 13,
+            POWERSAFE_OVERWRITE = 13,
             PRAGMA = 14,
             BUSYHANDLER = 15,
             TEMPFILENAME = 16,
@@ -85,25 +88,6 @@ namespace Core.IO
 
         public byte Type;
         public bool Opened;
-        //public VSystem Vfs;        // The VFS used to open this file
-        //public FileStream S;           // Filestream access to this file
-        //// public HANDLE H;             // Handle for accessing the file
-        //public LOCK LockType;            // Type of lock currently held on this file
-        //public int SharedLockByte;      // Randomly chosen byte used as a shared lock
-        //public ulong LastErrorID;         // The Windows errno from the last I/O error
-        //public object Shm;             // DUMMY Instance of shared memory on this file
-        //public string Path;            // Full pathname of this file
-        //public int Chunk;             // Chunk size configured by FCNTL_CHUNK_SIZE
-
-        // For C#
-        //public void memset()
-        //{
-        //    S = null;
-        //    LockType = 0;
-        //    SharedLockByte = 0;
-        //    LastErrorID = 0;
-        //    _sectorSize = 0;
-        //}
 
         public abstract RC Read(byte[] buffer, int amount, long offset);
         public abstract RC Write(byte[] buffer, int amount, long offset);
@@ -113,17 +97,17 @@ namespace Core.IO
         public abstract RC get_FileSize(out long size);
 
         public virtual RC Lock(LOCK lock_) { return RC.OK; }
+        public virtual RC CheckReservedLock(ref int resOut) { return RC.OK; }
         public virtual RC Unlock(LOCK lock_) { return RC.OK; }
-        public virtual RC CheckReservedLock(ref int outRC) { return RC.OK; }
         public virtual RC FileControl(FCNTL op, ref long arg) { return RC.NOTFOUND; }
 
-        public virtual uint SectorSize() { return 0; }
+        public virtual uint get_SectorSize() { return 0; }
         public virtual IOCAP get_DeviceCharacteristics() { return 0; }
-        
-        public virtual RC ShmLock(int offset, int n, SHM flags) { return RC.OK; }
+
+        public virtual RC ShmMap(int region, int sizeRegion, bool isWrite, out object pp) { pp = null; return RC.OK; }
+        public virtual RC ShmLock(int offset, int count, SHM flags) { return RC.OK; }
         public virtual void ShmBarrier() { }
-        public virtual RC ShmUnmap(int deleteFlag) { return RC.OK; }
-        public virtual RC ShmMap(int id, int pageSize, int pInt, object data, int dataOffset) { return RC.OK; }
+        public virtual RC ShmUnmap(bool deleteFlag) { return RC.OK; }
 
         public RC Read4(int offset, out int valueOut)
         {
@@ -201,14 +185,14 @@ namespace Core.IO
         }
 
 
-//#if ENABLE_ATOMIC_WRITE
-//        static int JournalOpen(VSystem vfs, string a, VFile b, int c, int d) { return 0; }
-//        static int JournalSize(VSystem vfs) { return 0; }
-//        static int JournalCreate(VFile v) { return 0; }
-//        static bool JournalExists(VFile v) { return true; }
-//#else
-//        static int JournalSize(VSystem vfs) { return vfs.SizeOsFile; }
-//        static bool JournalExists(VFile v) { return true; }
-//#endif
+        //#if ENABLE_ATOMIC_WRITE
+        //        static int JournalOpen(VSystem vfs, string a, VFile b, int c, int d) { return 0; }
+        //        static int JournalSize(VSystem vfs) { return 0; }
+        //        static int JournalCreate(VFile v) { return 0; }
+        //        static bool JournalExists(VFile v) { return true; }
+        //#else
+        //        static int JournalSize(VSystem vfs) { return vfs.SizeOsFile; }
+        //        static bool JournalExists(VFile v) { return true; }
+        //#endif
     }
 }

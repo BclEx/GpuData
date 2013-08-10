@@ -1106,7 +1106,7 @@ delmaster_out:
 
 	int Pager::get_SectorSize(VFile *file)
 	{
-		int ret = file->SectorSize();
+		int ret = file->get_SectorSize();
 		if (ret < 32)
 			ret = 512;
 		else if (ret > MAX_SECTOR_SIZE)
@@ -1123,7 +1123,7 @@ delmaster_out:
 		if (pager->TempFile || (pager->File->get_DeviceCharacteristics() & VFile::IOCAP::IOCAP_POWERSAFE_OVERWRITE) != 0)
 			pager->SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
 		else
-			pager->SectorSize = pager->File->SectorSize();
+			pager->SectorSize = pager->File->get_SectorSize();
 	}
 
 	static RC pager_playback(Pager *pager, bool isHot)
