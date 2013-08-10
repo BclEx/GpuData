@@ -120,6 +120,7 @@
     <None Include="Core\50.SysEx.cu" />
     <None Include="Core\IO\25.JournalVFile.cu" />
     <Compile Include="Core\IO\25.JournalVFile.cs" />
+    <None Include="Core\IO\30.VFile.cu" />
     <Content Include="Core\Text\00.StringBuilder.cu.h" />
     <None Include="Core\Text\00.StringBuilder.cu" />
   </ItemGroup>

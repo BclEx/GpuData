@@ -14,16 +14,18 @@ static void TestVFS();
 
 void main()
 {
-	PCache::Initialize();
-	PCache::ReleaseMemory(5);
+	SysEx::Initialize();
+	//PCache::ReleaseMemory(5);
 	TestVFS();
 }
 
 static void TestVFS()
 {
 	auto vfs = VSystem::Find(nullptr);
-	VFile *file;
-	auto rc = vfs->Open("Test", file, VSystem::OPEN::CREATE, nullptr);
+	VFile *file = (VFile *)SysEx::Alloc(vfs->SizeOsFile);
+	auto rc = vfs->Open("C:\\T_\\Test.db", file, VSystem::OPEN::CREATE | VSystem::OPEN::OREADWRITE, nullptr);
+	file->Write4(0, 5);
+	file->Close();
 }
 
 static Pager *Open(VSystem *vfs)

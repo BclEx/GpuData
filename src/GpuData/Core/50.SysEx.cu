@@ -1,4 +1,5 @@
-﻿#include "Core.cu.h"
+﻿//#include "Core.cu.h"
+#include "..\Core+Pager\Core+Pager.cu.h"
 #include <stdarg.h>
 
 namespace Core
@@ -8,12 +9,24 @@ namespace Core
 
 	RC SysEx::Initialize()
 	{
+		// mutex
+		RC rc = RC::OK; // = 3MutexEx::Initialize();
+		if (rc) return rc;
+		//rc = Alloc::Initialize();
+		rc = PCache::Initialize();
+		if (rc) return rc;
+		rc = VSystem::Initialize();
+		if (rc) return rc;
+		//PCache::PageBufferSetup(_config.Page, _config.SizePage, _config.Pages);
 		return RC::OK;
 	}
 
-	RC SysEx::Shutdown()
+	void SysEx::Shutdown()
 	{
-		return RC::OK;
+		VSystem::Shutdown();
+		PCache::Shutdown();
+		//Alloc::Shutdown();
+		//MutexEx::Shutdown();
 	}
 
 	static uint8 randomByte()

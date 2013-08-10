@@ -104,10 +104,10 @@ namespace Core { namespace IO
 		__device__ virtual uint get_SectorSize() = 0;
 		__device__ virtual IOCAP get_DeviceCharacteristics() = 0;
 
-		__device__ virtual RC ShmLock(int offset, int n, SHM flags) = 0;
-		__device__ virtual void ShmBarrier() = 0;
-		__device__ virtual RC ShmUnmap(int deleteFlag) = 0;
-		__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp) = 0;
+		__device__ virtual RC ShmLock(int offset, int n, SHM flags);
+		__device__ virtual void ShmBarrier();
+		__device__ virtual RC ShmUnmap(bool deleteFlag);
+		__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp);
 
 		__device__ inline RC Read4(int64 offset, uint32 *valueOut)
 		{

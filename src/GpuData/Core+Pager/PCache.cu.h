@@ -67,7 +67,7 @@ namespace Core
 		IPCache *Cache;				// Pluggable cache module
 		PgHdr *Page1;				// Reference to page 1
 	public:
-		__device__ static int Initialize();
+		__device__ static RC Initialize();
 		__device__ static void Shutdown();
 		__device__ static int SizeOf();
 		__device__ static void Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p);

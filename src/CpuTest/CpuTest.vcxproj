@@ -96,6 +96,7 @@
     <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\45.VAlloc.cu.h" />
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h" />
+    <ClInclude Include="..\GpuData\Core\50.VSystem.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core+Types.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h" />
@@ -151,6 +152,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core\55.WinVSystem.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core\50.VSystem.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData\Core\IO\30.VFile.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>

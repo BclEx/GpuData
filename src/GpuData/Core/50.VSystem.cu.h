@@ -1,4 +1,5 @@
 ﻿// sqlite.h
+#pragma once
 namespace Core { namespace IO
 {
 	typedef class VFile VFile;
@@ -44,20 +45,23 @@ namespace Core { namespace IO
 		int SizeOsFile;     // Size of subclassed VirtualFile
 		int MaxPathname;	// Maximum file pathname length
 
+		__device__ static RC Initialize();
+		__device__ static void Shutdown();
+
 		__device__ static VSystem *Find(const char *name);
 		__device__ static int RegisterVfs(VSystem *vfs, bool _default);
 		__device__ static int UnregisterVfs(VSystem *vfs);
-		
+
 		__device__ virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags) = 0;
 		__device__ virtual RC Delete(const char *path, bool syncDirectory) = 0;
 		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;
 		__device__ virtual RC FullPathname(const char *path, int pathOutLength, char *pathOut) = 0;
-		
+
 		__device__ virtual void *DlOpen(const char *filename) = 0;
 		__device__ virtual void DlError(int bufLength, char *buf) = 0;
 		__device__ virtual void (*DlSym(void *handle, const char *symbol))() = 0;
 		__device__ virtual void DlClose(void *handle) = 0;
-		
+
 		__device__ virtual int Randomness(int bufLength, char *buf) = 0;
 		__device__ virtual int Sleep(int microseconds) = 0;
 		__device__ virtual RC CurrentTimeInt64(int64 *now) = 0;
@@ -69,42 +73,6 @@ namespace Core { namespace IO
 		__device__ virtual const char *NextSystemCall(const char *name) = 0;
 	};
 
-#if defined(TEST) || defined(_DEBUG)
-	bool OsTrace = false;
-#define OSTRACE(X, ...) if (OsTrace) { printf(X, __VA_ARGS__); }
-#else
-#define OSTRACE(X, ...)
-#endif
-
-#ifdef TEST
-	int io_error_hit = 0;            // Total number of I/O Errors
-	int io_error_hardhit = 0;        // Number of non-benign errors
-	int io_error_pending = 0;        // Count down to first I/O error
-	int io_error_persist = 0;        // True if I/O errors persist
-	int io_error_benign = 0;         // True if errors are benign
-	int diskfull_pending = 0;
-	int diskfull = 0;
-#define SimulateIOErrorBenign(X) io_error_benign=(X)
-#define SimulateIOError(CODE) \
-	if ((io_error_persist && io_error_hit) || io_error_pending-- == 1) { local_ioerr(); CODE; }
-	static void local_ioerr() { OSTRACE("IOERR\n"); io_error_hit++; if (!io_error_benign) io_error_hardhit++; }
-#define SimulateDiskfullError(CODE) \
-	if (diskfull_pending) { if (diskfull_pending == 1) { \
-	local_ioerr(); diskfull = 1; io_error_hit = 1; CODE; \
-	} else diskfull_pending--; }
-#else
-#define SimulateIOErrorBenign(X)
-#define SimulateIOError(A)
-#define SimulateDiskfullError(A)
-#endif
-
-	// When testing, keep a count of the number of open files.
-#ifdef TEST
-	int open_file_count = 0;
-#define OpenCounter(X) open_file_count += (X)
-#else
-#define OpenCounter(X)
-#endif
-
+	VSystem::OPEN inline operator | (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)(a | b); }
 	VSystem::OPEN inline operator |= (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)(a | b); }
 }}

@@ -87,7 +87,7 @@ namespace Core
 	static IPCache *_pcache;
 	extern IPCache *newPCache1();
 
-	int PCache::Initialize() 
+	RC PCache::Initialize() 
 	{ 
 		if (_pcache == nullptr)
 			_pcache = newPCache1();

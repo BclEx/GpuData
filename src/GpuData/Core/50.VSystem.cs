@@ -130,39 +130,5 @@ namespace Core.IO
             MutexEx.Leave(mutex);
             return RC.OK;
         }
-
-
-#if TEST || DEBUG
-        static bool OsTrace = false;
-        protected static void OSTRACE(string x, params object[] args) { if (OsTrace) Console.WriteLine("b:" + string.Format(x, args)); }
-#else
-        protected static void OSTRACE(string x, params object[] args) { }
-#endif
-
-#if TEST
-        static int io_error_hit = 0;            // Total number of I/O Errors
-        static int io_error_hardhit = 0;        // Number of non-benign errors
-        static int io_error_pending = 0;        // Count down to first I/O error
-        static bool io_error_persist = false;   // True if I/O errors persist
-        static bool io_error_benign = false;    // True if errors are benign
-        static int diskfull_pending = 0;
-        static bool diskfull = false;
-        protected static void SimulateIOErrorBenign(bool X) { io_error_benign = X; }
-        protected static bool SimulateIOError() { if ((io_error_persist && io_error_hit > 0) || io_error_pending-- == 1) { local_ioerr(); return true; } return false; }
-        protected static void local_ioerr() { OSTRACE("IOERR\n"); io_error_hit++; if (!io_error_benign) io_error_hardhit++; }
-        protected static bool SimulateDiskfullError() { if (diskfull_pending > 0) { if (diskfull_pending == 1) { local_ioerr(); diskfull = true; io_error_hit = 1; return true; } else diskfull_pending--; } return false; }
-#else
-        protected static void SimulateIOErrorBenign(bool X) { }
-        protected static bool SimulateIOError() { return false; }
-        protected static bool SimulateDiskfullError() { return false; }
-#endif
-
-        // When testing, keep a count of the number of open files.
-#if TEST
-        static int open_file_count = 0;
-        protected static void OpenCounter(int X) { open_file_count += X; }
-#else
-        protected static void OpenCounter(int X) { }
-#endif
     }
 }

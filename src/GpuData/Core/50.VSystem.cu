@@ -1,5 +1,5 @@
 ﻿// os.c
-#include "../Core.cu.h"
+#include "Core.cu.h"
 
 namespace Core { namespace IO
 {

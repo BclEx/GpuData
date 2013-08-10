@@ -1,11 +1,53 @@
-﻿// ow_win.c
+﻿// os_win.c
+#define OS_WIN 1
+#if OS_WIN // This file is used for Windows only
 #include "Core.cu.h"
 #include <Windows.h>
-#define OS_WIN
-//#if OS_WIN // This file is used for Windows only
+#include <new>
 
 namespace Core { namespace IO
 {
+#pragma region Preamble
+
+#if defined(TEST) || defined(_DEBUG)
+	bool OsTrace = true;
+#define OSTRACE(X, ...) if (OsTrace) { printf(X, __VA_ARGS__); }
+#else
+#define OSTRACE(X, ...)
+#endif
+
+#ifdef TEST
+	int io_error_hit = 0;            // Total number of I/O Errors
+	int io_error_hardhit = 0;        // Number of non-benign errors
+	int io_error_pending = 0;        // Count down to first I/O error
+	int io_error_persist = 0;        // True if I/O errors persist
+	int io_error_benign = 0;         // True if errors are benign
+	int diskfull_pending = 0;
+	int diskfull = 0;
+#define SimulateIOErrorBenign(X) io_error_benign=(X)
+#define SimulateIOError(CODE) \
+	if ((io_error_persist && io_error_hit) || io_error_pending-- == 1) { local_ioerr(); CODE; }
+	static void local_ioerr() { OSTRACE("IOERR\n"); io_error_hit++; if (!io_error_benign) io_error_hardhit++; }
+#define SimulateDiskfullError(CODE) \
+	if (diskfull_pending) { if (diskfull_pending == 1) { \
+	local_ioerr(); diskfull = 1; io_error_hit = 1; CODE; \
+	} else diskfull_pending--; }
+#else
+#define SimulateIOErrorBenign(X)
+#define SimulateIOError(A)
+#define SimulateDiskfullError(A)
+#endif
+
+	// When testing, keep a count of the number of open files.
+#ifdef TEST
+	int open_file_count = 0;
+#define OpenCounter(X) open_file_count += (X)
+#else
+#define OpenCounter(X)
+#endif
+
+#pragma endregion
+
 #pragma region Polyfill
 
 #if !OS_WINNT && !defined(OMIT_WAL) // Compiling and using WAL mode requires several APIs that are only available in Windows platforms based on the NT kernel.
@@ -163,14 +205,14 @@ namespace Core { namespace IO
 		__device__ virtual uint get_SectorSize();
 		__device__ virtual IOCAP get_DeviceCharacteristics();
 
-		__device__ virtual RC ShmLock(int offset, int n, SHM flags);
-		__device__ virtual void ShmBarrier();
-		__device__ virtual RC ShmUnmap(int deleteFlag);
-		__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp);
+		//__device__ virtual RC ShmLock(int offset, int n, SHM flags);
+		//__device__ virtual void ShmBarrier();
+		//__device__ virtual RC ShmUnmap(bool deleteFlag);
+		//__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp);
 	};
 
 	WinVFile::WINFILE inline operator |= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a | b); }
-	WinVFile::WINFILE inline operator &= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a & b); }
+	//WinVFile::WINFILE inline operator &= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a & b); }
 
 #pragma endregion
 
@@ -1896,7 +1938,7 @@ namespace Core { namespace IO
 		if (*arg < 0)
 			*arg = ((file->CtrlFlags & mask) != 0);
 		else if ((*arg) == 0)
-			file->CtrlFlags &= ~mask;
+			file->CtrlFlags = (WinVFile::WINFILE)(file->CtrlFlags & ~mask);
 		else
 			file->CtrlFlags |= mask;
 	}
@@ -2394,11 +2436,6 @@ shmpage_out:
 		return rc;
 	}
 
-#else
-#define winShmMap     0
-#define winShmLock    0
-#define winShmBarrier 0
-#define winShmUnmap   0
 #endif
 
 #pragma endregion
@@ -2542,6 +2579,7 @@ shmpage_out:
 		WinVFile *file = (WinVFile *)id;
 		_assert(file != nullptr);
 		memset(file, 0, sizeof(WinVFile));
+		file = new (file) WinVFile();
 		file->H = INVALID_HANDLE_VALUE;
 
 #if OS_WINRT
@@ -2564,7 +2602,7 @@ shmpage_out:
 
 		// Database filenames are double-zero terminated if they are not URIs with parameters.  Hence, they can always be passed into
 		// sqlite3_uri_parameter().
-		_assert((type != OPEN::MAIN_DB) || (flags & OPEN::URI) || utf8Name[strlen(utf8Name)+1]==0);
+		_assert(type != OPEN::MAIN_DB || (flags & OPEN::URI) || utf8Name[strlen(utf8Name)+1]==0);
 
 		// Convert the filename to the system encoding.
 		void *converted = ConvertUtf8Filename(utf8Name); // Filename in OS encoding
@@ -3089,8 +3127,12 @@ shmpage_out:
 		return getLastErrorMsg(osGetLastError(), bufLength, buf);
 	}
 
-	int sqlite3_os_init()
+	WinVSystem _winVfs;
+	RC VSystem::Initialize()
 	{
+		_winVfs.SizeOsFile = sizeof(WinVFile);
+		_winVfs.MaxPathname = 260,
+		_winVfs.Name = "win32";
 		// Double-check that the aSyscall[] array has been constructed correctly.  See ticket [bb3a86e890c8e96ab]
 		_assert(__arrayStaticLength(Syscalls) == 74);
 #ifndef OMIT_WAL
@@ -3103,11 +3145,11 @@ shmpage_out:
 #endif
 		_assert(winSysInfo.dwAllocationGranularity > 0);
 #endif
-		//RegisterVfs(&winVfs, 1);
+		RegisterVfs(&_winVfs, true);
 		return RC::OK; 
 	}
 
-	int sqlite3_os_end()
+	void VSystem::Shutdown()
 	{ 
 #if OS_WINRT
 		if (sleepObj != NULL)
@@ -3116,10 +3158,9 @@ shmpage_out:
 			sleepObj = NULL;
 		}
 #endif
-		return RC::OK;
 	}
 
 #pragma endregion
 
-	}}
-//#endif
+}}
+#endif
