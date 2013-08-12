@@ -32,11 +32,11 @@ namespace Core { namespace IO
 			WAL = 0x00080000,               // VFS only 
 		};
 
-		enum class ACCESS
+		enum ACCESS
 		{
-			EXISTS = 0,
-			READWRITE = 1,	// Used by PRAGMA temp_store_directory
-			READ = 2,		// Unused
+			ACCESS_EXISTS = 0,
+			ACCESS_READWRITE = 1,	// Used by PRAGMA temp_store_directory
+			ACCESS_READ = 2,		// Unused
 		};
 
 		VSystem *Next;	// Next registered VFS
@@ -73,6 +73,6 @@ namespace Core { namespace IO
 		__device__ virtual const char *NextSystemCall(const char *name) = 0;
 	};
 
-	VSystem::OPEN inline operator | (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)(a | b); }
-	VSystem::OPEN inline operator |= (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)(a | b); }
+	VSystem::OPEN inline operator | (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
+	VSystem::OPEN inline operator |= (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
 }}

@@ -43,7 +43,6 @@ namespace Core
 			SHM_RDONLY = 2,		// The SHM file is readonly
 		};
 
-
 		VSystem *Vfs;				// The VFS used to create pDbFd
 		VFile *DBFile;					// File handle for the database file
 		VFile *WalFile;					// File handle for WAL file
@@ -58,7 +57,7 @@ namespace Core
 		MODE ExclusiveMode;				// Non-zero if connection is in exclusive mode
 		bool WriteLock;					// True if in a write transaction
 		bool CheckpointLock;			// True if holding a checkpoint lock
-		RDONLY ReadOnly;				// WAL_RDWR, WAL_RDONLY, or WAL_SHM_RDONLY
+		RDONLY ReadOnly;			// WAL_RDWR, WAL_RDONLY, or WAL_SHM_RDONLY
 		bool TruncateOnCommit;			// True to truncate WAL file on commit
 		uint8 SyncHeader;				// Fsync the WAL header if true
 		uint8 PadToSectorBoundary;		// Pad transactions out to the next sector

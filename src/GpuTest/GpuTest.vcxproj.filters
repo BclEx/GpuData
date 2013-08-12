@@ -7,6 +7,9 @@
     <Filter Include="Core\IO">
       <UniqueIdentifier>{361deaef-74e7-4d20-9dd9-43157d7c0c70}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core\Text">
+      <UniqueIdentifier>{e0e98f95-beb7-4d3c-9b8c-dc369d1a0fb3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\GpuData\Core\00.Bitvec.cu">
@@ -21,17 +24,23 @@
     <CudaCompile Include="..\GpuData\Core\00.And.cu">
       <Filter>Core</Filter>
     </CudaCompile>
-    <CudaCompile Include="..\GpuData\Core\IO\10.CoreVFileSystem.cu">
-      <Filter>Core\IO</Filter>
-    </CudaCompile>
     <CudaCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu">
       <Filter>Core\IO</Filter>
     </CudaCompile>
-    <CudaCompile Include="..\GpuData\Core\IO\40.VFileSystem.cu">
+    <CudaCompile Include="..\GpuData\Core\IO\25.JournalVFile.cu">
       <Filter>Core\IO</Filter>
     </CudaCompile>
-    <CudaCompile Include="..\GpuData\Core\IO\00.CoreVFile.cu">
+    <CudaCompile Include="..\GpuData\Core\IO\30.VFile.cu">
       <Filter>Core\IO</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\40.StatusEx.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\50.VSystem.cu">
+      <Filter>Core</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core\Text\00.StringBuilder.cu">
+      <Filter>Core\Text</Filter>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
@@ -51,8 +60,26 @@
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h">
       <Filter>Core\IO</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h">
-      <Filter>Core\IO</Filter>
+    <ClInclude Include="..\GpuData\Core\10.ConvertEx.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\45.VAlloc.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\50.VSystem.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\60.MathEx.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h">
+      <Filter>Core\Text</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

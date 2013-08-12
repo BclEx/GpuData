@@ -91,19 +91,27 @@
     </CudaCompile>
     <CudaCompile Include="..\GpuData\Core\00.Bitvec.cu" />
     <CudaCompile Include="..\GpuData\Core\10.ConvertEx.cu" />
+    <CudaCompile Include="..\GpuData\Core\40.StatusEx.cu" />
     <CudaCompile Include="..\GpuData\Core\50.SysEx.cu" />
-    <CudaCompile Include="..\GpuData\Core\IO\00.CoreVFile.cu" />
-    <CudaCompile Include="..\GpuData\Core\IO\10.CoreVFileSystem.cu" />
+    <CudaCompile Include="..\GpuData\Core\50.VSystem.cu" />
     <CudaCompile Include="..\GpuData\Core\IO\20.MemoryVFile.cu" />
-    <CudaCompile Include="..\GpuData\Core\IO\40.VFileSystem.cu" />
+    <CudaCompile Include="..\GpuData\Core\IO\25.JournalVFile.cu" />
+    <CudaCompile Include="..\GpuData\Core\IO\30.VFile.cu" />
+    <CudaCompile Include="..\GpuData\Core\Text\00.StringBuilder.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\GpuData\Core\00.Bitvec.cu.h" />
+    <ClInclude Include="..\GpuData\Core\10.ConvertEx.cu.h" />
+    <ClInclude Include="..\GpuData\Core\20.MutexEx.cu.h" />
+    <ClInclude Include="..\GpuData\Core\40.StatusEx.cu.h" />
+    <ClInclude Include="..\GpuData\Core\45.VAlloc.cu.h" />
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h" />
+    <ClInclude Include="..\GpuData\Core\50.VSystem.cu.h" />
+    <ClInclude Include="..\GpuData\Core\60.MathEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core+Types.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h" />
-    <ClInclude Include="..\GpuData\Core\IO\40.VFileSystem.cu.h" />
+    <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h" />
     <ClInclude Include="..\Runtime.cu.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

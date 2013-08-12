@@ -1,5 +1,6 @@
 ﻿// memjournal.c
 #include "../Core.cu.h"
+#include <new.h>
 
 namespace Core { namespace IO
 {
@@ -131,6 +132,7 @@ namespace Core { namespace IO
 	{
 		_assert(SysEx_HASALIGNMENT8(file));
 		_memset(file, 0, MemoryVFileSize());
+		file = new (file) MemoryVFile();
 		file->Type = 1;
 	}
 

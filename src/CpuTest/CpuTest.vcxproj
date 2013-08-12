@@ -82,6 +82,8 @@
     <ClCompile Include="Program.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\packages\gpustructs.1.0.0\Runtime.src\Runtime.cpu.h" />
+    <ClInclude Include="..\..\packages\gpustructs.1.0.0\Runtime.src\Runtime.cu.h" />
     <ClInclude Include="..\GpuData\Core+Btree\Btree.cu.h" />
     <ClInclude Include="..\GpuData\Core+Btree\BtreeInt.cu.h" />
     <ClInclude Include="..\GpuData\Core+Btree\Core+Btree.cu.h" />
@@ -97,6 +99,7 @@
     <ClInclude Include="..\GpuData\Core\45.VAlloc.cu.h" />
     <ClInclude Include="..\GpuData\Core\50.SysEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\50.VSystem.cu.h" />
+    <ClInclude Include="..\GpuData\Core\60.MathEx.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core+Types.cu.h" />
     <ClInclude Include="..\GpuData\Core\Core.cu.h" />
     <ClInclude Include="..\GpuData\Core\IO\30.VFile.cu.h" />

@@ -1,5 +1,6 @@
 ﻿// pcache1.c
 #include "Core+Pager.cu.h"
+#include <new.h>
 
 namespace Core
 {
@@ -400,6 +401,7 @@ namespace Core
 		_assert(sizeExtra < 300);
 		int size = sizeof(PCache1) + sizeof(PGroup) * (int)separateCache;
 		PCache1 *cache = (PCache1 *)SysEx::Alloc(size, true);
+		cache = new (cache) PCache1();
 		if (cache)
 		{
 			PGroup *group;

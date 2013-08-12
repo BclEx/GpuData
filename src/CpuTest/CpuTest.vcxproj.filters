@@ -16,6 +16,9 @@
     <Filter Include="Core\Text">
       <UniqueIdentifier>{ecfdf063-6a3d-4762-a51f-4e94d9e8fa11}</UniqueIdentifier>
     </Filter>
+    <Filter Include="+GpuStructs">
+      <UniqueIdentifier>{f464262a-aa30-44be-a3dc-e84aab24f89f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GpuData\Core\50.SysEx.cu">
@@ -122,6 +125,15 @@
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="..\GpuData\Core\50.VSystem.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\packages\gpustructs.1.0.0\Runtime.src\Runtime.cpu.h">
+      <Filter>+GpuStructs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\packages\gpustructs.1.0.0\Runtime.src\Runtime.cu.h">
+      <Filter>+GpuStructs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core\60.MathEx.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>

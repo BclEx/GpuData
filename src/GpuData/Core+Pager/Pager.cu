@@ -1030,7 +1030,7 @@ namespace Core
 		while ((journal - masterJournal) < masterJournalSize)
 		{
 			int exists;
-			rc = vfs->Access(journal, VSystem::ACCESS::EXISTS, &exists);
+			rc = vfs->Access(journal, VSystem::ACCESS_EXISTS, &exists);
 			if (rc != RC::OK)
 				goto delmaster_out;
 			if (exists)
@@ -1148,7 +1148,7 @@ delmaster_out:
 		master = (char *)pager->TmpSpace; // Name of master journal file if any
 		rc = readMasterJournal(pager->JournalFile, master, vfs->MaxPathname + 1);
 		if (rc == RC::OK && master[0])
-			rc = vfs->Access(master, VSystem::ACCESS::EXISTS, &res);
+			rc = vfs->Access(master, VSystem::ACCESS_EXISTS, &res);
 		master = nullptr;
 		if (rc != RC::OK || !res)
 			goto end_playback;
@@ -2187,7 +2187,7 @@ end_playback:
 		int journalFileSize = SysEx_ROUND8(VFile::JournalVFileSize(vfs) > VFile::MemoryVFileSize() ? VFile::JournalVFileSize(vfs) : VFile::MemoryVFileSize()); // Bytes to allocate for each journal fd
 
 		// Set the output variable to NULL in case an error occurs.
-		pagerOut = nullptr;
+		*pagerOut = nullptr;
 
 		bool memoryDB = false;		// True if this is an in-memory file
 		char *pathname = nullptr;	// Full path to database file
@@ -2215,7 +2215,7 @@ end_playback:
 		{
 			pathnameLength = vfs->MaxPathname + 1;
 			pathname = (char *)SysEx::TagAlloc(nullptr, pathnameLength * 2);
-			if (pathname == nullptr) return RC::NOMEM;
+			if (!pathname) return RC::NOMEM;
 			pathname[0] = 0; // Make sure initialized even if FullPathname() fails
 			rc = vfs->FullPathname(filename, pathnameLength, pathname);
 			pathnameLength = _strlen30(pathname);
@@ -2227,13 +2227,11 @@ end_playback:
 			}
 			uriLength = (int)(&z[1] - uri);
 			_assert(uriLength >= 0);
+			// This branch is taken when the journal path required by the database being opened will be more than pVfs->mxPathname
+			// bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
+			// check for a hot-journal before reading.
 			if (rc == RC::OK && pathnameLength + 8 > vfs->MaxPathname)
-			{
-				// This branch is taken when the journal path required by the database being opened will be more than pVfs->mxPathname
-				// bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
-				// check for a hot-journal before reading.
 				rc = SysEx_CANTOPEN_BKPT;
-			}
 			if (rc != RC::OK)
 			{
 				SysEx::TagFree(nullptr, pathname);
@@ -2253,8 +2251,8 @@ end_playback:
 #ifndef OMIT_WAL
 			+ pathnameLength + 4 + 2			// zWal
 #endif
-			);
-		//_assert(SysEx_ROUND8(INT_TO_PTR(journalFileSize)));
+			, true);
+		_assert(SysEx_HASALIGNMENT8(INT_TO_PTR(journalFileSize)));
 		if (!ptr)
 		{
 			SysEx::TagFree(nullptr, pathname);
@@ -2277,12 +2275,10 @@ end_playback:
 			if (uriLength) _memcpy(&pager->Filename[pathnameLength + 1], uri, uriLength);
 			_memcpy(pager->Journal, pathname, pathnameLength);
 			_memcpy(&pager->Journal[pathnameLength], "-journal\000", 8 + 2);
-			//sqlite3FileSuffix3(pager->Filename, pager->Journal);
 #ifndef OMIT_WAL
 			pager->WalName = &pager->Journal[pathnameLength + 8 + 1];
 			_memcpy(pager->WalName, pathname, pathnameLength);
 			_memcpy(&pager->WalName[pathnameLength], "-wal\000", 4 + 1);
-			//sqlite3FileSuffix3(pager->Filename, pager->WalName);
 #endif
 			SysEx::TagFree(nullptr, pathname);
 		}
@@ -2363,7 +2359,7 @@ end_playback:
 		PAGERTRACE("OPEN %d %s\n", FILEHANDLEID(pager->File), pager->Filename);
 		SysEx_IOTRACE("OPEN %p %s\n", pager, pager->Filename);
 
-		bool useJournal = (flags & IPager::PAGEROPEN::OMIT_JOURNAL); // False to omit journal
+		bool useJournal = (flags & IPager::PAGEROPEN::OMIT_JOURNAL) == 0; // False to omit journal
 		pager->UseJournal = useJournal;
 		pager->MaxPid = MAX_PAGE_COUNT;
 		pager->TempFile = tempFile;
@@ -2416,7 +2412,7 @@ end_playback:
 		RC rc = RC::OK;
 		int exists = 1; // True if a journal file is present
 		if (!journalOpened)
-			rc = vfs->Access(pager->Journal, VSystem::ACCESS::EXISTS, &exists);
+			rc = vfs->Access(pager->Journal, VSystem::ACCESS_EXISTS, &exists);
 		if (rc == RC::OK && exists)
 		{
 			// Race condition here:  Another process might have been holding the the RESERVED lock and have a journal open at the sqlite3OsAccess() 
@@ -2536,7 +2532,7 @@ end_playback:
 				{
 					VSystem *const vfs = Vfs;
 					int exists; // True if journal file exists
-					rc = vfs->Access(Journal, VSystem::ACCESS::EXISTS, &exists);
+					rc = vfs->Access(Journal, VSystem::ACCESS_EXISTS, &exists);
 					if (rc == RC::OK && exists)
 					{
 						_assert(!TempFile);

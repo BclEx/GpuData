@@ -1,5 +1,6 @@
 ﻿// journal.c
 #include "../Core.cu.h"
+#include <new.h>
 #ifdef ENABLE_ATOMIC_WRITE
 
 namespace Core { namespace IO
@@ -114,6 +115,7 @@ namespace Core { namespace IO
 	__device__ RC VFile::JournalVFileOpen(VSystem *vfs, const char *name, VFile *file, VSystem::OPEN flags, int bufferLength)
 	{
 		_memset(file, 0, JournalVFileSize(vfs));
+		file = new (file) JournalVFile();
 		JournalVFile *p = (JournalVFile *)file;
 		if (bufferLength > 0)
 		{

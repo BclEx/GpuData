@@ -3,6 +3,10 @@
 
 namespace Core
 {
+	enum Test
+	{
+	};
+
 	struct Wal
 	{
 		__device__ inline static int Open(int a) { return 5; }

@@ -3,12 +3,12 @@
 
 namespace Core
 {
-	Bitvec::Bitvec(uint32 size)
+	__device__ Bitvec::Bitvec(uint32 size)
 	{
 		_size = size;
 	}
 
-	bool Bitvec::Get(uint32 index)
+	__device__ bool Bitvec::Get(uint32 index)
 	{
 		if (index > _size || index == 0)
 			return false;
@@ -32,7 +32,7 @@ namespace Core
 		return false;
 	}
 
-	RC Bitvec::Set(uint32 index)
+	__device__ RC Bitvec::Set(uint32 index)
 	{
 		_assert(index > 0);
 		_assert(index <= _size);
@@ -87,7 +87,7 @@ bitvec_set_end:
 		return RC::OK;
 	}
 
-	void Bitvec::Clear(uint32 index, void *buffer)
+	__device__ void Bitvec::Clear(uint32 index, void *buffer)
 	{
 		_assert(index > 0);
 		index--;

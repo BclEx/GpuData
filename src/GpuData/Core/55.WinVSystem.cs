@@ -797,6 +797,9 @@ namespace Core
 
         public override RC Open(string name, VFile id, OPEN flags, out OPEN outFlags)
         {
+            // 0x87f7f is a mask of SQLITE_OPEN_ flags that are valid to be passed down into the VFS layer.  Some SQLITE_OPEN_ flags (for example,
+            // SQLITE_OPEN_FULLMUTEX or SQLITE_OPEN_SHAREDCACHE) are blocked before reaching the VFS.
+            flags = (OPEN)((uint)flags & 0x87f7f);
             outFlags = 0;
 
             var rc = RC.OK;

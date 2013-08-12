@@ -2,6 +2,8 @@
 #define __RUNTIME_CPU_H__
 #include <stdio.h>
 #define __device__
+#include <assert.h>
+//#include <string.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 // DEVICE SIDE
@@ -30,7 +32,7 @@ template <typename T1, typename T2, typename T3, typename T4, typename T5, typen
 
 // Assert
 #ifndef NASSERT
-__device__ inline void _assert(const int condition) { if (!condition) printf("assert"); }
+__device__ inline void _assert(const int condition) { if (!condition) assert(false); }
 __device__ inline void _assert(const int condition, const char *fmt) { if (!condition) printf(fmt); }
 #define ASSERTONLY(X) X
 inline void Coverage(int line) { }
@@ -48,43 +50,73 @@ template <typename T1, typename T2> __device__ inline void _throw(const char *fm
 template <typename T1, typename T2, typename T3> __device__ inline void _throw(const char *fmt, T1 arg1, T2 arg2, T3 arg3) { printf(fmt, arg1, arg2, arg3); }
 template <typename T1, typename T2, typename T3, typename T4> __device__ inline void _throw(const char *fmt, T1 arg1, T2 arg2, T3 arg3, T4 arg4) { printf(fmt, arg1, arg2, arg3, arg4); }
 
+extern const unsigned char _runtimeUpperToLower[];
+extern const unsigned char _runtimeCtypeMap[];
+
+#define _toupperA(x) ((x)&~(_runtimeCtypeMap[(unsigned char)(x)]&0x20))
+#define _isspaceA(x) (_runtimeCtypeMap[(unsigned char)(x)]&0x01)
+#define _isalnumA(x) (_runtimeCtypeMap[(unsigned char)(x)]&0x06)
+#define _isalphaA(x) (_runtimeCtypeMap[(unsigned char)(x)]&0x02)
+#define _isdigitA(x) (_runtimeCtypeMap[(unsigned char)(x)]&0x04)
+#define _isxdigitA(x) (_runtimeCtypeMap[(unsigned char)(x)]&0x08)
+#define _tolowerA(x) (_runtimeUpperToLower[(unsigned char)(x)])
+
 // strcmp
 template <typename T>
-__device__ inline bool _strcmp(const T *dest, const T *src)
+__device__ inline bool _strcmp(const T *left, const T *right)
 {
-	return false;
+	register unsigned char *a, *b;
+	a = (unsigned char *)left;
+	b = (unsigned char *)right;
+	while (*a != 0 && _runtimeUpperToLower[*a] == _runtimeUpperToLower[*b]) { a++; b++; }
+	return _runtimeUpperToLower[*a] - _runtimeUpperToLower[*b];
+}
+
+// strncmp
+template <typename T>
+__device__ inline bool _strncmp(const T *dest, const T *src, int n)
+{
+	register unsigned char *a, *b;
+	a = (unsigned char *)left;
+	b = (unsigned char *)right;
+	while (n-- > 0 && *a != 0 && _runtimeUpperToLower[*a] == _runtimeUpperToLower[*b]) { a++; b++; }
+	return (n < 0 ? 0 : _runtimeUpperToLower[*a] - _runtimeUpperToLower[*b]);
 }
 
 // memcpy
 template <typename T>
 __device__ inline void _memcpy(T *dest, const T *src, size_t length)
 {
-	char *dest2 = (char *)dest;
-	char *src2 = (char *)src;
-	for (size_t i = 0; i < length; ++i, ++src2, ++dest2)
-		*dest2 = *src2;
+	//memcpy(dest, src, length);
+	register unsigned char *a, *b;
+	a = (unsigned char *)dest;
+	b = (unsigned char *)src;
+	for (size_t i = 0; i < length; ++i, ++a, ++b)
+		*a = *b;
 }
 
 // memset
 template <typename T>
 __device__ inline void _memset(T *dest, const char value, size_t length)
 {
-	char *dest2 = (char *)dest;
-	for (size_t i = 0; i < length; ++i, ++dest2)
-		*dest2 = value;
+	register unsigned char *a;
+	a = (unsigned char *)dest;
+	for (size_t i = 0; i < length; ++i, ++a)
+		*a = value;
 }
 
 // memcmp
 template <typename T, typename Y>
 __device__ inline int _memcmp(T *a, Y *b, size_t length)
 {
+	assert(false);
 	return 0;
 }
 
 // strlen30
 __device__ inline int _strlen30(const char *z)
 {
-	const char *z2 = z;
+	register const char *z2 = z;
 	if (z == nullptr) return 0;
 	while (*z2) { z2++; }
 	return 0x3fffffff & (int)(z2 - z);

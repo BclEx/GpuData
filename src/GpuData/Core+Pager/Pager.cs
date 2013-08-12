@@ -2191,13 +2191,11 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 rc = vfs.FullPathname(filename, out pathname);
                 var z = uri = filename;
                 Debug.Assert(uri.Length >= 0);
+                // This branch is taken when the journal path required by the database being opened will be more than pVfs->mxPathname
+                // bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
+                // check for a hot-journal before reading.
                 if (rc == RC.OK && pathname.Length + 8 > vfs.MaxPathname)
-                {
-                    // This branch is taken when the journal path required by the database being opened will be more than pVfs->mxPathname
-                    // bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
-                    // check for a hot-journal before reading.
                     rc = SysEx.CANTOPEN_BKPT();
-                }
                 if (rc != RC.OK)
                     return rc;
             }

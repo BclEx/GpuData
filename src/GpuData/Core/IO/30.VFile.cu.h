@@ -96,13 +96,13 @@ namespace Core { namespace IO
 		__device__ virtual RC Sync(int flags) = 0;
 		__device__ virtual RC get_FileSize(int64 &size) = 0;
 
-		__device__ virtual RC Lock(LOCK lock) = 0;
-		__device__ virtual RC Unlock(LOCK lock) = 0;
-		__device__ virtual RC CheckReservedLock(int &lock) = 0;
-		__device__ virtual RC FileControl(FCNTL op, void *arg) = 0;
+		__device__ virtual RC Lock(LOCK lock);
+		__device__ virtual RC Unlock(LOCK lock);
+		__device__ virtual RC CheckReservedLock(int &lock);
+		__device__ virtual RC FileControl(FCNTL op, void *arg);
 
-		__device__ virtual uint get_SectorSize() = 0;
-		__device__ virtual IOCAP get_DeviceCharacteristics() = 0;
+		__device__ virtual uint get_SectorSize();
+		__device__ virtual IOCAP get_DeviceCharacteristics();
 
 		__device__ virtual RC ShmLock(int offset, int n, SHM flags);
 		__device__ virtual void ShmBarrier();

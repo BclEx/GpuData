@@ -3,7 +3,7 @@
 #if OS_WIN // This file is used for Windows only
 #include "Core.cu.h"
 #include <Windows.h>
-#include <new>
+#include <new.h>
 
 namespace Core { namespace IO
 {
@@ -705,7 +705,7 @@ namespace Core { namespace IO
 	syscall_ptr WinVSystem::GetSystemCall(const char *name)
 	{
 		for (int i = 0; i < __arrayStaticLength(Syscalls); i++)
-			if (!_strcmp(name, Syscalls[i].Name)) return Syscalls[i].Current;
+			if (!strcmp(name, Syscalls[i].Name)) return Syscalls[i].Current;
 		return nullptr;
 	}
 
@@ -714,7 +714,7 @@ namespace Core { namespace IO
 		int i = -1;
 		if (name)
 			for (i = 0; i < __arrayStaticLength(Syscalls)-1; i++)
-				if (!_strcmp(name, Syscalls[i].Name)) break;
+				if (!strcmp(name, Syscalls[i].Name)) break;
 		for (i++; i < __arrayStaticLength(Syscalls); i++)
 			if (Syscalls[i].Current) return Syscalls[i].Name;
 		return 0;
@@ -2544,14 +2544,18 @@ shmpage_out:
 
 	RC WinVSystem::Open(const char *name, VFile *id, OPEN flags, OPEN *outFlags)
 	{
+		// 0x87f7f is a mask of SQLITE_OPEN_ flags that are valid to be passed down into the VFS layer.  Some SQLITE_OPEN_ flags (for example,
+		// SQLITE_OPEN_FULLMUTEX or SQLITE_OPEN_SHAREDCACHE) are blocked before reaching the VFS.
+		flags = (OPEN)((uint)flags & 0x87f7f);
+
 		RC rc = RC::OK;
-		int type = flags & 0xFFFFFF00;  // Type of file to open
-		int isExclusive = (flags & OPEN::EXCLUSIVE);
-		int isDelete = (flags & OPEN::DELETEONCLOSE);
-		int isCreate = (flags & OPEN::CREATE);
-		int isReadonly = (flags & OPEN::READONLY);
-		int isReadWrite = (flags & OPEN::OREADWRITE);
-		int isOpenJournal = (isCreate && (type == OPEN::MASTER_JOURNAL || type == OPEN::MAIN_JOURNAL || type == OPEN::WAL));
+		OPEN type = (OPEN)(flags & 0xFFFFFF00);  // Type of file to open
+		bool isExclusive = (flags & OPEN::EXCLUSIVE);
+		bool isDelete = (flags & OPEN::DELETEONCLOSE);
+		bool isCreate = (flags & OPEN::CREATE);
+		bool isReadonly = (flags & OPEN::READONLY);
+		bool isReadWrite = (flags & OPEN::OREADWRITE);
+		bool isOpenJournal = (isCreate && (type == OPEN::MASTER_JOURNAL || type == OPEN::MAIN_JOURNAL || type == OPEN::WAL));
 
 		// Check the following statements are true: 
 		//
@@ -2624,9 +2628,9 @@ shmpage_out:
 		// SQLITE_OPEN_EXCLUSIVE is used to make sure that a new file is created. SQLite doesn't use it to indicate "exclusive access"
 		// as it is usually understood.
 		DWORD dwCreationDisposition;
-		if( isExclusive ) // Creates a new file, only if it does not already exist. If the file exists, it fails.
+		if (isExclusive) // Creates a new file, only if it does not already exist. If the file exists, it fails.
 			dwCreationDisposition = CREATE_NEW;
-		else if( isCreate ) // Open existing file, or create if it doesn't exist
+		else if (isCreate) // Open existing file, or create if it doesn't exist
 			dwCreationDisposition = OPEN_ALWAYS;
 		else // Opens a file, only if it exists.
 			dwCreationDisposition = OPEN_EXISTING;
@@ -2703,6 +2707,7 @@ shmpage_out:
 			else
 #endif
 				SysEx::Free(converted);
+			file->Opened = true;
 			file->Vfs = this;
 			file->H = h;
 			//if (sqlite3_uri_boolean(name, "psow", POWERSAFE_OVERWRITE))
@@ -2815,7 +2820,7 @@ shmpage_out:
 			if (rc)
 			{
 				// For an SQLITE_ACCESS_EXISTS query, treat a zero-length file as if it does not exist.
-				if (flags == ACCESS::EXISTS && sAttrData.nFileSizeHigh == 0  && sAttrData.nFileSizeLow == 0)
+				if (flags == ACCESS_EXISTS && sAttrData.nFileSizeHigh == 0  && sAttrData.nFileSizeLow == 0)
 					attr = INVALID_FILE_ATTRIBUTES;
 				else
 					attr = sAttrData.dwFileAttributes;
@@ -2840,11 +2845,11 @@ shmpage_out:
 		SysEx::Free(converted);
 		switch (flags)
 		{
-		case ACCESS::READ:
-		case ACCESS::EXISTS:
+		case ACCESS_READ:
+		case ACCESS_EXISTS:
 			rc = attr != INVALID_FILE_ATTRIBUTES;
 			break;
-		case ACCESS::READWRITE:
+		case ACCESS_READWRITE:
 			rc = attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY) == 0;
 			break;
 		default:
@@ -3132,7 +3137,7 @@ shmpage_out:
 	{
 		_winVfs.SizeOsFile = sizeof(WinVFile);
 		_winVfs.MaxPathname = 260,
-		_winVfs.Name = "win32";
+			_winVfs.Name = "win32";
 		// Double-check that the aSyscall[] array has been constructed correctly.  See ticket [bb3a86e890c8e96ab]
 		_assert(__arrayStaticLength(Syscalls) == 74);
 #ifndef OMIT_WAL
