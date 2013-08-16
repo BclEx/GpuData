@@ -10,6 +10,12 @@
     <Filter Include="Core\Text">
       <UniqueIdentifier>{e0e98f95-beb7-4d3c-9b8c-dc369d1a0fb3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core+Btree">
+      <UniqueIdentifier>{0e2ead29-1505-45d5-b52b-cbd40db9701d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core+Pager">
+      <UniqueIdentifier>{b2f44f1d-eb5c-4017-bf96-b1e12043dd78}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\GpuData\Core\00.Bitvec.cu">
@@ -41,6 +47,21 @@
     </CudaCompile>
     <CudaCompile Include="..\GpuData\Core\Text\00.StringBuilder.cu">
       <Filter>Core\Text</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core+Pager\Pager.cu">
+      <Filter>Core+Pager</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core+Pager\PCache.cu">
+      <Filter>Core+Pager</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core+Pager\PCache1.cu">
+      <Filter>Core+Pager</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core+Pager\Wal.cu">
+      <Filter>Core+Pager</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData\Core+Btree\Btree.cu">
+      <Filter>Core+Btree</Filter>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
@@ -80,6 +101,30 @@
     </ClInclude>
     <ClInclude Include="..\GpuData\Core\Text\00.StringBuilder.cu.h">
       <Filter>Core\Text</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Pager\Core+Pager.cu.h">
+      <Filter>Core+Pager</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Pager\Pager.cu.h">
+      <Filter>Core+Pager</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Pager\PCache.cu.h">
+      <Filter>Core+Pager</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Pager\Wal.cu.h">
+      <Filter>Core+Pager</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\Btree.cu.h">
+      <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\BtreeInt.cu.h">
+      <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\Context.cu.h">
+      <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData\Core+Btree\Core+Btree.cu.h">
+      <Filter>Core+Btree</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

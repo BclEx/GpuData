@@ -7,7 +7,7 @@ namespace Core
 	bool OSTrace;
 	bool IOTrace;
 
-	RC SysEx::Initialize()
+	__device__ RC SysEx::Initialize()
 	{
 		// mutex
 		RC rc = RC::OK; // = 3MutexEx::Initialize();
@@ -21,7 +21,7 @@ namespace Core
 		return RC::OK;
 	}
 
-	void SysEx::Shutdown()
+	__device__ void SysEx::Shutdown()
 	{
 		VSystem::Shutdown();
 		PCache::Shutdown();
@@ -29,7 +29,7 @@ namespace Core
 		//MutexEx::Shutdown();
 	}
 
-	static uint8 randomByte()
+	__device__ static uint8 randomByte()
 	{
 		return 1;
 		//	unsigned char t;
@@ -60,10 +60,10 @@ namespace Core
 		//	return wsdPrng.s[t];
 	}
 
-	void SysEx::PutRandom(int length, void *buffer)
+	__device__ void SysEx::PutRandom(int length, void *buffer)
 	{
 		unsigned char *b = (unsigned char *)buffer;
-		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_PRNG);
+		MutexEx mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_PRNG);
 		MutexEx::Enter(mutex);
 		while (length--)
 			*(b++) = randomByte();

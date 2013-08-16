@@ -89,12 +89,12 @@ namespace Core
 
 #pragma endregion
 
-	static struct PCacheGlobal _pcache1;
-	static bool _config_coreMutex = false;
+	__device__ static struct PCacheGlobal _pcache1;
+	__device__ static bool _config_coreMutex = false;
 
 #pragma region Page Allocation
 
-	void BufferSetup(void *buffer, int size, int n)
+	__device__ void BufferSetup(void *buffer, int size, int n)
 	{
 		if (_pcache1.IsInit)
 		{
@@ -116,10 +116,10 @@ namespace Core
 		}
 	}
 
-	void *Alloc(int bytes)
+	__device__ void *Alloc(int bytes)
 	{
 		_assert(MutexEx::NotHeld(_pcache1.Group.Mutex));
-		StatusEx::StatusSet(StatusEx::STATUS::PAGECACHE_SIZE, bytes);
+		StatusEx::StatusSet(StatusEx::STATUS_PAGECACHE_SIZE, bytes);
 		void *p = nullptr;
 		if (bytes <= _pcache1.SizeSlot)
 		{
@@ -131,7 +131,7 @@ namespace Core
 				_pcache1.FreeSlots--;
 				_pcache1.UnderPressure = (_pcache1.FreeSlots < _pcache1.Reserves);
 				_assert(_pcache1.FreeSlots >= 0);
-				StatusEx::StatusAdd(StatusEx::STATUS::PAGECACHE_USED, 1);
+				StatusEx::StatusAdd(StatusEx::STATUS_PAGECACHE_USED, 1);
 			}
 			MutexEx::Leave(_pcache1.Mutex);
 		}
@@ -144,16 +144,16 @@ namespace Core
 			{
 				int size = SysEx::AllocSize(p);
 				MutexEx::Enter(_pcache1.Mutex);
-				StatusEx::StatusAdd(StatusEx::STATUS::PAGECACHE_OVERFLOW, size);
+				StatusEx::StatusAdd(StatusEx::STATUS_PAGECACHE_OVERFLOW, size);
 				MutexEx::Leave(_pcache1.Mutex);
 			}
 #endif
-			SysEx::MemdebugSetType(p, SysEx::MEMTYPE::PCACHE);
+			SysEx::MemdebugSetType(p, SysEx::MEMTYPE_PCACHE);
 		}
 		return p;
 	}
 
-	int Free(void *p)
+	__device__ int Free(void *p)
 	{
 		int freed = 0;
 		if (p == nullptr)
@@ -161,7 +161,7 @@ namespace Core
 		if (p >= _pcache1.Start && p < _pcache1.End)
 		{
 			MutexEx::Enter(_pcache1.Mutex);
-			StatusEx::StatusAdd(StatusEx::STATUS::PAGECACHE_USED, -1);
+			StatusEx::StatusAdd(StatusEx::STATUS_PAGECACHE_USED, -1);
 			PgFreeslot *slot = (PgFreeslot *)p;
 			slot->Next = _pcache1.Free;
 			_pcache1.Free = slot;
@@ -172,12 +172,12 @@ namespace Core
 		}
 		else
 		{
-			_assert(SysEx::MemdebugHasType(p, SysEx::MEMTYPE::PCACHE));
-			SysEx::MemdebugSetType(p, SysEx::MEMTYPE::HEAP);
+			_assert(SysEx::MemdebugHasType(p, SysEx::MEMTYPE_PCACHE));
+			SysEx::MemdebugSetType(p, SysEx::MEMTYPE_HEAP);
 			freed = SysEx::AllocSize(p);
 #ifndef DISABLE_PAGECACHE_OVERFLOW_STATS
 			MutexEx::Enter(_pcache1.Mutex);
-			StatusEx::StatusAdd(StatusEx::STATUS::PAGECACHE_OVERFLOW, -freed);
+			StatusEx::StatusAdd(StatusEx::STATUS_PAGECACHE_OVERFLOW, -freed);
 			MutexEx::Leave(_pcache1.Mutex);
 #endif
 			SysEx::Free(p);
@@ -186,19 +186,19 @@ namespace Core
 	}
 
 #ifdef ENABLE_MEMORY_MANAGEMENT
-	static int MemSize(void *p)
+	__device__ static int MemSize(void *p)
 	{
 		if (p >= _pcache1.Start && p < _pcache1.End)
 			return _pcache1.SizeSlot;
-		_assert(SysEx::MemdebugHasType(p, SysEx::MEMTYPE::PCACHE));
-		SysEx::MemdebugSetType(p, SysEx::MEMTYPE::HEAP);
+		_assert(SysEx::MemdebugHasType(p, SysEx::MEMTYPE_PCACHE));
+		SysEx::MemdebugSetType(p, SysEx::MEMTYPE_HEAP);
 		int size = SysEx::AllocSize(p);
-		SysEx::MemdebugSetType(p, SysEx::MEMTYPE::PCACHE);
+		SysEx::MemdebugSetType(p, SysEx::MEMTYPE_PCACHE);
 		return size;
 	}
 #endif
 
-	static PgHdr1 *AllocPage(PCache1 *cache)
+	__device__ static PgHdr1 *AllocPage(PCache1 *cache)
 	{
 		// The group mutex must be released before pcache1Alloc() is called. This is because it may call sqlite3_release_memory(), which assumes that this mutex is not held.
 		_assert(MutexEx::Held(cache->Group->Mutex));
@@ -230,7 +230,7 @@ namespace Core
 		return nullptr;
 	}
 
-	static void FreePage(PgHdr1 *p)
+	__device__ static void FreePage(PgHdr1 *p)
 	{
 		if (SysEx_ALWAYS(p))
 		{
@@ -254,7 +254,7 @@ namespace Core
 
 #pragma region General
 
-	static int ResizeHash(PCache1 *p)
+	__device__ static int ResizeHash(PCache1 *p)
 	{
 		_assert(MutexEx::Held(p->Group->Mutex));
 		uint newLength = __arrayLength(p->Hash) * 2;
@@ -285,7 +285,7 @@ namespace Core
 		return (p->Hash ? RC::OK : RC::NOMEM);
 	}
 
-	static void PinPage(PgHdr1 *page)
+	__device__ static void PinPage(PgHdr1 *page)
 	{
 		if (page == nullptr)
 			return;
@@ -308,7 +308,7 @@ namespace Core
 		}
 	}
 
-	static void RemoveFromHash(PgHdr1 *page)
+	__device__ static void RemoveFromHash(PgHdr1 *page)
 	{
 		PCache1 *cache = page->Cache;
 		_assert(MutexEx::Held(cache->Group->Mutex));
@@ -319,7 +319,7 @@ namespace Core
 		cache->Pages--;
 	}
 
-	static void EnforceMaxPage(PGroup *group)
+	__device__ static void EnforceMaxPage(PGroup *group)
 	{
 		_assert(MutexEx::Held(group->Mutex));
 		while (group->CurrentPages > group->MaxPages && group->LruTail)
@@ -332,7 +332,7 @@ namespace Core
 		}
 	}
 
-	static void TruncateUnsafe(PCache1 *p, Pid limit)
+	__device__ static void TruncateUnsafe(PCache1 *p, Pid limit)
 	{
 		ASSERTONLY(uint pages = 0;)
 			_assert(MutexEx::Held(p->Group->Mutex));
@@ -363,29 +363,29 @@ namespace Core
 
 #pragma region Interface
 
-	IPCache *newPCache1() { return (IPCache *)new PCache1(); }
+	__device__ IPCache *newPCache1() { return (IPCache *)new PCache1(); }
 
-	RC PCache1::Init()
+	__device__ RC PCache1::Init()
 	{
 		_assert(!_pcache1.IsInit);
 		_memset(&_pcache1, 0, sizeof(_pcache1));
 		if (_config_coreMutex)
 		{
-			_pcache1.Group.Mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_LRU);
-			_pcache1.Mutex = MutexEx::Alloc(MutexEx::MUTEX::STATIC_PMEM);
+			_pcache1.Group.Mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_LRU);
+			_pcache1.Mutex = MutexEx::Alloc(MutexEx::MUTEX_STATIC_PMEM);
 		}
 		_pcache1.Group.MaxPinned = 10;
 		_pcache1.IsInit = true;
 		return RC::OK;
 	}
 
-	void PCache1::Shutdown()
+	__device__ void PCache1::Shutdown()
 	{
 		_assert(_pcache1.IsInit);
 		_memset(&_pcache1, 0, sizeof(_pcache1));
 	}
 
-	IPCache *PCache1::Create(int sizePage, int sizeExtra, bool purgeable)
+	__device__ IPCache *PCache1::Create(int sizePage, int sizeExtra, bool purgeable)
 	{
 		// The seperateCache variable is true if each PCache has its own private PGroup.  In other words, separateCache is true for mode (1) where no
 		// mutexing is required.
@@ -428,7 +428,7 @@ namespace Core
 		return (IPCache *)cache;
 	}
 
-	void PCache1::Cachesize(uint max)
+	__device__ void PCache1::Cachesize(uint max)
 	{
 		if (Purgeable)
 		{
@@ -443,7 +443,7 @@ namespace Core
 		}
 	}
 
-	void PCache1::Shrink()
+	__device__ void PCache1::Shrink()
 	{
 		if (Purgeable)
 		{
@@ -457,7 +457,7 @@ namespace Core
 		}
 	}
 
-	int PCache1::get_Pages()
+	__device__ int PCache1::get_Pages()
 	{
 		MutexEx::Enter(Group->Mutex);
 		int pages = Pages;
@@ -465,7 +465,7 @@ namespace Core
 		return pages;
 	}
 
-	ICachePage *PCache1::Fetch(Pid id, bool createFlag)
+	__device__ ICachePage *PCache1::Fetch(Pid id, bool createFlag)
 	{
 		_assert(Purgeable || !createFlag);
 		_assert(Purgeable || Min == 0);
@@ -555,7 +555,7 @@ fetch_out:
 		return &page->Page;
 	}
 
-	void PCache1::Unpin(ICachePage *pg, bool reuseUnlikely)
+	__device__ void PCache1::Unpin(ICachePage *pg, bool reuseUnlikely)
 	{
 		PgHdr1 *page = (PgHdr1 *)pg;
 		PGroup *group = Group;
@@ -588,7 +588,7 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Rekey(ICachePage *pg, Pid old, Pid new_)
+	__device__ void PCache1::Rekey(ICachePage *pg, Pid old, Pid new_)
 	{
 		PgHdr1 *page = (PgHdr1 *)pg;
 		_assert(page->ID == old);
@@ -608,7 +608,7 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Truncate(Pid limit)
+	__device__ void PCache1::Truncate(Pid limit)
 	{
 		MutexEx::Enter(Group->Mutex);
 		if (limit <= MaxID)
@@ -619,7 +619,7 @@ fetch_out:
 		MutexEx::Leave(Group->Mutex);
 	}
 
-	void PCache1::Destroy(IPCache *p)
+	__device__ void PCache1::Destroy(IPCache *p)
 	{
 		PCache1 *cache = (PCache1 *)p;
 		PGroup *group = cache->Group;
@@ -638,7 +638,7 @@ fetch_out:
 	}
 
 #ifdef ENABLE_MEMORY_MANAGEMENT
-	int PCache::ReleaseMemory(int required)
+	__device__ int PCache::ReleaseMemory(int required)
 	{
 		_assert(MutexEx::NotHeld(_pcache1.Group.Mutex));
 		_assert(MutexEx::NotHeld(_pcache1.Mutex));

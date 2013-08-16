@@ -6,16 +6,16 @@ namespace Core
 #pragma region Linked List
 
 #if EXPENSIVE_ASSERT
-	static bool CheckSynced(PCache *cache)
+	__device__ static bool CheckSynced(PCache *cache)
 	{
 		PgHdr *p;
 		for (p = cache->DirtyTail; p != cache->Synced; p = p->DirtyPrev)
-			_assert(p->Refs || (p->Flags & PgHdr::PGHDR::NEED_SYNC));
-		return (p == nullptr || p->Refs || (p->Flags & PgHdr::PGHDR::NEED_SYNC) == 0);
+			_assert(p->Refs || (p->Flags & PgHdr::PGHDR_NEED_SYNC));
+		return (p == nullptr || p->Refs || (p->Flags & PgHdr::PGHDR_NEED_SYNC) == 0);
 	}
 #endif
 
-	static void RemoveFromDirtyList(PgHdr *page)
+	__device__ static void RemoveFromDirtyList(PgHdr *page)
 	{
 		PCache *p = page->Cache;
 		_assert(page->DirtyNext || page == p->DirtyTail);
@@ -24,7 +24,7 @@ namespace Core
 		if (p->Synced == page)
 		{
 			PgHdr *synced = page->DirtyPrev;
-			while (synced && (synced->Flags & PgHdr::PGHDR::NEED_SYNC))
+			while (synced && (synced->Flags & PgHdr::PGHDR_NEED_SYNC))
 				synced = synced->DirtyPrev;
 			p->Synced = synced;
 		}
@@ -49,7 +49,7 @@ namespace Core
 #endif
 	}
 
-	static void AddToDirtyList(PgHdr *page)
+	__device__ static void AddToDirtyList(PgHdr *page)
 	{
 		PCache *p = page->Cache;
 		_assert(page->DirtyNext == nullptr && page->DirtyPrev == nullptr && p->Dirty != page);
@@ -62,14 +62,14 @@ namespace Core
 		p->Dirty = page;
 		if (!p->DirtyTail)
 			p->DirtyTail = page;
-		if (!p->Synced && (page->Flags & PgHdr::PGHDR::NEED_SYNC) == 0)
+		if (!p->Synced && (page->Flags & PgHdr::PGHDR_NEED_SYNC) == 0)
 			p->Synced = page;
 #if EXPENSIVE_ASSERT
 		_assert(CheckSynced(p));
 #endif
 	}
 
-	static void Unpin(PgHdr *p)
+	__device__ static void Unpin(PgHdr *p)
 	{
 		PCache *cache = p->Cache;
 		if (cache->Purgeable)
@@ -84,25 +84,25 @@ namespace Core
 
 #pragma region Interface
 
-	static IPCache *_pcache;
-	extern IPCache *newPCache1();
+	__device__ static IPCache *_pcache;
+	__device__ extern IPCache *newPCache1();
 
-	RC PCache::Initialize() 
+	__device__ RC PCache::Initialize() 
 	{ 
 		if (_pcache == nullptr)
 			_pcache = newPCache1();
 		return _pcache->Init(); 
 	}
-	void PCache::Shutdown()
+	__device__ void PCache::Shutdown()
 	{
 		_pcache->Shutdown(); 
 	}
-	int PCache::SizeOf()
+	__device__ int PCache::SizeOf()
 	{
 		return sizeof(PCache);
 	}
 
-	void PCache::Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p)
+	__device__ void PCache::Open(int sizePage, int sizeExtra, bool purgeable, RC (*stress)(void *, PgHdr *), void *stressArg, PCache *p)
 	{
 		_memset(p, 0, sizeof(PCache));
 		p->SizePage = sizePage;
@@ -113,7 +113,7 @@ namespace Core
 		p->SizeCache = 100;
 	}
 
-	void PCache::SetPageSize(int sizePage)
+	__device__ void PCache::SetPageSize(int sizePage)
 	{
 		_assert(Refs == 0 && Dirty == nullptr);
 		if (Cache)
@@ -125,14 +125,14 @@ namespace Core
 		SizePage = sizePage;
 	}
 
-	uint PCache::get_CacheSize() // NumberOfCachePages
+	__device__ uint PCache::get_CacheSize() // NumberOfCachePages
 	{
 		if (SizeCache >= 0)
 			return (uint)SizeCache;
 		return (uint)((-1024 * (int64)SizeCache) / (SizePage + SizeExtra));
 	}
 
-	RC PCache::Fetch(Pid id, bool createFlag, PgHdr **pageOut)
+	__device__ RC PCache::Fetch(Pid id, bool createFlag, PgHdr **pageOut)
 	{
 		_assert(id > 0);
 		// If the pluggable cache (sqlite3_pcache*) has not been allocated, allocate it now.
@@ -156,7 +156,7 @@ namespace Core
 			CheckSynced(this);
 #endif
 			PgHdr *pg;
-			for (pg = Synced; pg && (pg->Refs || (pg->Flags & PgHdr::PGHDR::NEED_SYNC)); pg = pg->DirtyPrev) ;
+			for (pg = Synced; pg && (pg->Refs || (pg->Flags & PgHdr::PGHDR_NEED_SYNC)); pg = pg->DirtyPrev) ;
 			Synced = pg;
 			if (!pg)
 				for (pg = DirtyTail; pg && pg->Refs; pg = pg->DirtyPrev) ;
@@ -199,7 +199,7 @@ namespace Core
 		return (pgHdr == nullptr && create ? RC::NOMEM : RC::OK);
 	}
 
-	void PCache::Release(PgHdr *p)
+	__device__ void PCache::Release(PgHdr *p)
 	{
 		_assert(p->Refs > 0);
 		p->Refs--;
@@ -207,7 +207,7 @@ namespace Core
 		{
 			PCache *cache = p->Cache;
 			cache->Refs--;
-			if ((p->Flags & PgHdr::PGHDR::DIRTY) == 0)
+			if ((p->Flags & PgHdr::PGHDR_DIRTY) == 0)
 				Unpin(p);
 			else
 			{
@@ -218,16 +218,16 @@ namespace Core
 		}
 	}
 
-	void PCache::Ref(PgHdr *p)
+	__device__ void PCache::Ref(PgHdr *p)
 	{
 		_assert(p->Refs > 0);
 		p->Refs++;
 	}
 
-	void PCache::Drop(PgHdr *p)
+	__device__ void PCache::Drop(PgHdr *p)
 	{
 		_assert(p->Refs == 1);
-		if (p->Flags & PgHdr::PGHDR::DIRTY)
+		if (p->Flags & PgHdr::PGHDR_DIRTY)
 			RemoveFromDirtyList(p);
 		PCache *cache = p->Cache;
 		cache->Refs--;
@@ -236,57 +236,57 @@ namespace Core
 		cache->Cache->Unpin(p->Page, true);
 	}
 
-	void PCache::MakeDirty(PgHdr *p)
+	__device__ void PCache::MakeDirty(PgHdr *p)
 	{
-		p->Flags &= ~PgHdr::PGHDR::DONT_WRITE;
+		p->Flags &= ~PgHdr::PGHDR_DONT_WRITE;
 		_assert(p->Refs > 0);
-		if ((p->Flags & PgHdr::PGHDR::DIRTY) == 0)
+		if ((p->Flags & PgHdr::PGHDR_DIRTY) == 0)
 		{
-			p->Flags |= PgHdr::PGHDR::DIRTY;
+			p->Flags |= PgHdr::PGHDR_DIRTY;
 			AddToDirtyList(p);
 		}
 	}
 
-	void PCache::MakeClean(PgHdr *p)
+	__device__ void PCache::MakeClean(PgHdr *p)
 	{
-		if ((p->Flags & PgHdr::PGHDR::DIRTY))
+		if ((p->Flags & PgHdr::PGHDR_DIRTY))
 		{
 			RemoveFromDirtyList(p);
-			p->Flags &= ~(PgHdr::PGHDR::DIRTY | PgHdr::PGHDR::NEED_SYNC);
+			p->Flags &= ~(PgHdr::PGHDR_DIRTY | PgHdr::PGHDR_NEED_SYNC);
 			if (p->Refs == 0)
 				Unpin(p);
 		}
 	}
 
-	void PCache::CleanAll()
+	__device__ void PCache::CleanAll()
 	{
 		PgHdr *p;
 		while ((p = Dirty) != nullptr)
 			MakeClean(p);
 	}
 
-	void PCache::ClearSyncFlags()
+	__device__ void PCache::ClearSyncFlags()
 	{
 		for (PgHdr *p = Dirty; p; p = p->DirtyNext)
-			p->Flags &= ~PgHdr::PGHDR::NEED_SYNC;
+			p->Flags &= ~PgHdr::PGHDR_NEED_SYNC;
 		Synced = DirtyTail;
 	}
 
-	void PCache::Move(PgHdr *p, Pid newID)
+	__device__ void PCache::Move(PgHdr *p, Pid newID)
 	{
 		PCache *cache = p->Cache;
 		_assert(p->Refs > 0);
 		_assert(newID > 0);
 		cache->Cache->Rekey(p->Page, p->ID, newID);
 		p->ID = newID;
-		if ((p->Flags & PgHdr::PGHDR::DIRTY) && (p->Flags & PgHdr::PGHDR::NEED_SYNC))
+		if ((p->Flags & PgHdr::PGHDR_DIRTY) && (p->Flags & PgHdr::PGHDR_NEED_SYNC))
 		{
 			RemoveFromDirtyList(p);
 			AddToDirtyList(p);
 		}
 	}
 
-	void PCache::Truncate(Pid id)
+	__device__ void PCache::Truncate(Pid id)
 	{
 		if (Cache)
 		{
@@ -299,7 +299,7 @@ namespace Core
 				_assert(p->ID > 0);
 				if (SysEx_ALWAYS(p->ID > id))
 				{
-					_assert(p->Flags & PgHdr::PGHDR::DIRTY);
+					_assert(p->Flags & PgHdr::PGHDR_DIRTY);
 					MakeClean(p);
 				}
 			}
@@ -312,18 +312,18 @@ namespace Core
 		}
 	}
 
-	void PCache::Close()
+	__device__ void PCache::Close()
 	{
 		if (Cache)
 			_pcache->Destroy(Cache);
 	}
 
-	void PCache::Clear()
+	__device__ void PCache::Clear()
 	{
 		Truncate(0); 
 	}
 
-	static PgHdr *MergeDirtyList(PgHdr *a, PgHdr *b)
+	__device__ static PgHdr *MergeDirtyList(PgHdr *a, PgHdr *b)
 	{
 		PgHdr result;
 		PgHdr *tail = &result;
@@ -352,8 +352,7 @@ namespace Core
 	}
 
 #define N_SORT_BUCKET 32
-
-	static PgHdr *SortDirtyList(PgHdr *in)
+	__device__ static PgHdr *SortDirtyList(PgHdr *in)
 	{
 		PgHdr *a[N_SORT_BUCKET], *p;
 		_memset(a, 0, sizeof(a));
@@ -386,43 +385,43 @@ namespace Core
 		return p;
 	}
 
-	PgHdr *PCache::DirtyList()
+	__device__ PgHdr *PCache::DirtyList()
 	{
 		for (PgHdr *p = Dirty; p; p = p->DirtyNext)
 			p->Dirty = p->DirtyNext;
 		return SortDirtyList(Dirty);
 	}
 
-	int PCache::get_Refs()
+	__device__ int PCache::get_Refs()
 	{
 		return Refs;
 	}
 
-	int PCache::get_PageRefs(PgHdr *p)
+	__device__ int PCache::get_PageRefs(PgHdr *p)
 	{
 		return p->Refs;
 	}
 
-	int PCache::get_Pages()
+	__device__ int PCache::get_Pages()
 	{
 		return (Cache ? Cache->get_Pages() : 0);
 	}
 
-	void PCache::set_CacheSize(int maxPage)
+	__device__ void PCache::set_CacheSize(int maxPage)
 	{
 		SizeCache = maxPage;
 		if (Cache)
 			Cache->Cachesize(get_CacheSize());
 	}
 
-	void PCache::Shrink()
+	__device__ void PCache::Shrink()
 	{
 		if (Cache)
 			Cache->Shrink();
 	}
 
 #if defined(CHECK_PAGES) || defined(_DEBUG)
-	void PCache::IterateDirty(void (*iter)(PgHdr *))
+	__device__ void PCache::IterateDirty(void (*iter)(PgHdr *))
 	{
 		for (PgHdr *dirty = Dirty; dirty; dirty = dirty->DirtyNext)
 			iter(dirty);
@@ -433,21 +432,21 @@ namespace Core
 
 #pragma region FromPCache1
 
-	extern void BufferSetup(void *buffer, int size, int n);
-	extern void *Alloc(int bytes);
-	extern int Free(void *p);
+	__device__ extern void BufferSetup(void *buffer, int size, int n);
+	__device__ extern void *Alloc(int bytes);
+	__device__ extern int Free(void *p);
 
-	void PCache::PageBufferSetup(void *buffer, int size, int n)
+	__device__ void PCache::PageBufferSetup(void *buffer, int size, int n)
 	{
 		BufferSetup(buffer, size, n);
 	}
 
-	void *PCache::PageAlloc(int size)
+	__device__ void *PCache::PageAlloc(int size)
 	{
 		return Alloc(size);
 	}
 
-	void PCache::PageFree(void *p)
+	__device__ void PCache::PageFree(void *p)
 	{
 		Free(p);
 	}

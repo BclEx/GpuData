@@ -167,8 +167,8 @@ namespace Core { namespace IO
 	public:
 		enum WINFILE : uint8
 		{
-			PERSIST_WAL = 0x04,  // Persistent WAL mode
-			PSOW = 0x10,		// SQLITE_IOCAP_POWERSAFE_OVERWRITE
+			WINFILE_PERSIST_WAL = 0x04,  // Persistent WAL mode
+			WINFILE_PSOW = 0x10,		// SQLITE_IOCAP_POWERSAFE_OVERWRITE
 		};
 
 		VSystem *Vfs;			// The VFS used to open this file
@@ -271,7 +271,8 @@ namespace Core { namespace IO
 #define SYSCALL syscall_ptr
 #endif
 
-	static struct win_syscall {
+	static struct win_syscall
+	{
 		const char *Name;            // Name of the system call
 		syscall_ptr Current; // Current value of the system call
 		syscall_ptr Default; // Default value
@@ -1084,7 +1085,7 @@ namespace Core { namespace IO
 		else if (type == WIN32_TEMP_DIRECTORY_TYPE)
 			directory = &temp_directory;
 		_assert(!directory || type == WIN32_DATA_DIRECTORY_TYPE || type == WIN32_TEMP_DIRECTORY_TYPE);
-		_assert(!directory || SysEx::MemdebugHasType(*directory, SysEx::MEMTYPE::HEAP));
+		_assert(!directory || SysEx::MemdebugHasType(*directory, SysEx::MEMTYPE_HEAP));
 		if (directory)
 		{
 			char *valueUtf8 = nullptr;
@@ -1694,12 +1695,12 @@ namespace Core { namespace IO
 	RC WinVFile::Sync(int flags)
 	{
 		// Check that one of SQLITE_SYNC_NORMAL or FULL was passed
-		_assert((flags&0x0F) == SYNC::NORMAL || (flags&0x0F) == SYNC::FULL);
+		_assert((flags&0x0F) == SYNC_NORMAL || (flags&0x0F) == SYNC_FULL);
 		OSTRACE("SYNC %d lock=%d\n", H, Lock_);
 		// Unix cannot, but some systems may return SQLITE_FULL from here. This line is to test that doing so does not cause any problems.
 		SimulateDiskfullError(return RC::FULL);
 #ifdef TEST
-		if ((flags&0x0F) == SYNC::FULL)
+		if ((flags&0x0F) == SYNC_FULL)
 			fullsync_count++;
 		sync_count++;
 #endif
@@ -1801,9 +1802,9 @@ namespace Core { namespace IO
 			return RC::OK;
 
 		// Make sure the locking sequence is correct
-		_assert(Lock_ != LOCK::NO || lock == LOCK::SHARED);
-		_assert(lock != LOCK::PENDING);
-		_assert(lock != LOCK::RESERVED || Lock_ == LOCK::SHARED);
+		_assert(Lock_ != LOCK_NO || lock == LOCK_SHARED);
+		_assert(lock != LOCK_PENDING);
+		_assert(lock != LOCK_RESERVED || Lock_ == LOCK_SHARED);
 
 		// Lock the PENDING_LOCK byte if we need to acquire a PENDING lock or a SHARED lock.  If we are acquiring a SHARED lock, the acquisition of
 		// the PENDING_LOCK byte is temporary.
@@ -1811,7 +1812,7 @@ namespace Core { namespace IO
 		int res = 1; // Result of a Windows lock call
 		bool gotPendingLock = false; // True if we acquired a PENDING lock this time
 		DWORD lastErrno = NO_ERROR;
-		if (Lock_ == LOCK::NO || (lock == LOCK::EXCLUSIVE && Lock_ == LOCK::RESERVED))
+		if (Lock_ == LOCK_NO || (lock == LOCK_EXCLUSIVE && Lock_ == LOCK_RESERVED))
 		{
 			int cnt = 3;
 			while (cnt-- > 0 && (res = winLockFile(&H, LOCKFILE_FLAGS, PENDING_BYTE, 0, 1, 0)) == 0)
@@ -1827,43 +1828,43 @@ namespace Core { namespace IO
 		}
 
 		// Acquire a SHARED lock
-		if (lock == LOCK::SHARED && res)
+		if (lock == LOCK_SHARED && res)
 		{
-			_assert(Lock_ == LOCK::NO);
+			_assert(Lock_ == LOCK_NO);
 			res = getReadLock(this);
 			if (res)
-				newLock = LOCK::SHARED;
+				newLock = LOCK_SHARED;
 			else
 				lastErrno = osGetLastError();
 		}
 
 		// Acquire a RESERVED lock
-		if (lock == LOCK::RESERVED && res)
+		if (lock == LOCK_RESERVED && res)
 		{
-			_assert(Lock_ == LOCK::SHARED);
+			_assert(Lock_ == LOCK_SHARED);
 			res = winLockFile(&H, LOCKFILE_FLAGS, RESERVED_BYTE, 0, 1, 0);
 			if (res)
-				newLock = LOCK::RESERVED;
+				newLock = LOCK_RESERVED;
 			else
 				lastErrno = osGetLastError();
 		}
 
 		// Acquire a PENDING lock
-		if (lock == LOCK::EXCLUSIVE && res)
+		if (lock == LOCK_EXCLUSIVE && res)
 		{
-			newLock = LOCK::PENDING;
+			newLock = LOCK_PENDING;
 			gotPendingLock = false;
 		}
 
 		// Acquire an EXCLUSIVE lock
-		if (lock == LOCK::EXCLUSIVE && res)
+		if (lock == LOCK_EXCLUSIVE && res)
 		{
-			_assert(Lock_ >= LOCK::SHARED);
+			_assert(Lock_ >= LOCK_SHARED);
 			res = unlockReadLock(this);
 			OSTRACE("unreadlock = %d\n", res);
 			res = winLockFile(&H, LOCKFILE_FLAGS, SHARED_FIRST, 0, SHARED_SIZE, 0);
 			if (res)
-				newLock = LOCK::EXCLUSIVE;
+				newLock = LOCK_EXCLUSIVE;
 			else
 			{
 				lastErrno = osGetLastError();
@@ -1873,7 +1874,7 @@ namespace Core { namespace IO
 		}
 
 		// If we are holding a PENDING lock that ought to be released, then release it now.
-		if (gotPendingLock && lock == LOCK::SHARED)
+		if (gotPendingLock && lock == LOCK_SHARED)
 			winUnlockFile(&H, PENDING_BYTE, 0, 1, 0);
 
 		// Update the state of the lock has held in the file descriptor then return the appropriate result code.
@@ -1894,7 +1895,7 @@ namespace Core { namespace IO
 	{
 		SimulateIOError(return RC::IOERR_CHECKRESERVEDLOCK;);
 		int rc;
-		if (Lock_ >= LOCK::RESERVED)
+		if (Lock_ >= LOCK_RESERVED)
 		{
 			rc = 1;
 			OSTRACE("TEST WR-LOCK %d %d (local)\n", H, rc);
@@ -1913,21 +1914,21 @@ namespace Core { namespace IO
 
 	RC WinVFile::Unlock(LOCK lock)
 	{
-		_assert(lock <= LOCK::SHARED);
+		_assert(lock <= LOCK_SHARED);
 		OSTRACE("UNLOCK %d to %d was %d(%d)\n", H, lock, Lock_, SharedLockByte);
 		RC rc = RC::OK;
 		LOCK type = Lock_;
-		if (type >= LOCK::EXCLUSIVE)
+		if (type >= LOCK_EXCLUSIVE)
 		{
 			winUnlockFile(&H, SHARED_FIRST, 0, SHARED_SIZE, 0);
-			if (lock == LOCK::SHARED && !getReadLock(this)) // This should never happen.  We should always be able to reacquire the read lock
+			if (lock == LOCK_SHARED && !getReadLock(this)) // This should never happen.  We should always be able to reacquire the read lock
 				rc = winLogError(RC::IOERR_UNLOCK, osGetLastError(), "winUnlock", Path);
 		}
-		if (type >= LOCK::RESERVED)
+		if (type >= LOCK_RESERVED)
 			winUnlockFile(&H, RESERVED_BYTE, 0, 1, 0);
-		if (lock == LOCK::NO && type >= LOCK::SHARED)
+		if (lock == LOCK_NO && type >= LOCK_SHARED)
 			unlockReadLock(this);
-		if (type >= LOCK::PENDING)
+		if (type >= LOCK_PENDING)
 			winUnlockFile(&H, PENDING_BYTE, 0, 1, 0);
 		Lock_ = lock;
 		return rc;
@@ -1950,16 +1951,16 @@ namespace Core { namespace IO
 		char *tfile;
 		switch (op)
 		{
-		case FCNTL::LOCKSTATE:
+		case FCNTL_LOCKSTATE:
 			*(int*)arg = Lock_;
 			return RC::OK;
-		case FCNTL::LAST_ERRNO:
+		case FCNTL_LAST_ERRNO:
 			*(int*)arg = (int)LastErrno;
 			return RC::OK;
-		case FCNTL::CHUNK_SIZE:
+		case FCNTL_CHUNK_SIZE:
 			SizeChunk = *(int *)arg;
 			return RC::OK;
-		case FCNTL::SIZE_HINT:
+		case FCNTL_SIZE_HINT:
 			if (SizeChunk > 0)
 			{
 				int64 oldSize;
@@ -1977,16 +1978,16 @@ namespace Core { namespace IO
 				return rc;
 			}
 			return RC::OK;
-		case FCNTL::PERSIST_WAL:
-			winModeBit(this, (uint8)WINFILE::PERSIST_WAL, (int*)arg);
+		case FCNTL_PERSIST_WAL:
+			winModeBit(this, (uint8)WINFILE_PERSIST_WAL, (int*)arg);
 			return RC::OK;
-		case FCNTL::POWERSAFE_OVERWRITE:
-			winModeBit(this, (uint8)WINFILE::PSOW, (int*)arg);
+		case FCNTL_POWERSAFE_OVERWRITE:
+			winModeBit(this, (uint8)WINFILE_PSOW, (int*)arg);
 			return RC::OK;
-		case FCNTL::VFSNAME:
+		case FCNTL_VFSNAME:
 			*(char**)arg = "win32";
 			return RC::OK;
-		case FCNTL::WIN32_AV_RETRY:
+		case FCNTL_WIN32_AV_RETRY:
 			a = (int*)arg;
 			if (a[0] > 0)
 				win32IoerrRetry = a[0];
@@ -1997,7 +1998,7 @@ namespace Core { namespace IO
 			else
 				a[1] = win32IoerrRetryDelay;
 			return RC::OK;
-		case FCNTL::TEMPFILENAME:
+		case FCNTL_TEMPFILENAME:
 			tfile = (char *)SysEx::Alloc(Vfs->MaxPathname, true);
 			if (tfile)
 			{
@@ -2016,16 +2017,16 @@ namespace Core { namespace IO
 
 	VFile::IOCAP WinVFile::get_DeviceCharacteristics()
 	{
-		return (VFile::IOCAP)(VFile::IOCAP::UNDELETABLE_WHEN_OPEN | ((CtrlFlags & WINFILE::PSOW) ? VFile::IOCAP::IOCAP_POWERSAFE_OVERWRITE : 0));
+		return (VFile::IOCAP)(VFile::IOCAP_UNDELETABLE_WHEN_OPEN | ((CtrlFlags & WINFILE_PSOW) ? VFile::IOCAP_POWERSAFE_OVERWRITE : 0));
 	}
 
 #ifndef OMIT_WAL
 
 	SYSTEM_INFO winSysInfo;
-	static void winShmEnterMutex() { MutexEx::Enter(Mutex::Alloc(MUTEX::STATIC_MASTER)); }
-	static void winShmLeaveMutex() { MutexEx::Leave(MutexEx::Alloc(MUTEX::STATIC_MASTER)); }
+	static void winShmEnterMutex() { MutexEx::Enter(Mutex::Alloc(MUTEX_STATIC_MASTER)); }
+	static void winShmLeaveMutex() { MutexEx::Leave(MutexEx::Alloc(MUTEX_STATIC_MASTER)); }
 #ifdef _DEBUG
-	static bool winShmMutexHeld() { return MutexEx::Held(MutexEx::Alloc(MUTEX::STATIC_MASTER)); }
+	static bool winShmMutexHeld() { return MutexEx::Held(MutexEx::Alloc(MUTEX_STATIC_MASTER)); }
 #endif
 
 	struct winShmNode
@@ -2079,13 +2080,13 @@ namespace Core { namespace IO
 		_assert(MutexEx::Held(file->Mutex) || pFile->Refs == 0);
 		// Release/Acquire the system-level lock
 		int rc = 0; // Result code form Lock/UnlockFileEx()
-		if (loc == _SHM::UNLCK)
+		if (loc == _SHM_UNLCK)
 			rc = winUnlockFile(&file->File.H, offset, 0, bytes, 0);
 		else
 		{
 			// Initialize the locking parameters
 			DWORD flags = LOCKFILE_FAIL_IMMEDIATELY;
-			if (lock == _SHM::WRLCK) flags |= LOCKFILE_EXCLUSIVE_LOCK;
+			if (lock == _SHM_WRLCK) flags |= LOCKFILE_EXCLUSIVE_LOCK;
 			rc = winLockFile(&file->File.H, flags, offset, 0, bytes, 0);
 		}
 		if (rc)
@@ -2095,7 +2096,7 @@ namespace Core { namespace IO
 			file->LastErrno =  osGetLastError();
 			rc = RC::BUSY;
 		}
-		OSTRACE("SHM-LOCK %d %s %s 0x%08lx\n", file->File.H, rc == RC::OK ? "ok" : "failed", lock == SHM::UNLCK ? "UnlockFileEx" : "LockFileEx", file->LastErrno));
+		OSTRACE("SHM-LOCK %d %s %s 0x%08lx\n", file->File.H, rc == RC::OK ? "ok" : "failed", lock == SHM_UNLCK ? "UnlockFileEx" : "LockFileEx", file->LastErrno));
 		return rc;
 	}
 
@@ -2174,12 +2175,12 @@ namespace Core { namespace IO
 			shmNode->File->H = INVALID_HANDLE_VALUE;
 			shmNode->Next = _winShmNodeList;
 			_winShmNodeList = shmNode;
-			shmNode->Mutex = MutexEx::Alloc(MUTEX::FAST);
-			RC rc = winOpen(file->Vfs, shmNode->Filename, &shmNode->File, OPEN::WAL|OPEN::READWRITE|OPEN::CREATE, 0);
+			shmNode->Mutex = MutexEx::Alloc(MUTEX_FAST);
+			RC rc = winOpen(file->Vfs, shmNode->Filename, &shmNode->File, OPEN_WAL|OPEN_READWRITE|OPEN_CREATE, 0);
 			if (rc != RC::OK)
 				goto shm_open_err;
 			// Check to see if another process is holding the dead-man switch. If not, truncate the file to zero length. 
-			if (winShmSystemLock(shmNode, _SHM::WRLCK, WIN_SHM_DMS, 1) == RC::OK)
+			if (winShmSystemLock(shmNode, _SHM_WRLCK, WIN_SHM_DMS, 1) == RC::OK)
 			{
 				rc = winTruncate(shmNode->File, 0);
 				if (rc != RC::OK)
@@ -2187,8 +2188,8 @@ namespace Core { namespace IO
 			}
 			if (rc == RC::OK)
 			{
-				winShmSystemLock(shmNode, _SHM::UNLCK, WIN_SHM_DMS, 1);
-				rc = winShmSystemLock(shmNode, _SHM::RDLCK, WIN_SHM_DMS, 1);
+				winShmSystemLock(shmNode, _SHM_UNLCK, WIN_SHM_DMS, 1);
+				rc = winShmSystemLock(shmNode, _SHM_RDLCK, WIN_SHM_DMS, 1);
 			}
 			if (rc) goto shm_open_err;
 		}
@@ -2212,7 +2213,7 @@ namespace Core { namespace IO
 
 		// Jump here on any error
 shm_open_err:
-		winShmSystemLock(shmNode, _SHM::UNLCK, WIN_SHM_DMS, 1);
+		winShmSystemLock(shmNode, _SHM_UNLCK, WIN_SHM_DMS, 1);
 		winShmPurge(file->Vfs, 0); // This call frees pShmNode if required
 		SysEx::Free(p);
 		SysEx::Free(newNode);
@@ -2249,9 +2250,9 @@ shm_open_err:
 	{
 		_assert(offset >= 0 && offset+count <= SHM_NLOCK);
 		_assert(count >= 1);
-		_assert(flags == (SHM::LOCK|SHM::SHARED) || flags == (SHM::LOCK|SHM::EXCLUSIVE) ||
-			flags == (SHM::UNLOCK|SHM::SHARED) || flags == (SHM::UNLOCK|SHM::EXCLUSIVE));
-		_assert(count == 1 || (flags & SHM::EXCLUSIVE) != 0);
+		_assert(flags == (SHM_LOCK|SHM_SHARED) || flags == (SHM_LOCK|SHM_EXCLUSIVE) ||
+			flags == (SHM_UNLOCK|SHM_SHARED) || flags == (SHM_UNLOCK|SHM_EXCLUSIVE));
+		_assert(count == 1 || (flags & SHM_EXCLUSIVE) != 0);
 		uint16 mask = (uint16)((1U<<(offset+count)) - (1U<<offset)); // Mask of locks to take or release
 		_assert(count > 1 || mask == (1<<offset));
 		RC rc = RC::OK;
@@ -2259,7 +2260,7 @@ shm_open_err:
 		winShmNode *shmNode = p->ShmNode;
 		MutexEx::Enter(shmNode->Mutex);
 		winShm *x;
-		if (flags & SHM::UNLOCK)
+		if (flags & SHM_UNLOCK)
 		{
 			// See if any siblings hold this same lock
 			u16 allMask = 0; // Mask of locks held by siblings
@@ -2271,7 +2272,7 @@ shm_open_err:
 			}
 			// Unlock the system-level locks
 			if ((mask & allMask) == 0)
-				rc = winShmSystemLock(shmNode, _SHM::UNLCK, offset+WIN_SHM_BASE, count);
+				rc = winShmSystemLock(shmNode, _SHM_UNLCK, offset+WIN_SHM_BASE, count);
 			else
 				rc = RC::OK;
 			// Undo the local locks
@@ -2281,7 +2282,7 @@ shm_open_err:
 				p->SharedMask &= ~mask;
 			} 
 		}
-		else if (flags & SHM::SHARED)
+		else if (flags & SHM_SHARED)
 		{
 			// Find out which shared locks are already held by sibling connections. If any sibling already holds an exclusive lock, go ahead and return SQLITE_BUSY.
 			uint16 allShared = 0; // Union of locks held by connections other than "p"
@@ -2298,7 +2299,7 @@ shm_open_err:
 			if (rc == RC::OK)
 			{
 				if ((allShared & mask) == 0)
-					rc = winShmSystemLock(shmNode, _SHM::RDLCK, offset+WIN_SHM_BASE, count);
+					rc = winShmSystemLock(shmNode, _SHM_RDLCK, offset+WIN_SHM_BASE, count);
 				else
 					rc = RC::OK;
 			}
@@ -2318,7 +2319,7 @@ shm_open_err:
 				// Get the exclusive locks at the system level.  Then if successful also mark the local connection as being locked.
 				if (rc == RC::OK)
 				{
-					rc = winShmSystemLock(shmNode, _SHM::WRLCK, offset+WIN_SHM_BASE, count);
+					rc = winShmSystemLock(shmNode, _SHM_WRLCK, offset+WIN_SHM_BASE, count);
 					if (rc == RC::OK)
 					{
 						_assert((p->SharedMask & mask) == 0);
@@ -2550,12 +2551,12 @@ shmpage_out:
 
 		RC rc = RC::OK;
 		OPEN type = (OPEN)(flags & 0xFFFFFF00);  // Type of file to open
-		bool isExclusive = (flags & OPEN::EXCLUSIVE);
-		bool isDelete = (flags & OPEN::DELETEONCLOSE);
-		bool isCreate = (flags & OPEN::CREATE);
-		bool isReadonly = (flags & OPEN::READONLY);
-		bool isReadWrite = (flags & OPEN::OREADWRITE);
-		bool isOpenJournal = (isCreate && (type == OPEN::MASTER_JOURNAL || type == OPEN::MAIN_JOURNAL || type == OPEN::WAL));
+		bool isExclusive = (flags & OPEN_EXCLUSIVE);
+		bool isDelete = (flags & OPEN_DELETEONCLOSE);
+		bool isCreate = (flags & OPEN_CREATE);
+		bool isReadonly = (flags & OPEN_READONLY);
+		bool isReadWrite = (flags & OPEN_READWRITE);
+		bool isOpenJournal = (isCreate && (type == OPEN_MASTER_JOURNAL || type == OPEN_MAIN_JOURNAL || type == OPEN_WAL));
 
 		// Check the following statements are true: 
 		//
@@ -2569,16 +2570,16 @@ shmpage_out:
 		_assert(!isDelete || isCreate);
 
 		// The main DB, main journal, WAL file and master journal are never automatically deleted. Nor are they ever temporary files.
-		_assert((!isDelete && name) || type != OPEN::MAIN_DB);
-		_assert((!isDelete && name) || type != OPEN::MAIN_JOURNAL);
-		_assert((!isDelete && name) || type != OPEN::MASTER_JOURNAL);
-		_assert((!isDelete && name) || type != OPEN::WAL);
+		_assert((!isDelete && name) || type != OPEN_MAIN_DB);
+		_assert((!isDelete && name) || type != OPEN_MAIN_JOURNAL);
+		_assert((!isDelete && name) || type != OPEN_MASTER_JOURNAL);
+		_assert((!isDelete && name) || type != OPEN_WAL);
 
 		// Assert that the upper layer has set one of the "file-type" flags.
-		_assert(type == OPEN::MAIN_DB || type == OPEN::TEMP_DB ||
-			type == OPEN::MAIN_JOURNAL || type == OPEN::TEMP_JOURNAL ||
-			type == OPEN::SUBJOURNAL || type == OPEN::MASTER_JOURNAL ||
-			type == OPEN::TRANSIENT_DB || type == OPEN::WAL);
+		_assert(type == OPEN_MAIN_DB || type == OPEN_TEMP_DB ||
+			type == OPEN_MAIN_JOURNAL || type == OPEN_TEMP_JOURNAL ||
+			type == OPEN_SUBJOURNAL || type == OPEN_MASTER_JOURNAL ||
+			type == OPEN_TRANSIENT_DB || type == OPEN_WAL);
 
 		WinVFile *file = (WinVFile *)id;
 		_assert(file != nullptr);
@@ -2606,7 +2607,7 @@ shmpage_out:
 
 		// Database filenames are double-zero terminated if they are not URIs with parameters.  Hence, they can always be passed into
 		// sqlite3_uri_parameter().
-		_assert(type != OPEN::MAIN_DB || (flags & OPEN::URI) || utf8Name[strlen(utf8Name)+1]==0);
+		_assert(type != OPEN_MAIN_DB || (flags & OPEN_URI) || utf8Name[strlen(utf8Name)+1]==0);
 
 		// Convert the filename to the system encoding.
 		void *converted = ConvertUtf8Filename(utf8Name); // Filename in OS encoding
@@ -2688,15 +2689,15 @@ shmpage_out:
 				winLogError(RC::CANTOPEN, file->LastErrno, "winOpen", utf8Name);
 				SysEx::Free(converted);
 				if (isReadWrite && !isExclusive)
-					return Open(name, id, (OPEN)((flags|OPEN::READONLY) & ~(OPEN::CREATE|OPEN::OREADWRITE)), outFlags);
+					return Open(name, id, (OPEN)((flags|OPEN_READONLY) & ~(OPEN_CREATE|OPEN_READWRITE)), outFlags);
 				else
 					return SysEx_CANTOPEN_BKPT;
 			}
 
 			if (outFlags)
-				*outFlags = (isReadWrite ? OPEN::OREADWRITE : OPEN::READONLY);
+				*outFlags = (isReadWrite ? OPEN_READWRITE : OPEN_READONLY);
 #if OS_WINCE
-			if (isReadWrite && type == OPEN::MAIN_DB && (rc = winceCreateLock(name, file)) != RC::OK)
+			if (isReadWrite && type == OPEN_MAIN_DB && (rc = winceCreateLock(name, file)) != RC::OK)
 			{
 				osCloseHandle(h);
 				SysEx::Free(converted);
@@ -2711,7 +2712,7 @@ shmpage_out:
 			file->Vfs = this;
 			file->H = h;
 			//if (sqlite3_uri_boolean(name, "psow", POWERSAFE_OVERWRITE))
-			//	file->CtrlFlags |= WinVFile::WINFILE::PSOW;
+			//	file->CtrlFlags |= WinVFile::WINFILE_PSOW;
 			file->LastErrno = NO_ERROR;
 			file->Path = name;
 			OpenCounter(+1);

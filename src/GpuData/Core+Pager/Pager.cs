@@ -3612,8 +3612,8 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 mode == IPager.LOCKINGMODE.EXCLUSIVE);
             Debug.Assert(IPager.LOCKINGMODE.QUERY < 0);
             Debug.Assert(IPager.LOCKINGMODE.NORMAL >= 0 && IPager.LOCKINGMODE.EXCLUSIVE >= 0);
-            Debug.Assert(ExclusiveMode || !Wal.HeapMemory());
-            if (mode >= 0 && !TempFile && !Wal.HeapMemory())
+            Debug.Assert(ExclusiveMode || !Wal.get_HeapMemory());
+            if (mode >= 0 && !TempFile && !Wal.get_HeapMemory())
                 ExclusiveMode = (mode != 0);
             return ExclusiveMode;
         }

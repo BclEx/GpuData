@@ -20,7 +20,8 @@ namespace Core
 		// Should >=0 for apSub element. */
 		// Max iDivisor is max(u32) / BITVEC_NPTR + 1.
 		// For a BITVEC_SZ of 512, this would be 34,359,739.
-		union {
+		union
+		{
 			uint8 Bitmap[BITVEC_NELEM]; // Bitmap representation
 			uint32 Hash[BITVEC_NINT];	// Hash table representation
 			Bitvec *Sub[BITVEC_NPTR];	// Recursive representation

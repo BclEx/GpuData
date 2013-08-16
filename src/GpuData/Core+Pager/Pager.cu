@@ -5,7 +5,7 @@
 namespace Core
 {
 #if _DEBUG
-	bool PagerTrace = true;
+	__device__ bool PagerTrace = true;
 #define PAGERTRACE(X, ...) if (PagerTrace) { printf(X, __VA_ARGS__); }
 #else
 #define PAGERTRACE(X, ...)
@@ -15,7 +15,7 @@ namespace Core
 
 #pragma region Struct
 
-	static const unsigned char _journalMagic[] = { 0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7 };
+	__device__ static const unsigned char _journalMagic[] = { 0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7 };
 
 	// sqliteLimit.h
 #define DEFAULT_PAGE_SIZE 1024
@@ -30,8 +30,8 @@ namespace Core
 #define CODEC2(t, o, p, d, id, x, e) \
 	if (p->Codec == nullptr) { o = (t *)d; } else if ((o = (t *)(p->Codec(p->CodecArg, d, id, x))) == nullptr) { e; }
 #else
-# define CODEC1(p, d, id, x, e)
-# define CODEC2(t, o, p, d, id, x, e) o = (t *)d
+#define CODEC1(p, d, id, x, e)
+#define CODEC2(t, o, p, d, id, x, e) o = (t *)d
 #endif
 
 #define MAX_SECTOR_SIZE 0x10000
@@ -52,15 +52,15 @@ namespace Core
 
 	enum STAT : char
 	{
-		HIT = 0,
-		MISS = 1,
-		WRITE = 2,
+		STAT_HIT = 0,
+		STAT_MISS = 1,
+		STAT_WRITE = 2,
 	};
 
 #ifdef TEST
-	int _readdb_count = 0;    // Number of full pages read from DB
-	int _writedb_count = 0;   // Number of full pages written to DB
-	int _writej_count = 0;    // Number of pages written to journal
+	__device__ int _readdb_count = 0;    // Number of full pages read from DB
+	__device__ int _writedb_count = 0;   // Number of full pages written to DB
+	__device__ int _writej_count = 0;    // Number of pages written to journal
 #define PAGER_INCR(v) v++
 #else
 #define PAGER_INCR(v)
@@ -73,7 +73,7 @@ namespace Core
 #define MAX_PID 2147483647
 
 #ifndef OMIT_WAL
-	static int UseWal(Pager *pager) { return (pager->Wal != nullptr); }
+	__device__ static int UseWal(Pager *pager) { return (pager->Wal != nullptr); }
 #else
 #define UseWal(x) false
 #define pagerRollbackWal(x) RC::OK
@@ -87,25 +87,25 @@ namespace Core
 #pragma region Debug
 #if _DEBUG 
 
-	static int assert_pager_state(Pager *p)
+	__device__ static int assert_pager_state(Pager *p)
 	{
 		// State must be valid.
-		_assert(p->State == PAGER::OPEN ||
-			p->State == PAGER::READER ||
-			p->State == PAGER::WRITER_LOCKED ||
-			p->State == PAGER::WRITER_CACHEMOD ||
-			p->State == PAGER::WRITER_DBMOD ||
-			p->State == PAGER::WRITER_FINISHED ||
-			p->State == PAGER::ERROR);
+		_assert(p->State == Pager::PAGER_OPEN ||
+			p->State == Pager::PAGER_READER ||
+			p->State == Pager::PAGER_WRITER_LOCKED ||
+			p->State == Pager::PAGER_WRITER_CACHEMOD ||
+			p->State == Pager::PAGER_WRITER_DBMOD ||
+			p->State == Pager::PAGER_WRITER_FINISHED ||
+			p->State == Pager::PAGER_ERROR);
 
 		// Regardless of the current state, a temp-file connection always behaves as if it has an exclusive lock on the database file. It never updates
 		// the change-counter field, so the changeCountDone flag is always set.
-		_assert(p->TempFile == 0 || p->Lock == VFile::LOCK::EXCLUSIVE);
+		_assert(p->TempFile == 0 || p->Lock == VFile::LOCK_EXCLUSIVE);
 		_assert(p->TempFile == 0 || p->ChangeCountDone);
 
 		// If the useJournal flag is clear, the journal-mode must be "OFF". And if the journal-mode is "OFF", the journal file must not be open.
-		_assert(p->JournalMode == IPager::JOURNALMODE::OFF || p->UseJournal);
-		_assert(p->JournalMode != IPager::JOURNALMODE::OFF || !p->JournalFile->Opened);
+		_assert(p->JournalMode == IPager::JOURNALMODE_OFF || p->UseJournal);
+		_assert(p->JournalMode != IPager::JOURNALMODE_OFF || !p->JournalFile->Opened);
 
 		// Check that MEMDB implies noSync. And an in-memory journal. Since this means an in-memory pager performs no IO at all, it cannot encounter 
 		// either SQLITE_IOERR or SQLITE_FULL during rollback or while finalizing a journal file. (although the in-memory journal implementation may 
@@ -113,71 +113,71 @@ namespace Core
 		if (p->MemoryDB)
 		{
 			_assert(p->NoSync);
-			_assert(p->JournalMode == IPager::JOURNALMODE::OFF || p->JournalMode == IPager::JOURNALMODE::JMEMORY);
-			_assert(p->State != PAGER::ERROR && p->State != PAGER::OPEN);
+			_assert(p->JournalMode == IPager::JOURNALMODE_OFF || p->JournalMode == IPager::JOURNALMODE_JMEMORY);
+			_assert(p->State != Pager::PAGER_ERROR && p->State != Pager::PAGER_OPEN);
 			_assert(!UseWal(p));
 		}
 
 		// If changeCountDone is set, a RESERVED lock or greater must be held on the file.
-		_assert(p->ChangeCountDone == 0 || p->Lock >= VFile::LOCK::RESERVED);
-		_assert(p->Lock != VFile::LOCK::PENDING);
+		_assert(p->ChangeCountDone == 0 || p->Lock >= VFile::LOCK_RESERVED);
+		_assert(p->Lock != VFile::LOCK_PENDING);
 
 		switch (p->State)
 		{
-		case PAGER::OPEN:
+		case Pager::PAGER_OPEN:
 			_assert(!p->MemoryDB);
 			_assert(p->ErrorCode == RC::OK);
 			_assert(p->PCache->get_Refs() == 0 || p->TempFile);
 			break;
 
-		case PAGER::READER:
+		case Pager::PAGER_READER:
 			_assert(p->ErrorCode == RC::OK);
-			_assert(p->Lock != VFile::LOCK::UNKNOWN);
-			_assert(p->Lock >= VFile::LOCK::SHARED);
+			_assert(p->Lock != VFile::LOCK_UNKNOWN);
+			_assert(p->Lock >= VFile::LOCK_SHARED);
 			break;
 
-		case PAGER::WRITER_LOCKED:
-			_assert(p->Lock != VFile::LOCK::UNKNOWN);
+		case Pager::PAGER_WRITER_LOCKED:
+			_assert(p->Lock != VFile::LOCK_UNKNOWN);
 			_assert(p->ErrorCode == RC::OK);
 			if (!UseWal(p))
-				_assert(p->Lock >= VFile::LOCK::RESERVED);
+				_assert(p->Lock >= VFile::LOCK_RESERVED);
 			_assert(p->DBSize == p->DBOrigSize);
 			_assert(p->DBOrigSize == p->DBFileSize);
 			_assert(p->DBOrigSize == p->DBHintSize);
 			_assert(!p->SetMaster);
 			break;
 
-		case PAGER::WRITER_CACHEMOD:
-			_assert(p->Lock != VFile::LOCK::UNKNOWN);
+		case Pager::PAGER_WRITER_CACHEMOD:
+			_assert(p->Lock != VFile::LOCK_UNKNOWN);
 			_assert(p->ErrorCode == RC::OK);
 			if (!UseWal(p))
 			{
 				// It is possible that if journal_mode=wal here that neither the journal file nor the WAL file are open. This happens during
 				// a rollback transaction that switches from journal_mode=off to journal_mode=wal.
-				_assert(p->Lock >= VFile::LOCK::RESERVED);
-				_assert(p->JournalFile->Opened || p->JournalMode == IPager::JOURNALMODE::OFF || p->JournalMode == IPager::JOURNALMODE::WAL);
+				_assert(p->Lock >= VFile::LOCK_RESERVED);
+				_assert(p->JournalFile->Opened || p->JournalMode == IPager::JOURNALMODE_OFF || p->JournalMode == IPager::JOURNALMODE_WAL);
 			}
 			_assert(p->DBOrigSize == p->DBFileSize);
 			_assert(p->DBOrigSize == p->DBHintSize);
 			break;
 
-		case PAGER::WRITER_DBMOD:
-			_assert(p->Lock == VFile::LOCK::EXCLUSIVE);
+		case Pager::PAGER_WRITER_DBMOD:
+			_assert(p->Lock == VFile::LOCK_EXCLUSIVE);
 			_assert(p->ErrorCode == RC::OK);
 			_assert(!UseWal(p));
-			_assert(p->Lock >= VFile::LOCK::EXCLUSIVE);
-			_assert(p->JournalFile->Opened || p->JournalMode == IPager::JOURNALMODE::OFF || p->JournalMode == IPager::JOURNALMODE::WAL);
+			_assert(p->Lock >= VFile::LOCK_EXCLUSIVE);
+			_assert(p->JournalFile->Opened || p->JournalMode == IPager::JOURNALMODE_OFF || p->JournalMode == IPager::JOURNALMODE_WAL);
 			_assert(p->DBOrigSize <= p->DBHintSize);
 			break;
 
-		case PAGER::WRITER_FINISHED:
-			_assert(p->Lock == VFile::LOCK::EXCLUSIVE);
+		case Pager::PAGER_WRITER_FINISHED:
+			_assert(p->Lock == VFile::LOCK_EXCLUSIVE);
 			_assert(p->ErrorCode == RC::OK);
 			_assert(!UseWal(p));
-			_assert(p->JournalFile->Opened || p->JournalMode == IPager::JOURNALMODE::OFF || p->JournalMode == IPager::JOURNALMODE::WAL);
+			_assert(p->JournalFile->Opened || p->JournalMode == IPager::JOURNALMODE_OFF || p->JournalMode == IPager::JOURNALMODE_WAL);
 			break;
 
-		case PAGER::ERROR:
+		case Pager::PAGER_ERROR:
 			// There must be at least one outstanding reference to the pager if in ERROR state. Otherwise the pager should have already dropped back to OPEN state.
 			_assert(p->ErrorCode != RC::OK);
 			_assert(p->PCache->get_Refs() > 0);
@@ -187,7 +187,7 @@ namespace Core
 		return true;
 	}
 
-	static char *print_pager_state(Pager *p)
+	__device__ static char *print_pager_state(Pager *p)
 	{
 		static char r[1024];
 		_snprintf(r, 1024,
@@ -200,26 +200,26 @@ namespace Core
 			"Journal:       journalOff=%lld journalHdr=%lld\n"
 			"Size:          dbsize=%d dbOrigSize=%d dbFileSize=%d\n"
 			, p->Filename
-			, p->State == PAGER::OPEN ? "OPEN" :
-			p->State == PAGER::READER ? "READER" :
-			p->State == PAGER::WRITER_LOCKED ? "WRITER_LOCKED" :
-			p->State == PAGER::WRITER_CACHEMOD ? "WRITER_CACHEMOD" :
-			p->State == PAGER::WRITER_DBMOD ? "WRITER_DBMOD" :
-			p->State == PAGER::WRITER_FINISHED ? "WRITER_FINISHED" :
-			p->State == PAGER::ERROR ? "ERROR" : "?error?"
+			, p->State == Pager::PAGER_OPEN ? "OPEN" :
+			p->State == Pager::PAGER_READER ? "READER" :
+			p->State == Pager::PAGER_WRITER_LOCKED ? "WRITER_LOCKED" :
+			p->State == Pager::PAGER_WRITER_CACHEMOD ? "WRITER_CACHEMOD" :
+			p->State == Pager::PAGER_WRITER_DBMOD ? "WRITER_DBMOD" :
+			p->State == Pager::PAGER_WRITER_FINISHED ? "WRITER_FINISHED" :
+			p->State == Pager::PAGER_ERROR ? "ERROR" : "?error?"
 			, (int)p->ErrorCode
-			, p->Lock == VFile::LOCK::NO ? "NO_LOCK" :
-			p->Lock == VFile::LOCK::RESERVED ? "RESERVED" :
-			p->Lock == VFile::LOCK::EXCLUSIVE ? "EXCLUSIVE" :
-			p->Lock == VFile::LOCK::SHARED ? "SHARED" :
-			p->Lock == VFile::LOCK::UNKNOWN ? "UNKNOWN" : "?error?"
+			, p->Lock == VFile::LOCK_NO ? "NO_LOCK" :
+			p->Lock == VFile::LOCK_RESERVED ? "RESERVED" :
+			p->Lock == VFile::LOCK_EXCLUSIVE ? "EXCLUSIVE" :
+			p->Lock == VFile::LOCK_SHARED ? "SHARED" :
+			p->Lock == VFile::LOCK_UNKNOWN ? "UNKNOWN" : "?error?"
 			, p->ExclusiveMode ? "exclusive" : "normal"
-			, p->JournalMode == IPager::JOURNALMODE::JMEMORY ? "memory" :
-			p->JournalMode == IPager::JOURNALMODE::OFF ? "off" :
-			p->JournalMode == IPager::JOURNALMODE::DELETE ? "delete" :
-			p->JournalMode == IPager::JOURNALMODE::PERSIST ? "persist" :
-			p->JournalMode == IPager::JOURNALMODE::TRUNCATE ? "truncate" :
-			p->JournalMode == IPager::JOURNALMODE::WAL ? "wal" : "?error?"
+			, p->JournalMode == IPager::JOURNALMODE_JMEMORY ? "memory" :
+			p->JournalMode == IPager::JOURNALMODE_OFF ? "off" :
+			p->JournalMode == IPager::JOURNALMODE_DELETE ? "delete" :
+			p->JournalMode == IPager::JOURNALMODE_PERSIST ? "persist" :
+			p->JournalMode == IPager::JOURNALMODE_TRUNCATE ? "truncate" :
+			p->JournalMode == IPager::JOURNALMODE_WAL ? "wal" : "?error?"
 			, (int)p->TempFile, (int)p->MemoryDB, (int)p->UseJournal
 			, p->JournalOffset, p->JournalHeader
 			, (int)p->DBSize, (int)p->DBOrigSize, (int)p->DBFileSize);
@@ -231,7 +231,7 @@ namespace Core
 
 #pragma region Name1
 
-	static bool subjRequiresPage(PgHdr *pg)
+	__device__ static bool subjRequiresPage(PgHdr *pg)
 	{
 		Pid id = pg->ID;
 		Pager *pager = pg->Pager;
@@ -244,36 +244,36 @@ namespace Core
 		return false;
 	}
 
-	static bool pageInJournal(PgHdr *pg)
+	__device__ static bool pageInJournal(PgHdr *pg)
 	{
 		return pg->Pager->InJournal->Get(pg->ID);
 	}
 
-	static RC pagerUnlockDb(Pager *pager, VFile::LOCK lock)
+	__device__ static RC pagerUnlockDb(Pager *pager, VFile::LOCK lock)
 	{
 		_assert(!pager->ExclusiveMode || pager->Lock == lock);
-		_assert(lock == VFile::LOCK::NO || lock == VFile::LOCK::SHARED);
-		_assert(lock != VFile::LOCK::NO || !UseWal(pager));
+		_assert(lock == VFile::LOCK_NO || lock == VFile::LOCK_SHARED);
+		_assert(lock != VFile::LOCK_NO || !UseWal(pager));
 		RC rc = RC::OK;
 		if (pager->File->Opened)
 		{
 			_assert(pager->Lock >= lock);
 			rc = pager->File->Unlock(lock);
-			if (pager->Lock != VFile::LOCK::UNKNOWN)
+			if (pager->Lock != VFile::LOCK_UNKNOWN)
 				pager->Lock = lock;
 			SysEx_IOTRACE("UNLOCK %p %d\n", pager, lock);
 		}
 		return rc;
 	}
 
-	static RC pagerLockDb(Pager *pager, VFile::LOCK lock)
+	__device__ static RC pagerLockDb(Pager *pager, VFile::LOCK lock)
 	{
-		_assert(lock == VFile::LOCK::SHARED || lock == VFile::LOCK::RESERVED || lock == VFile::LOCK::EXCLUSIVE);
+		_assert(lock == VFile::LOCK_SHARED || lock == VFile::LOCK_RESERVED || lock == VFile::LOCK_EXCLUSIVE);
 		RC rc = RC::OK;
-		if (pager->Lock < lock || pager->Lock == VFile::LOCK::UNKNOWN)
+		if (pager->Lock < lock || pager->Lock == VFile::LOCK_UNKNOWN)
 		{
 			rc = pager->File->Lock(lock);
-			if (rc == RC::OK && (pager->Lock != VFile::LOCK::UNKNOWN || lock == VFile::LOCK::EXCLUSIVE))
+			if (rc == RC::OK && (pager->Lock != VFile::LOCK_UNKNOWN || lock == VFile::LOCK_EXCLUSIVE))
 			{
 				pager->Lock = lock;
 				SysEx_IOTRACE("LOCK %p %d\n", pager, lock);
@@ -283,7 +283,7 @@ namespace Core
 	}
 
 #ifdef ENABLE_ATOMIC_WRITE
-	static int jrnlBufferSize(Pager *pager)
+	__device__ static int jrnlBufferSize(Pager *pager)
 	{
 		_assert(!pager->MemoryDB);
 		if (!pager->TempFile)
@@ -292,9 +292,9 @@ namespace Core
 			int dc = pager->File->get_DeviceCharacteristics();
 			int sectorSize = pager->SectorSize;
 			int sizePage = pager->PageSize;
-			_assert(VFile::IOCAP::ATOMIC512 == (512 >> 8));
-			_assert(VFile::IOCAP::ATOMIC64K == (65536 >> 8));
-			if (!(dc & (VFile::IOCAP::ATOMIC | (sizePage >> 8)) || sectorSize > sizePage))
+			_assert(VFile::IOCAP_ATOMIC512 == (512 >> 8));
+			_assert(VFile::IOCAP_ATOMIC64K == (65536 >> 8));
+			if (!(dc & (VFile::IOCAP_ATOMIC | (sizePage >> 8)) || sectorSize > sizePage))
 				return 0;
 		}
 		return JOURNAL_HDR_SZ(pager) + JOURNAL_PG_SZ(pager);
@@ -302,21 +302,21 @@ namespace Core
 #endif
 
 #ifdef CHECK_PAGES
-	static uint32 pager_datahash(int bytes, unsigned char *data)
+	__device__ static uint32 pager_datahash(int bytes, unsigned char *data)
 	{
 		uint32 hash = 0;
 		for (int i = 0; i < bytes; i++)
 			hash = (hash * 1039) + data[i];
 		return hash;
 	}
-	static uint32 pager_pagehash(PgHdr *page) { return pager_datahash(page->Pager->PageSize, (unsigned char *)page->Data); }
-	static void pager_set_pagehash(PgHdr *page) { page->PageHash = pager_pagehash(page); }
+	__device__ static uint32 pager_pagehash(PgHdr *page) { return pager_datahash(page->Pager->PageSize, (unsigned char *)page->Data); }
+	__device__ static void pager_set_pagehash(PgHdr *page) { page->PageHash = pager_pagehash(page); }
 #define CHECK_PAGE(x) checkPage(x)
-	static void checkPage(PgHdr *page)
+	__device__ static void checkPage(PgHdr *page)
 	{
 		Pager *pager = page->Pager;
-		_assert(pager->State != PAGER::ERROR);
-		_assert((page->Flags & PgHdr::PGHDR::DIRTY) || page->PageHash == pager_pagehash(page));
+		_assert(pager->State != Pager::PAGER_ERROR);
+		_assert((page->Flags & PgHdr::PGHDR_DIRTY) || page->PageHash == pager_pagehash(page));
 	}
 #else
 #define pager_datahash(X, Y) 0
@@ -329,7 +329,7 @@ namespace Core
 
 #pragma region Journal1
 
-	static RC readMasterJournal(VFile *journalFile, char *master, uint32 masterLength)
+	__device__ static RC readMasterJournal(VFile *journalFile, char *master, uint32 masterLength)
 	{
 		uint32 nameLength; // Length in bytes of master journal name
 		int64 fileSize; // Total size in bytes of journal file pJrnl
@@ -359,7 +359,7 @@ namespace Core
 		return RC::OK;
 	}
 
-	static int64 journalHdrOffset(Pager *pager)
+	__device__ static int64 journalHdrOffset(Pager *pager)
 	{
 		int64 offset = 0;
 		int64 c = pager->JournalOffset;
@@ -371,7 +371,7 @@ namespace Core
 		return offset;
 	}
 
-	static RC zeroJournalHdr(Pager *pager, bool doTruncate)
+	__device__ static RC zeroJournalHdr(Pager *pager, bool doTruncate)
 	{
 		_assert(pager->JournalFile->Opened);
 		RC rc = RC::OK;
@@ -385,7 +385,7 @@ namespace Core
 			else
 				rc = pager->JournalFile->Write(zeroHeader, sizeof(zeroHeader), 0);
 			if (rc == RC::OK && !pager->NoSync)
-				rc = pager->JournalFile->Sync(VFile::SYNC::DATAONLY | pager->SyncFlags);
+				rc = pager->JournalFile->Sync(VFile::SYNC_DATAONLY | pager->SyncFlags);
 			// At this point the transaction is committed but the write lock is still held on the file. If there is a size limit configured for 
 			// the persistent journal and the journal file currently consumes more space than that limit allows for, truncate it now. There is no need
 			// to sync the file following this operation.
@@ -400,7 +400,7 @@ namespace Core
 		return rc;
 	}
 
-	static RC writeJournalHdr(Pager *pager)
+	__device__ static RC writeJournalHdr(Pager *pager)
 	{
 		_assert(pager->JournalFile->Opened); 
 		unsigned char *header = (unsigned char *)pager->TmpSpace;		// Temporary space used to build header
@@ -425,7 +425,7 @@ namespace Core
 		//   * When the pager is in no-sync mode. Corruption can follow a power failure in this case anyway.
 		//   * When the SQLITE_IOCAP_SAFE_APPEND flag is set. This guarantees that garbage data is never appended to the journal file.
 		_assert(pager->File->Opened || pager->NoSync);
-		if (pager->NoSync || (pager->JournalMode == IPager::JOURNALMODE::JMEMORY) || (pager->File->get_DeviceCharacteristics() & VFile::IOCAP::SAFE_APPEND) != 0)
+		if (pager->NoSync || (pager->JournalMode == IPager::JOURNALMODE_JMEMORY) || (pager->File->get_DeviceCharacteristics() & VFile::IOCAP_SAFE_APPEND) != 0)
 		{
 			_memcpy(header, _journalMagic, sizeof(_journalMagic));
 			ConvertEx::Put4(&header[sizeof(header)], 0xffffffff);
@@ -461,7 +461,7 @@ namespace Core
 		return rc;
 	}
 
-	static RC readJournalHdr(Pager *pager, bool isHot, int64 journalSize, uint32 *recordsOut, uint32 *dbSizeOut)
+	__device__ static RC readJournalHdr(Pager *pager, bool isHot, int64 journalSize, uint32 *recordsOut, uint32 *dbSizeOut)
 	{
 		_assert(pager->JournalFile->Opened);
 
@@ -529,14 +529,14 @@ namespace Core
 		return rc;
 	}
 
-	static RC writeMasterJournal(Pager *pager, const char *master)
+	__device__ static RC writeMasterJournal(Pager *pager, const char *master)
 	{
 		_assert(!pager->SetMaster);
 		_assert(!UseWal(pager));
 
 		if (!master ||
-			pager->JournalMode == IPager::JOURNALMODE::JMEMORY ||
-			pager->JournalMode == IPager::JOURNALMODE::OFF)
+			pager->JournalMode == IPager::JOURNALMODE_JMEMORY ||
+			pager->JournalMode == IPager::JOURNALMODE_OFF)
 			return RC::OK;
 		pager->SetMaster = true;
 		_assert(pager->JournalFile->Opened);
@@ -579,7 +579,7 @@ namespace Core
 
 #pragma region Name2
 
-	static PgHdr *pager_lookup(Pager *pager, Pid id)
+	__device__ static PgHdr *pager_lookup(Pager *pager, Pid id)
 	{
 		// It is not possible for a call to PcacheFetch() with createFlag==0 to fail, since no attempt to allocate dynamic memory will be made.
 		PgHdr *p;
@@ -587,14 +587,14 @@ namespace Core
 		return p;
 	}
 
-	static void pager_reset(Pager *pager)
+	__device__ static void pager_reset(Pager *pager)
 	{
 		if (pager->Backup != nullptr)
 			pager->Backup->Restart();
 		pager->PCache->Clear();
 	}
 
-	static void releaseAllSavepoints(Pager *pager)
+	__device__ static void releaseAllSavepoints(Pager *pager)
 	{
 		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
 			Bitvec::Destroy(pager->Savepoints[ii].InSavepoint);
@@ -605,7 +605,7 @@ namespace Core
 		pager->SubRecords = 0;
 	}
 
-	static RC addToSavepointBitvecs(Pager *pager, Pid id)
+	__device__ static RC addToSavepointBitvecs(Pager *pager, Pid id)
 	{
 		RC rc = RC::OK;
 		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
@@ -621,11 +621,11 @@ namespace Core
 		return rc;
 	}
 
-	static void pager_unlock(Pager *pager)
+	__device__ static void pager_unlock(Pager *pager)
 	{
-		_assert(pager->State==PAGER::READER ||
-			pager->State==PAGER::OPEN ||
-			pager->State==PAGER::ERROR);
+		_assert(pager->State == Pager::PAGER_READER ||
+			pager->State == Pager::PAGER_OPEN ||
+			pager->State == Pager::PAGER_ERROR);
 
 		Bitvec::Destroy(pager->InJournal);
 		pager->InJournal = nullptr;
@@ -635,33 +635,33 @@ namespace Core
 		{
 			_assert(!pager->JournalFile->Opened);
 			pager->Wal->EndReadTransaction();
-			pager->State = PAGER::OPEN;
+			pager->State = Pager::PAGER_OPEN;
 		}
 		else if (!pager->ExclusiveMode)
 		{
 			// If the operating system support deletion of open files, then close the journal file when dropping the database lock.  Otherwise
 			// another connection with journal_mode=delete might delete the file out from under us.
-			_assert((IPager::JOURNALMODE::JMEMORY & 5) != 1);
-			_assert((IPager::JOURNALMODE::OFF & 5) != 1);
-			_assert((IPager::JOURNALMODE::WAL & 5) != 1);
-			_assert((IPager::JOURNALMODE::DELETE & 5) != 1);
-			_assert((IPager::JOURNALMODE::TRUNCATE & 5) == 1);
-			_assert((IPager::JOURNALMODE::PERSIST & 5) == 1);
+			_assert((IPager::JOURNALMODE_JMEMORY & 5) != 1);
+			_assert((IPager::JOURNALMODE_OFF & 5) != 1);
+			_assert((IPager::JOURNALMODE_WAL & 5) != 1);
+			_assert((IPager::JOURNALMODE_DELETE & 5) != 1);
+			_assert((IPager::JOURNALMODE_TRUNCATE & 5) == 1);
+			_assert((IPager::JOURNALMODE_PERSIST & 5) == 1);
 			int dc = (pager->File->Opened ? pager->File->get_DeviceCharacteristics() : 0);
-			if ((dc & VFile::IOCAP::UNDELETABLE_WHEN_OPEN) == 0 || (pager->JournalMode & 5) != 1)
+			if ((dc & VFile::IOCAP_UNDELETABLE_WHEN_OPEN) == 0 || (pager->JournalMode & 5) != 1)
 				pager->JournalFile->Close();
 
 			// If the pager is in the ERROR state and the call to unlock the database file fails, set the current lock to UNKNOWN_LOCK. See the comment
 			// above the #define for UNKNOWN_LOCK for an explanation of why this is necessary.
-			RC rc = pagerUnlockDb(pager, VFile::LOCK::NO);
-			if (rc != RC::OK && pager->State == PAGER::ERROR)
-				pager->Lock = VFile::LOCK::UNKNOWN;
+			RC rc = pagerUnlockDb(pager, VFile::LOCK_NO);
+			if (rc != RC::OK && pager->State == Pager::PAGER_ERROR)
+				pager->Lock = VFile::LOCK_UNKNOWN;
 
 			// The pager state may be changed from PAGER_ERROR to PAGER_OPEN here without clearing the error code. This is intentional - the error
 			// code is cleared and the cache reset in the block below.
-			_assert(pager->ErrorCode || pager->State != PAGER::ERROR);
+			_assert(pager->ErrorCode || pager->State != Pager::PAGER_ERROR);
 			pager->ChangeCountDone = 0;
-			pager->State = PAGER::OPEN;
+			pager->State = Pager::PAGER_OPEN;
 		}
 
 		// If Pager.errCode is set, the contents of the pager cache cannot be trusted. Now that there are no outstanding references to the pager,
@@ -671,7 +671,7 @@ namespace Core
 			_assert(!pager->MemoryDB);
 			pager_reset(pager);
 			pager->ChangeCountDone = pager->TempFile;
-			pager->State = PAGER::OPEN;
+			pager->State = Pager::PAGER_OPEN;
 			pager->ErrorCode = RC::OK;
 		}
 
@@ -680,7 +680,7 @@ namespace Core
 		pager->SetMaster = false;
 	}
 
-	static RC pager_error(Pager *pager, RC rc)
+	__device__ static RC pager_error(Pager *pager, RC rc)
 	{
 		RC rc2 = (RC)(rc & 0xff);
 		_assert(rc == RC::OK || !pager->MemoryDB);
@@ -690,7 +690,7 @@ namespace Core
 		if (rc2 == RC::FULL || rc2 == RC::IOERR)
 		{
 			pager->ErrorCode = rc;
-			pager->State = PAGER::ERROR;
+			pager->State = Pager::PAGER_ERROR;
 		}
 		return rc;
 	}
@@ -699,9 +699,9 @@ namespace Core
 
 #pragma region Transaction1
 
-	static RC pager_truncate(Pager *pager, Pid pages);
+	__device__ static RC pager_truncate(Pager *pager, Pid pages);
 
-	static RC pager_end_transaction(Pager *pager, bool hasMaster, bool commit)
+	__device__ static RC pager_end_transaction(Pager *pager, bool hasMaster, bool commit)
 	{
 		// Do nothing if the pager does not have an open write transaction or at least a RESERVED lock. This function may be called when there
 		// is no write-transaction active but a RESERVED or greater lock is held under two circumstances:
@@ -711,8 +711,8 @@ namespace Core
 		//   2. If a connection with locking_mode=exclusive holding an EXCLUSIVE lock switches back to locking_mode=normal and then executes a
 		//      read-transaction, this function is called with eState==PAGER_READER and eLock==EXCLUSIVE_LOCK when the read-transaction is closed.
 		_assert(assert_pager_state(pager));
-		_assert(pager->State != PAGER::ERROR);
-		if (pager->State < PAGER::WRITER_LOCKED && pager->Lock < VFile::LOCK::RESERVED)
+		_assert(pager->State != Pager::PAGER_ERROR);
+		if (pager->State < Pager::PAGER_WRITER_LOCKED && pager->Lock < VFile::LOCK_RESERVED)
 			return RC::OK;
 
 		releaseAllSavepoints(pager);
@@ -725,15 +725,15 @@ namespace Core
 			// Finalize the journal file.
 			if (VFile::HasMemoryVFile(pager->JournalFile))
 			{
-				_assert(pager->JournalMode == IPager::JOURNALMODE::JMEMORY);
+				_assert(pager->JournalMode == IPager::JOURNALMODE_JMEMORY);
 				pager->JournalFile->Close();
 			}
-			else if (pager->JournalMode == IPager::JOURNALMODE::TRUNCATE)
+			else if (pager->JournalMode == IPager::JOURNALMODE_TRUNCATE)
 			{
 				rc = (pager->JournalOffset == 0 ? RC::OK : pager->JournalFile->Truncate(0));
 				pager->JournalOffset = 0;
 			}
-			else if (pager->JournalMode == IPager::JOURNALMODE::PERSIST || (pager->ExclusiveMode && pager->JournalMode != IPager::JOURNALMODE::WAL))
+			else if (pager->JournalMode == IPager::JOURNALMODE_PERSIST || (pager->ExclusiveMode && pager->JournalMode != IPager::JOURNALMODE_WAL))
 			{
 				rc = zeroJournalHdr(pager, hasMaster);
 				pager->JournalOffset = 0;
@@ -743,9 +743,9 @@ namespace Core
 				// This branch may be executed with Pager.journalMode==MEMORY if a hot-journal was just rolled back. In this case the journal
 				// file should be closed and deleted. If this connection writes to the database file, it will do so using an in-memory journal.
 				bool delete_ = (!pager->TempFile && VFile::HasJournalVFile(pager->JournalFile));
-				_assert(pager->JournalMode == IPager::JOURNALMODE::DELETE ||
-					pager->JournalMode == IPager::JOURNALMODE::JMEMORY ||
-					pager->JournalMode == IPager::JOURNALMODE::WAL);
+				_assert(pager->JournalMode == IPager::JOURNALMODE_DELETE ||
+					pager->JournalMode == IPager::JOURNALMODE_JMEMORY ||
+					pager->JournalMode == IPager::JOURNALMODE_WAL);
 				pager->JournalFile->Close();
 				if (delete_)
 					pager->Vfs->Delete(pager->Journal, false);
@@ -783,27 +783,27 @@ namespace Core
 			// This branch is taken when committing a transaction in rollback-journal mode if the database file on disk is larger than the database image.
 			// At this point the journal has been finalized and the transaction successfully committed, but the EXCLUSIVE lock is still held on the
 			// file. So it is safe to truncate the database file to its minimum required size.
-			_assert(pager->Lock == VFile::LOCK::EXCLUSIVE);
+			_assert(pager->Lock == VFile::LOCK_EXCLUSIVE);
 			rc = pager_truncate(pager, pager->DBSize);
 		}
 
 		if (!pager->ExclusiveMode && (!UseWal(pager) || pager->Wal->ExclusiveMode(0)))
 		{
-			rc2 = pagerUnlockDb(pager, VFile::LOCK::SHARED);
+			rc2 = pagerUnlockDb(pager, VFile::LOCK_SHARED);
 			pager->ChangeCountDone = 0;
 		}
-		pager->State = PAGER::READER;
+		pager->State = Pager::PAGER_READER;
 		pager->SetMaster = false;
 
 		return (rc == RC::OK ? rc2 : rc);
 	}
 
-	static void pagerUnlockAndRollback(Pager *pager)
+	__device__ static void pagerUnlockAndRollback(Pager *pager)
 	{
-		if (pager->State != PAGER::ERROR && pager->State != PAGER::OPEN)
+		if (pager->State != Pager::PAGER_ERROR && pager->State != Pager::PAGER_OPEN)
 		{
 			_assert(assert_pager_state(pager));
-			if (pager->State >= PAGER::WRITER_LOCKED)
+			if (pager->State >= Pager::PAGER_WRITER_LOCKED)
 			{
 				SysEx::BeginBenignAlloc();
 				pager->Rollback();
@@ -811,14 +811,14 @@ namespace Core
 			}
 			else if (!pager->ExclusiveMode)
 			{
-				_assert(pager->State == PAGER::READER);
+				_assert(pager->State == Pager::PAGER_READER);
 				pager_end_transaction(pager, false, false);
 			}
 		}
 		pager_unlock(pager);
 	}
 
-	static uint32 pager_cksum(Pager *pager, const uint8 *data)
+	__device__ static uint32 pager_cksum(Pager *pager, const uint8 *data)
 	{
 		uint32 checksum = pager->ChecksumInit;
 		int i = pager->PageSize - 200;
@@ -831,7 +831,7 @@ namespace Core
 	}
 
 #ifdef HAS_CODEC
-	static void pagerReportSize(Pager *pager)
+	__device__ static void pagerReportSize(Pager *pager)
 	{
 		if (pager->CodecSizeChange)
 			pager->CodecSizeChange(pager->Codec, pager->PageSize, (int)pager->ReserveBytes);
@@ -840,7 +840,7 @@ namespace Core
 #define pagerReportSize(X)
 #endif
 
-	static RC pager_playback_one_page(Pager *pager, int64 *offset, Bitvec *done, bool isMainJournal, bool isSavepoint)
+	__device__ static RC pager_playback_one_page(Pager *pager, int64 *offset, Bitvec *done, bool isMainJournal, bool isSavepoint)
 	{
 		_assert(isMainJournal || done);			// pDone always used on sub-journals
 		_assert(isSavepoint || done == 0);		// pDone never used on non-savepoint
@@ -852,8 +852,8 @@ namespace Core
 		// Either the state is greater than PAGER_WRITER_CACHEMOD (a transaction or savepoint rollback done at the request of the caller) or this is
 		// a hot-journal rollback. If it is a hot-journal rollback, the pager is in state OPEN and holds an EXCLUSIVE lock. Hot-journal rollback
 		// only reads from the main journal, not the sub-journal.
-		_assert(pager->State >= PAGER::WRITER_CACHEMOD || (pager->State == PAGER::OPEN && pager->Lock == VFile::LOCK::EXCLUSIVE));
-		_assert(pager->State >= PAGER::WRITER_CACHEMOD || isMainJournal);
+		_assert(pager->State >= Pager::PAGER_WRITER_CACHEMOD || (pager->State == Pager::PAGER_OPEN && pager->Lock == VFile::LOCK_EXCLUSIVE));
+		_assert(pager->State >= Pager::PAGER_WRITER_CACHEMOD || isMainJournal);
 
 		// Read the page number and page data from the journal or sub-journal file. Return an error code to the caller if an IO error occurs.
 		VFile *journalFile = (isMainJournal ? pager->JournalFile : pager->SubJournalFile); // The file descriptor for the journal file
@@ -916,17 +916,17 @@ namespace Core
 		// Do not attempt to write if database file has never been opened.
 		PgHdr *pg = (UseWal(pager) ? nullptr : pager_lookup(pager, id)); // An existing page in the cache
 		_assert(pg || !pager->MemoryDB);
-		_assert(pager->State != PAGER::OPEN || pg == 0);
+		_assert(pager->State != Pager::PAGER_OPEN || pg == 0);
 		PAGERTRACE("PLAYBACK %d page %d hash(%08x) %s\n", PAGERID(pager), id, pager_datahash(pager->PageSize, data), isMainJournal ? "main-journal" : "sub-journal");
 		bool isSynced; // True if journal page is synced
 		if (isMainJournal)
 			isSynced = pager->NoSync || (*offset <= pager->JournalHeader);
 		else
-			isSynced = (pg == nullptr || (pg->Flags & PgHdr::PGHDR::NEED_SYNC) == 0);
-		if (pager->File->Opened && (pager->State >= PAGER::WRITER_DBMOD || pager->State == PAGER::OPEN) && isSynced)
+			isSynced = (pg == nullptr || (pg->Flags & PgHdr::PGHDR_NEED_SYNC) == 0);
+		if (pager->File->Opened && (pager->State >= Pager::PAGER_WRITER_DBMOD || pager->State == Pager::PAGER_OPEN) && isSynced)
 		{
 			int64 offset = (id - 1) * (int64)pager->PageSize;
-			ASSERTCOVERAGE(!isSavepoint && pg != nullptr && (pg->Flags & PgHdr::PGHDR::NEED_SYNC) != 0);
+			ASSERTCOVERAGE(!isSavepoint && pg != nullptr && (pg->Flags & PgHdr::PGHDR_NEED_SYNC) != 0);
 			_assert(!UseWal(pager));
 			rc = pager->File->Write(data, pager->PageSize, offset);
 			if (id > pager->DBFileSize)
@@ -956,7 +956,7 @@ namespace Core
 			_assert(pager->DoNotSpill == 1);
 			pager->DoNotSpill--;
 			if (rc != RC::OK) return rc;
-			pg->Flags &= ~PgHdr::PGHDR::NEED_READ;
+			pg->Flags &= ~PgHdr::PGHDR_NEED_READ;
 			PCache::MakeDirty(pg);
 		}
 		if (pg)
@@ -995,7 +995,7 @@ namespace Core
 		return rc;
 	}
 
-	static RC pager_delmaster(Pager *pager, const char *master)
+	__device__ static RC pager_delmaster(Pager *pager, const char *master)
 	{
 		VSystem *vfs = pager->Vfs;
 
@@ -1006,7 +1006,7 @@ namespace Core
 		if (!masterFile)
 			rc = RC::NOMEM;
 		else
-			rc = vfs->Open(master, masterFile, (VSystem::OPEN)(VSystem::OPEN::READONLY | VSystem::OPEN::MASTER_JOURNAL), 0);
+			rc = vfs->Open(master, masterFile, (VSystem::OPEN)(VSystem::OPEN_READONLY | VSystem::OPEN_MASTER_JOURNAL), 0);
 		if (rc != RC::OK) goto delmaster_out;
 
 		// Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
@@ -1037,7 +1037,7 @@ namespace Core
 			{
 				// One of the journals pointed to by the master journal exists. Open it and check if it points at the master journal. If
 				// so, return without deleting the master journal file.
-				rc = vfs->Open(journal, journalFile, (VSystem::OPEN)(VSystem::OPEN::READONLY | VSystem::OPEN::MAIN_JOURNAL), 0);
+				rc = vfs->Open(journal, journalFile, (VSystem::OPEN)(VSystem::OPEN_READONLY | VSystem::OPEN_MAIN_JOURNAL), 0);
 				if (rc != RC::OK)
 					goto delmaster_out;
 
@@ -1067,16 +1067,16 @@ delmaster_out:
 		return rc;
 	}
 
-	static RC pager_truncate(Pager *pager, Pid pages)
+	__device__ static RC pager_truncate(Pager *pager, Pid pages)
 	{
-		_assert(pager->State != PAGER::ERROR);
-		_assert(pager->State != PAGER::READER);
+		_assert(pager->State != Pager::PAGER_ERROR);
+		_assert(pager->State != Pager::PAGER_READER);
 
 		RC rc = RC::OK;
-		if (pager->File->Opened && (pager->State >= PAGER::WRITER_DBMOD || pager->State == PAGER::OPEN))
+		if (pager->File->Opened && (pager->State >= Pager::PAGER_WRITER_DBMOD || pager->State == Pager::PAGER_OPEN))
 		{
 			int sizePage = pager->PageSize;
-			_assert(pager->Lock == VFile::LOCK::EXCLUSIVE);
+			_assert(pager->Lock == VFile::LOCK_EXCLUSIVE);
 			// TODO: Is it safe to use Pager.dbFileSize here?
 			int64 currentSize;
 			rc = pager->File->get_FileSize(currentSize);
@@ -1104,7 +1104,7 @@ delmaster_out:
 
 #pragma region Transaction2
 
-	int Pager::get_SectorSize(VFile *file)
+	__device__ int Pager::get_SectorSize(VFile *file)
 	{
 		int ret = file->get_SectorSize();
 		if (ret < 32)
@@ -1117,16 +1117,16 @@ delmaster_out:
 		return ret;
 	}
 
-	static void setSectorSize(Pager *pager)
+	__device__ static void setSectorSize(Pager *pager)
 	{
 		_assert(pager->File->Opened || pager->TempFile);
-		if (pager->TempFile || (pager->File->get_DeviceCharacteristics() & VFile::IOCAP::IOCAP_POWERSAFE_OVERWRITE) != 0)
+		if (pager->TempFile || (pager->File->get_DeviceCharacteristics() & VFile::IOCAP_POWERSAFE_OVERWRITE) != 0)
 			pager->SectorSize = 512; // Sector size doesn't matter for temporary files. Also, the file may not have been opened yet, in which case the OsSectorSize() call will segfault.
 		else
 			pager->SectorSize = pager->File->get_SectorSize();
 	}
 
-	static RC pager_playback(Pager *pager, bool isHot)
+	__device__ static RC pager_playback(Pager *pager, bool isHot)
 	{
 		int res = 1;
 		char *master = nullptr;
@@ -1235,7 +1235,7 @@ end_playback:
 		// Following a rollback, the database file should be back in its original state prior to the start of the transaction, so invoke the
 		// SQLITE_FCNTL_DB_UNCHANGED file-control method to disable the assertion that the transaction counter was modified.
 #ifdef _DEBUG
-		pager->File->FileControl(VFile::FCNTL::DB_UNCHANGED, 0);
+		pager->File->FileControl(VFile::FCNTL_DB_UNCHANGED, 0);
 #endif
 
 		// If this playback is happening automatically as a result of an IO or malloc error that occurred after the change-counter was updated but 
@@ -1250,7 +1250,7 @@ end_playback:
 			rc = readMasterJournal(pager->JournalFile, master, vfs->MaxPathname + 1);
 			ASSERTCOVERAGE(rc != RC::OK);
 		}
-		if (rc == RC::OK && (pager->State >= PAGER::WRITER_DBMOD || pager->State == PAGER::OPEN))
+		if (rc == RC::OK && (pager->State >= Pager::PAGER_WRITER_DBMOD || pager->State == Pager::PAGER_OPEN))
 			rc = pager->Sync();
 		if (rc == RC::OK)
 		{
@@ -1270,11 +1270,11 @@ end_playback:
 		return rc;
 	}
 
-	static RC readDbPage(PgHdr *pg)
+	__device__ static RC readDbPage(PgHdr *pg)
 	{
 		Pager *pager = pg->Pager; // Pager object associated with page pPg
 
-		_assert(pager->State >= PAGER::READER && !pager->MemoryDB);
+		_assert(pager->State >= Pager::PAGER_READER && !pager->MemoryDB);
 		_assert(pager->File->Opened);
 
 		if (SysEx_NEVER(!pager->File->Opened))
@@ -1321,7 +1321,7 @@ end_playback:
 		return rc;
 	}
 
-	static void pager_write_changecounter(PgHdr *pg)
+	__device__ static void pager_write_changecounter(PgHdr *pg)
 	{
 		// Increment the value just read and write it back to byte 24.
 		uint32 change_counter = ConvertEx::Get4((uint8 *)pg->Pager->DBFileVersion) + 1;
@@ -1333,7 +1333,7 @@ end_playback:
 	}
 
 #ifndef OMIT_WAL
-	static RC pagerUndoCallback(void *ctx, Pid id)
+	__device__ static RC pagerUndoCallback(void *ctx, Pid id)
 	{
 		RC rc = RC::OK;
 		Pager *pager = (Pager *)ctx;
@@ -1361,7 +1361,7 @@ end_playback:
 		return rc;
 	}
 
-	static RC pagerRollbackWal(Pager *pager)
+	__device__ static RC pagerRollbackWal(Pager *pager)
 	{
 		// For all pages in the cache that are currently dirty or have already been written (but not committed) to the log file, do one of the following:
 		//
@@ -1380,7 +1380,7 @@ end_playback:
 		return rc;
 	}
 
-	static RC pagerWalFrames(Pager *pager, PgHdr *list, Pid truncate, bool isCommit)
+	__device__ static RC pagerWalFrames(Pager *pager, PgHdr *list, Pid truncate, bool isCommit)
 	{
 		_assert(pager->Wal != nullptr);
 		_assert(list != nullptr);
@@ -1408,7 +1408,7 @@ end_playback:
 		}
 		else
 			listPages = 1;
-		pager->Stats[STAT::WRITE] += listPages;
+		pager->Stats[STAT_WRITE] += listPages;
 
 		if (list->ID == 1) pager_write_changecounter(list);
 		RC rc = pager->Wal->Frames(pager->PageSize, list, truncate, isCommit, pager->WalSyncFlags);
@@ -1425,10 +1425,10 @@ end_playback:
 		return rc;
 	}
 
-	static RC pagerBeginReadTransaction(Pager *pager)
+	__device__ static RC pagerBeginReadTransaction(Pager *pager)
 	{
 		_assert(UseWal(pager));
-		_assert(pager->State == PAGER::OPEN || pager->State == PAGER::READER);
+		_assert(pager->State == Pager::PAGER_OPEN || pager->State == Pager::PAGER_READER);
 
 		// sqlite3WalEndReadTransaction() was not called for the previous transaction in locking_mode=EXCLUSIVE.  So call it now.  If we
 		// are in locking_mode=NORMAL and EndRead() was previously called, the duplicate call is harmless.
@@ -1443,13 +1443,13 @@ end_playback:
 	}
 #endif
 
-	static RC pagerPagecount(Pager *pager, Pid *pagesRef)
+	__device__ static RC pagerPagecount(Pager *pager, Pid *pagesRef)
 	{
 		// Query the WAL sub-system for the database size. The WalDbsize() function returns zero if the WAL is not open (i.e. Pager.pWal==0), or
 		// if the database size is not available. The database size is not available from the WAL sub-system if the log file is empty or
 		// contains no valid committed transactions.
-		_assert(pager->State == PAGER::OPEN);
-		_assert(pager->Lock >= VFile::LOCK::SHARED);
+		_assert(pager->State == Pager::PAGER_OPEN);
+		_assert(pager->Lock >= VFile::LOCK_SHARED);
 		Pid pages = pager->Wal->DBSize();
 
 		// If the database size was not available from the WAL sub-system, determine it based on the size of the database file. If the size
@@ -1478,10 +1478,10 @@ end_playback:
 	}
 
 #ifndef OMIT_WAL
-	static RC pagerOpenWalIfPresent(Pager *pager)
+	__device__ static RC pagerOpenWalIfPresent(Pager *pager)
 	{
-		_assert(pager->State == PAGER::OPEN);
-		_assert(pager->Lock >= VFile::LOCK::SHARED);
+		_assert(pager->State == Pager::PAGER_OPEN);
+		_assert(pager->Lock >= VFile::LOCK_SHARED);
 		RC rc = RC::OK;
 
 		if (!pager->TempFile)
@@ -1497,7 +1497,7 @@ end_playback:
 				isWal = 0;
 			}
 			else
-				rc = pager->Vfs->Access(pager->WalName, VSystem::ACCESS::EXISTS, &isWal);
+				rc = pager->Vfs->Access(pager->WalName, VSystem::ACCESS_EXISTS, &isWal);
 			if (rc == RC::OK)
 			{
 				if (isWal)
@@ -1505,18 +1505,18 @@ end_playback:
 					ASSERTCOVERAGE(pager->PCache->get_Pages() == 0);
 					rc = pager->OpenWal(0);
 				}
-				else if (pager->JournalMode == IPager::JOURNALMODE::WAL)
-					pager->JournalMode = IPager::JOURNALMODE::DELETE;
+				else if (pager->JournalMode == IPager::JOURNALMODE_WAL)
+					pager->JournalMode = IPager::JOURNALMODE_DELETE;
 			}
 		}
 		return rc;
 	}
 #endif
 
-	static RC pagerPlaybackSavepoint(Pager *pager, PagerSavepoint *savepoint)
+	__device__ static RC pagerPlaybackSavepoint(Pager *pager, PagerSavepoint *savepoint)
 	{
-		_assert(pager->State != PAGER::ERROR);
-		_assert(pager->State >= PAGER::WRITER_LOCKED);
+		_assert(pager->State != Pager::PAGER_ERROR);
+		_assert(pager->State >= Pager::PAGER_WRITER_LOCKED);
 
 		// Allocate a bitvec to use to store the set of pages rolled back
 		Bitvec *done = nullptr; // Bitvec to ensure pages played back only once
@@ -1600,18 +1600,18 @@ end_playback:
 
 #pragma region Name3
 
-	void Pager::SetCacheSize(int maxPages)
+	__device__ void Pager::SetCacheSize(int maxPages)
 	{
 		PCache->set_CacheSize(maxPages);
 	}
 
-	void Pager::Shrink()
+	__device__ void Pager::Shrink()
 	{
 		PCache->Shrink();
 	}
 
 #ifndef OMIT_PAGER_PRAGMAS
-	void Pager::SetSafetyLevel(int level, bool fullFsync, bool checkpointFullFsync)
+	__device__ void Pager::SetSafetyLevel(int level, bool fullFsync, bool checkpointFullFsync)
 	{
 		_assert(level >= 1 && level <= 3);
 		NoSync =  (level == 1 || TempFile);
@@ -1623,42 +1623,42 @@ end_playback:
 		}
 		else if (fullFsync)
 		{
-			SyncFlags = VFile::SYNC::FULL;
-			CheckpointSyncFlags = VFile::SYNC::FULL;
+			SyncFlags = VFile::SYNC_FULL;
+			CheckpointSyncFlags = VFile::SYNC_FULL;
 		}
 		else if (checkpointFullFsync)
 		{
-			SyncFlags = VFile::SYNC::NORMAL;
-			CheckpointSyncFlags = VFile::SYNC::FULL;
+			SyncFlags = VFile::SYNC_NORMAL;
+			CheckpointSyncFlags = VFile::SYNC_FULL;
 		}
 		else
 		{
-			SyncFlags = VFile::SYNC::NORMAL;
-			CheckpointSyncFlags = VFile::SYNC::NORMAL;
+			SyncFlags = VFile::SYNC_NORMAL;
+			CheckpointSyncFlags = VFile::SYNC_NORMAL;
 		}
 		WalSyncFlags = SyncFlags;
 		if (FullSync)
-			WalSyncFlags |= VFile::SYNC::WAL_TRANSACTIONS;
+			WalSyncFlags |= VFile::SYNC_WAL_TRANSACTIONS;
 	}
 #endif
 
 #ifdef TEST
 	// The following global variable is incremented whenever the library attempts to open a temporary file.  This information is used for testing and analysis only.  
-	int _opentemp_count = 0;
+	__device__ int _opentemp_count = 0;
 #endif
 
-	static RC pagerOpentemp(Pager *pager, VFile *file, VSystem::OPEN vfsFlags)
+	__device__ static RC pagerOpentemp(Pager *pager, VFile *file, VSystem::OPEN vfsFlags)
 	{
 #ifdef TEST
 		_opentemp_count++; // Used for testing and analysis only
 #endif
-		vfsFlags |= (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::CREATE | VSystem::OPEN::EXCLUSIVE | VSystem::OPEN::DELETEONCLOSE);
+		vfsFlags |= (VSystem::OPEN)(VSystem::OPEN_READWRITE | VSystem::OPEN_CREATE | VSystem::OPEN_EXCLUSIVE | VSystem::OPEN_DELETEONCLOSE);
 		RC rc = pager->Vfs->Open(nullptr, file, vfsFlags, nullptr);
 		_assert(rc != RC::OK || file->Opened);
 		return rc;
 	}
 
-	void Pager::SetBusyhandler(int (*busyHandler)(void *), void *busyHandlerArg)
+	__device__ void Pager::SetBusyhandler(int (*busyHandler)(void *), void *busyHandlerArg)
 	{
 		BusyHandler = busyHandler;
 		BusyHandlerArg = busyHandlerArg;
@@ -1668,11 +1668,11 @@ end_playback:
 			void **ap = (void **)&BusyHandler;
 			_assert(((int(*)(void *))(ap[0])) == busyHandler);
 			_assert(ap[1] == busyHandlerArg);
-			File->FileControl(VFile::FCNTL::BUSYHANDLER, (void *)ap);
+			File->FileControl(VFile::FCNTL_BUSYHANDLER, (void *)ap);
 		}
 	}
 
-	RC Pager::SetPageSize(uint32 *pageSizeRef, int reserveBytes)
+	__device__ RC Pager::SetPageSize(uint32 *pageSizeRef, int reserveBytes)
 	{
 		// It is not possible to do a full assert_pager_state() here, as this function may be called from within PagerOpen(), before the state
 		// of the Pager object is internally consistent.
@@ -1687,7 +1687,7 @@ end_playback:
 			pageSize && pageSize != (uint32)PageSize)
 		{
 			int64 bytes = 0;
-			if (State > PAGER::OPEN && File->Opened)
+			if (State > Pager::PAGER_OPEN && File->Opened)
 				rc = File->get_FileSize(bytes);
 			char *tempSpace = nullptr; // New temp space
 			if (rc == RC::OK)
@@ -1716,32 +1716,32 @@ end_playback:
 		return rc;
 	}
 
-	void *Pager::get_TempSpace()
+	__device__ void *Pager::get_TempSpace()
 	{
 		return TmpSpace;
 	}
 
-	int Pager::MaxPages(int maxPages)
+	__device__ int Pager::MaxPages(int maxPages)
 	{
 		if (maxPages > 0)
 			MaxPid = maxPages;
-		_assert(State != PAGER::OPEN); // Called only by OP_MaxPgcnt
+		_assert(State != Pager::PAGER_OPEN); // Called only by OP_MaxPgcnt
 		_assert(MaxPid >= DBSize); // OP_MaxPgcnt enforces this
 		return MaxPid;
 	}
 
 #ifdef TEST
-	int _io_error_pending;
-	int _io_error_hit;
-	static int saved_cnt;
+	__device__ int _io_error_pending;
+	__device__ int _io_error_hit;
+	__device__ static int saved_cnt;
 
-	void disable_simulated_io_errors()
+	__device__ void disable_simulated_io_errors()
 	{
 		saved_cnt = _io_error_pending;
 		_io_error_pending = -1;
 	}
 
-	void enable_simulated_io_errors()
+	__device__ void enable_simulated_io_errors()
 	{
 		_io_error_pending = saved_cnt;
 	}
@@ -1750,7 +1750,7 @@ end_playback:
 #define enable_simulated_io_errors()
 #endif
 
-	RC Pager::ReadFileheader(int n, unsigned char *dest)
+	__device__ RC Pager::ReadFileheader(int n, unsigned char *dest)
 	{
 		_memset(dest, 0, n);
 		_assert(File->Opened || TempFile);
@@ -1769,20 +1769,20 @@ end_playback:
 		return rc;
 	}
 
-	void Pager::Pages(Pid *pagesOut)
+	__device__ void Pager::Pages(Pid *pagesOut)
 	{
-		_assert(State >= PAGER::READER);
-		_assert(State != PAGER::WRITER_FINISHED);
+		_assert(State >= Pager::PAGER_READER);
+		_assert(State != Pager::PAGER_WRITER_FINISHED);
 		*pagesOut = DBSize;
 	}
 
-	static RC pager_wait_on_lock(Pager *pager, VFile::LOCK locktype)
+	__device__ static RC pager_wait_on_lock(Pager *pager, VFile::LOCK locktype)
 	{
 		// Check that this is either a no-op (because the requested lock is already held, or one of the transistions that the busy-handler
 		// may be invoked during, according to the comment above sqlite3PagerSetBusyhandler().
 		_assert((pager->Lock >= locktype) ||
-			(pager->Lock == VFile::LOCK::NO && locktype == VFile::LOCK::SHARED) ||
-			(pager->Lock == VFile::LOCK::RESERVED && locktype == VFile::LOCK::EXCLUSIVE));
+			(pager->Lock == VFile::LOCK_NO && locktype == VFile::LOCK_SHARED) ||
+			(pager->Lock == VFile::LOCK_RESERVED && locktype == VFile::LOCK_EXCLUSIVE));
 
 		RC rc;
 		do
@@ -1793,13 +1793,13 @@ end_playback:
 	}
 
 #if defined(_DEBUG)
-	static void assertTruncateConstraintCb(PgHdr *pg)
+	__device__ static void assertTruncateConstraintCb(PgHdr *pg)
 	{
-		_assert(pg->Flags & PgHdr::PGHDR::DIRTY);
+		_assert(pg->Flags & PgHdr::PGHDR_DIRTY);
 		_assert(!subjRequiresPage(pg) || pg->ID <= pg->Pager->DBSize);
 	}
 
-	static void assertTruncateConstraint(Pager *pager)
+	__device__ static void assertTruncateConstraint(Pager *pager)
 	{
 		pager->PCache->IterateDirty(assertTruncateConstraintCb);
 	}
@@ -1807,10 +1807,10 @@ end_playback:
 #define assertTruncateConstraint(pager)
 #endif
 
-	void Pager::TruncateImage(Pid pages)
+	__device__ void Pager::TruncateImage(Pid pages)
 	{
 		_assert(DBSize >= pages);
-		_assert(State >= PAGER::WRITER_CACHEMOD);
+		_assert(State >= Pager::PAGER_WRITER_CACHEMOD);
 		DBSize = pages;
 
 		// At one point the code here called assertTruncateConstraint() to ensure that all pages being truncated away by this operation are,
@@ -1820,17 +1820,17 @@ end_playback:
 		// is no longer correct.
 	}
 
-	static RC pagerSyncHotJournal(Pager *pager)
+	__device__ static RC pagerSyncHotJournal(Pager *pager)
 	{
 		RC rc = RC::OK;
 		if (!pager->NoSync)
-			rc = pager->JournalFile->Sync(VFile::SYNC::NORMAL);
+			rc = pager->JournalFile->Sync(VFile::SYNC_NORMAL);
 		if (rc == RC::OK)
 			rc = pager->JournalFile->get_FileSize(pager->JournalHeader);
 		return rc;
 	}
 
-	RC Pager::Close()
+	__device__ RC Pager::Close()
 	{
 		_assert(assert_pager_state(this));
 		disable_simulated_io_errors();
@@ -1878,13 +1878,13 @@ end_playback:
 	}
 
 #if !defined(_DEBUG) || defined(TEST)
-	Pid Pager::get_PageID(IPage *pg)
+	__device__ Pid Pager::get_PageID(IPage *pg)
 	{
 		return ((PgHdr *)pg)->ID;
 	}
 #endif
 
-	void Pager::Ref(IPage *pg)
+	__device__ void Pager::Ref(IPage *pg)
 	{
 		PCache::Ref((PgHdr *)pg);
 	}
@@ -1893,9 +1893,9 @@ end_playback:
 
 #pragma region Main
 
-	static RC syncJournal(Pager *pager, bool newHeader)
+	__device__ static RC syncJournal(Pager *pager, bool newHeader)
 	{
-		_assert(pager->State == PAGER::WRITER_CACHEMOD || pager->State == PAGER::WRITER_DBMOD);
+		_assert(pager->State == Pager::PAGER_WRITER_CACHEMOD || pager->State == Pager::PAGER_WRITER_DBMOD);
 		_assert(assert_pager_state(pager));
 		_assert(!UseWal(pager));
 
@@ -1905,12 +1905,12 @@ end_playback:
 		if (!pager->NoSync)
 		{
 			_assert(!pager->TempFile);
-			if (pager->JournalFile->Opened && pager->JournalMode != IPager::JOURNALMODE::JMEMORY)
+			if (pager->JournalFile->Opened && pager->JournalMode != IPager::JOURNALMODE_JMEMORY)
 			{
 				const int dc = pager->File->get_DeviceCharacteristics();
 				_assert(pager->JournalFile->Opened);
 
-				if ((dc & VFile::IOCAP::SAFE_APPEND) == 0)
+				if ((dc & VFile::IOCAP_SAFE_APPEND) == 0)
 				{
 					// This block deals with an obscure problem. If the last connection that wrote to this database was operating in persistent-journal
 					// mode, then the journal file may at this point actually be larger than Pager.journalOff bytes. If the next thing in the journal
@@ -1945,7 +1945,7 @@ end_playback:
 					// This is not required if the persistent media supports the SAFE_APPEND property. Because in this case it is not possible 
 					// for garbage data to be appended to the file, the nRec field is populated with 0xFFFFFFFF when the journal header is written
 					// and never needs to be updated.
-					if (pager->FullSync && (dc & VFile::IOCAP::SEQUENTIAL) == 0)
+					if (pager->FullSync && (dc & VFile::IOCAP_SEQUENTIAL) == 0)
 					{
 						PAGERTRACE("SYNC journal of %d\n", PAGERID(pager));
 						SysEx_IOTRACE("JSYNC %p\n", pager);
@@ -1956,16 +1956,16 @@ end_playback:
 					rc = pager->JournalFile->Write(header, sizeof(header), pager->JournalHeader);
 					if (rc != RC::OK) return rc;
 				}
-				if ((dc & VFile::IOCAP::SEQUENTIAL) == 0)
+				if ((dc & VFile::IOCAP_SEQUENTIAL) == 0)
 				{
 					PAGERTRACE("SYNC journal of %d\n", PAGERID(pager));
 					SysEx_IOTRACE("JSYNC %p\n", pager);
-					rc = pager->JournalFile->Sync(pager->SyncFlags | (pager->SyncFlags == VFile::SYNC::FULL ? VFile::SYNC::DATAONLY : 0));
+					rc = pager->JournalFile->Sync(pager->SyncFlags | (pager->SyncFlags == VFile::SYNC_FULL ? VFile::SYNC_DATAONLY : 0));
 					if (rc != RC::OK) return rc;
 				}
 
 				pager->JournalHeader = pager->JournalOffset;
-				if (newHeader && (dc & VFile::IOCAP::SAFE_APPEND) == 0)
+				if (newHeader && (dc & VFile::IOCAP_SAFE_APPEND) == 0)
 				{
 					pager->Records = 0;
 					rc = writeJournalHdr(pager);
@@ -1978,17 +1978,17 @@ end_playback:
 
 		// Unless the pager is in noSync mode, the journal file was just successfully synced. Either way, clear the PGHDR_NEED_SYNC flag on all pages.
 		pager->PCache->ClearSyncFlags();
-		pager->State = PAGER::WRITER_DBMOD;
+		pager->State = Pager::PAGER_WRITER_DBMOD;
 		_assert(assert_pager_state(pager));
 		return RC::OK;
 	}
 
-	static RC pager_write_pagelist(Pager *pager, PgHdr *list)
+	__device__ static RC pager_write_pagelist(Pager *pager, PgHdr *list)
 	{
 		// This function is only called for rollback pagers in WRITER_DBMOD state.
 		_assert(!UseWal(pager));
-		_assert(pager->State == PAGER::WRITER_DBMOD);
-		_assert(pager->Lock == VFile::LOCK::EXCLUSIVE);
+		_assert(pager->State == Pager::PAGER_WRITER_DBMOD);
+		_assert(pager->Lock == VFile::LOCK_EXCLUSIVE);
 
 		// If the file is a temp-file has not yet been opened, open it now. It is not possible for rc to be other than SQLITE_OK if this branch
 		// is taken, as pager_wait_on_lock() is a no-op for temp-files.
@@ -2004,7 +2004,7 @@ end_playback:
 		if (rc == RC::OK && pager->DBSize > pager->DBHintSize)
 		{
 			int64 sizeFile = pager->PageSize * (int64)pager->DBSize;
-			pager->File->FileControl(VFile::FCNTL::SIZE_HINT, &sizeFile);
+			pager->File->FileControl(VFile::FCNTL_SIZE_HINT, &sizeFile);
 			pager->DBHintSize = pager->DBSize;
 		}
 
@@ -2016,9 +2016,9 @@ end_playback:
 			// make the file smaller (presumably by auto-vacuum code). Do not write any such pages to the file.
 			//
 			// Also, do not write out any page that has the PGHDR_DONT_WRITE flag set (set by sqlite3PagerDontWrite()).
-			if (id <= pager->DBSize && (list->Flags & PgHdr::PGHDR::DONT_WRITE) == 0)
+			if (id <= pager->DBSize && (list->Flags & PgHdr::PGHDR_DONT_WRITE) == 0)
 			{
-				_assert((list->Flags & PgHdr::PGHDR::NEED_SYNC) == 0);
+				_assert((list->Flags & PgHdr::PGHDR_NEED_SYNC) == 0);
 				if (id == 1) pager_write_changecounter(list);
 
 				// Encode the database
@@ -2035,7 +2035,7 @@ end_playback:
 					_memcpy(((char *)&pager->DBFileVersion), &data[24], sizeof(pager->DBFileVersion));
 				if (id > pager->DBFileSize)
 					pager->DBFileSize = id;
-				pager->Stats[STAT::WRITE]++;
+				pager->Stats[STAT_WRITE]++;
 
 				// Update any backup objects copying the contents of this pager.
 				if (pager->Backup != nullptr) pager->Backup->Update(id, (uint8 *)list->Data);
@@ -2053,24 +2053,24 @@ end_playback:
 		return rc;
 	}
 
-	static RC openSubJournal(Pager *pager)
+	__device__ static RC openSubJournal(Pager *pager)
 	{
 		RC rc = RC::OK;
 		if (!pager->SubJournalFile->Opened)
 		{
-			if (pager->JournalMode == IPager::JOURNALMODE::JMEMORY || pager->SubjInMemory)
+			if (pager->JournalMode == IPager::JOURNALMODE_JMEMORY || pager->SubjInMemory)
 				VFile::MemoryVFileOpen(pager->SubJournalFile);
 			else
-				rc = pagerOpentemp(pager, pager->SubJournalFile, VSystem::OPEN::SUBJOURNAL);
+				rc = pagerOpentemp(pager, pager->SubJournalFile, VSystem::OPEN_SUBJOURNAL);
 		}
 		return rc;
 	}
 
-	static RC subjournalPage(PgHdr *pg)
+	__device__ static RC subjournalPage(PgHdr *pg)
 	{
 		RC rc = RC::OK;
 		Pager *pager = pg->Pager;
-		if (pager->JournalMode != IPager::JOURNALMODE::OFF)
+		if (pager->JournalMode != IPager::JOURNALMODE_OFF)
 		{
 			// Open the sub-journal, if it has not already been opened
 			_assert(pager->UseJournal);
@@ -2103,11 +2103,11 @@ end_playback:
 		return rc;
 	}
 
-	static RC pagerStress(void *p, IPage *pg)
+	__device__ static RC pagerStress(void *p, IPage *pg)
 	{
 		Pager *pager = (Pager *)p;
 		_assert(pg->Pager == pager);
-		_assert(pg->Flags & PgHdr::PGHDR::DIRTY);
+		_assert(pg->Flags & PgHdr::PGHDR_DIRTY);
 
 		// The doNotSyncSpill flag is set during times when doing a sync of journal (and adding a new header) is not allowed. This occurs
 		// during calls to sqlite3PagerWrite() while trying to journal multiple pages belonging to the same sector.
@@ -2119,7 +2119,7 @@ end_playback:
 		// be called in the error state.  Nevertheless, we include a NEVER() test for the error state as a safeguard against future changes.
 		if (SysEx_NEVER(pager->ErrorCode)) return RC::OK;
 		if (pager->DoNotSpill) return RC::OK;
-		if (pager->DoNotSyncSpill && (pg->Flags & PgHdr::PGHDR::NEED_SYNC) != 0)
+		if (pager->DoNotSyncSpill && (pg->Flags & PgHdr::PGHDR_NEED_SYNC) != 0)
 			return RC::OK;
 
 		pg->Dirty = nullptr;
@@ -2135,7 +2135,7 @@ end_playback:
 		else
 		{
 			// Sync the journal file if required.
-			if (pg->Flags & PgHdr::PGHDR::NEED_SYNC || pager->State == PAGER::WRITER_CACHEMOD)
+			if (pg->Flags & PgHdr::PGHDR_NEED_SYNC || pager->State == Pager::PAGER_WRITER_CACHEMOD)
 				rc = syncJournal(pager, true);
 
 			// If the page number of this page is larger than the current size of the database image, it may need to be written to the sub-journal.
@@ -2163,7 +2163,7 @@ end_playback:
 			// Write the contents of the page out to the database file.
 			if (rc == RC::OK)
 			{
-				_assert((pg->Flags & PgHdr::PGHDR::NEED_SYNC) == 0);
+				_assert((pg->Flags & PgHdr::PGHDR_NEED_SYNC) == 0);
 				rc = pager_write_pagelist(pager, pg);
 			}
 		}
@@ -2178,7 +2178,7 @@ end_playback:
 		return pager_error(pager, rc); 
 	}
 
-	RC Pager::Open(VSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VSystem::OPEN vfsFlags, void (*reinit)(IPage *))
+	__device__ RC Pager::Open(VSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VSystem::OPEN vfsFlags, void (*reinit)(IPage *))
 	{
 		// Figure out how much space is required for each journal file-handle (there are two of them, the main journal and the sub-journal). This
 		// is the maximum space required for an in-memory journal file handle and a regular journal file-handle. Note that a "regular journal-handle"
@@ -2195,7 +2195,7 @@ end_playback:
 		const char *uri = nullptr;	// URI args to copy
 		int uriLength = 0;			// Number of bytes of URI args at *zUri
 #ifndef OMIT_MEMORYDB
-		if (flags & IPager::PAGEROPEN::MEMORY)
+		if (flags & IPager::PAGEROPEN_MEMORY)
 		{
 			memoryDB = true;
 			if (filename && filename[0])
@@ -2294,7 +2294,7 @@ end_playback:
 			VSystem::OPEN fout = (VSystem::OPEN)0; // VFS flags returned by xOpen()
 			rc = vfs->Open(pager->Filename, pager->File, vfsFlags, &fout);
 			_assert(!memoryDB);
-			readOnly = (fout & VSystem::OPEN::READONLY);
+			readOnly = (fout & VSystem::OPEN_READONLY);
 
 			// If the file was successfully opened for read/write access, choose a default page size in case we have to create the
 			// database file. The default page size is the maximum of:
@@ -2310,12 +2310,12 @@ end_playback:
 					sizePage = (pager->SectorSize > MAX_DEFAULT_PAGE_SIZE ? MAX_DEFAULT_PAGE_SIZE : (uint32)pager->SectorSize);
 #ifdef ENABLE_ATOMIC_WRITE
 				{
-					_assert(VFile::IOCAP::ATOMIC512 == (512 >> 8));
-					_assert(VFile::IOCAP::ATOMIC64K == (65536 >> 8));
+					_assert(VFile::IOCAP_ATOMIC512 == (512 >> 8));
+					_assert(VFile::IOCAP_ATOMIC64K == (65536 >> 8));
 					_assert(MAX_DEFAULT_PAGE_SIZE <= 65536);
 					int dc = pager->File->get_DeviceCharacteristics();
 					for (int ii = sizePage; ii <= MAX_DEFAULT_PAGE_SIZE; ii = ii * 2)
-						if (dc & (VFile::IOCAP::ATOMIC | (ii >> 8)))
+						if (dc & (VFile::IOCAP_ATOMIC | (ii >> 8)))
 							sizePage = ii;
 				}
 #endif
@@ -2329,9 +2329,9 @@ end_playback:
 			// This branch is also run for an in-memory database. An in-memory database is the same as a temp-file that is never written out to
 			// disk and uses an in-memory rollback journal.
 			tempFile = true;
-			pager->State = PAGER::READER;
-			pager->Lock = VFile::LOCK::EXCLUSIVE;
-			readOnly = (vfsFlags & VSystem::OPEN::READONLY);
+			pager->State = Pager::PAGER_READER;
+			pager->Lock = VFile::LOCK_EXCLUSIVE;
+			readOnly = (vfsFlags & VSystem::OPEN_READONLY);
 		}
 
 		// The following call to PagerSetPagesize() serves to set the value of Pager.pageSize and to allocate the Pager.pTmpSpace buffer.
@@ -2359,12 +2359,12 @@ end_playback:
 		PAGERTRACE("OPEN %d %s\n", FILEHANDLEID(pager->File), pager->Filename);
 		SysEx_IOTRACE("OPEN %p %s\n", pager, pager->Filename);
 
-		bool useJournal = (flags & IPager::PAGEROPEN::OMIT_JOURNAL) == 0; // False to omit journal
+		bool useJournal = (flags & IPager::PAGEROPEN_OMIT_JOURNAL) == 0; // False to omit journal
 		pager->UseJournal = useJournal;
 		pager->MaxPid = MAX_PAGE_COUNT;
 		pager->TempFile = tempFile;
-		//_assert(tempFile == IPager::LOCKINGMODE::NORMAL || tempFile == IPager::LOCKINGMODE::EXCLUSIVE);
-		//_assert(IPager::LOCKINGMODE::EXCLUSIVE == 1);
+		//_assert(tempFile == IPager::LOCKINGMODE_NORMAL || tempFile == IPager::LOCKINGMODE_EXCLUSIVE);
+		//_assert(IPager::LOCKINGMODE_EXCLUSIVE == 1);
 		pager->ExclusiveMode = tempFile; 
 		pager->ChangeCountDone = tempFile;
 		pager->MemoryDB = memoryDB;
@@ -2381,31 +2381,31 @@ end_playback:
 		else
 		{
 			pager->FullSync = true;
-			pager->SyncFlags = VFile::SYNC::NORMAL;
-			pager->WalSyncFlags = (VFile::SYNC)(VFile::SYNC::NORMAL | VFile::SYNC::WAL_TRANSACTIONS);
-			pager->CheckpointSyncFlags = VFile::SYNC::NORMAL;
+			pager->SyncFlags = VFile::SYNC_NORMAL;
+			pager->WalSyncFlags = (VFile::SYNC)(VFile::SYNC_NORMAL | VFile::SYNC_WAL_TRANSACTIONS);
+			pager->CheckpointSyncFlags = VFile::SYNC_NORMAL;
 		}
 		pager->ExtraBytes = (uint16)extraBytes;
 		pager->JournalSizeLimit = DEFAULT_JOURNAL_SIZE_LIMIT;
 		_assert(pager->File->Opened || tempFile);
 		setSectorSize(pager);
 		if (!useJournal)
-			pager->JournalMode = IPager::JOURNALMODE::OFF;
+			pager->JournalMode = IPager::JOURNALMODE_OFF;
 		else if (memoryDB)
-			pager->JournalMode = IPager::JOURNALMODE::JMEMORY;
+			pager->JournalMode = IPager::JOURNALMODE_JMEMORY;
 		pager->Reiniter = reinit;
 
 		*pagerOut = pager;
 		return RC::OK;
 	}
 
-	static RC hasHotJournal(Pager *pager, bool *existsOut)
+	__device__ static RC hasHotJournal(Pager *pager, bool *existsOut)
 	{
 		_assert(pager->UseJournal);
 		_assert(pager->File->Opened);
-		_assert(pager->State == PAGER::OPEN);
+		_assert(pager->State == Pager::PAGER_OPEN);
 		bool journalOpened = pager->JournalFile->Opened;
-		_assert(!journalOpened || (pager->JournalFile->get_DeviceCharacteristics() & VFile::IOCAP::UNDELETABLE_WHEN_OPEN));
+		_assert(!journalOpened || (pager->JournalFile->get_DeviceCharacteristics() & VFile::IOCAP_UNDELETABLE_WHEN_OPEN));
 
 		*existsOut = false;
 		VSystem *const vfs = pager->Vfs;
@@ -2431,10 +2431,10 @@ end_playback:
 					if (pages == 0)
 					{
 						SysEx::BeginBenignAlloc();
-						if (pagerLockDb(pager, VFile::LOCK::RESERVED) == RC::OK)
+						if (pagerLockDb(pager, VFile::LOCK_RESERVED) == RC::OK)
 						{
 							vfs->Delete(pager->Journal, false);
-							if (!pager->ExclusiveMode) pagerUnlockDb(pager, VFile::LOCK::SHARED);
+							if (!pager->ExclusiveMode) pagerUnlockDb(pager, VFile::LOCK_SHARED);
 						}
 						SysEx::EndBenignAlloc();
 					}
@@ -2445,7 +2445,7 @@ end_playback:
 						// it can be ignored.
 						if (!journalOpened)
 						{
-							VSystem::OPEN f = (VSystem::OPEN)(VSystem::OPEN::READONLY | VSystem::OPEN::MAIN_JOURNAL);
+							VSystem::OPEN f = (VSystem::OPEN)(VSystem::OPEN_READONLY | VSystem::OPEN_MAIN_JOURNAL);
 							rc = vfs->Open(pager->Journal, pager->JournalFile, f, &f);
 						}
 						if (rc == RC::OK)
@@ -2474,30 +2474,30 @@ end_playback:
 		return rc;
 	}
 
-	RC Pager::SharedLock()
+	__device__ RC Pager::SharedLock()
 	{
 		// This routine is only called from b-tree and only when there are no outstanding pages. This implies that the pager state should either
 		// be OPEN or READER. READER is only possible if the pager is or was in  exclusive access mode.
 		_assert(PCache->get_Refs() == 0);
 		_assert(assert_pager_state(this));
-		_assert(State == PAGER::OPEN || State == PAGER::READER);
+		_assert(State == Pager::PAGER_OPEN || State == Pager::PAGER_READER);
 		if (SysEx_NEVER(MemoryDB && ErrorCode)) return ErrorCode;
 
 		RC rc = RC::OK;
-		if (!UseWal(this) && State == PAGER::OPEN)
+		if (!UseWal(this) && State == Pager::PAGER_OPEN)
 		{
 			_assert(!MemoryDB);
 
-			rc = pager_wait_on_lock(this, VFile::LOCK::SHARED);
+			rc = pager_wait_on_lock(this, VFile::LOCK_SHARED);
 			if (rc != RC::OK)
 			{
-				_assert(Lock == VFile::LOCK::NO || Lock == VFile::LOCK::UNKNOWN);
+				_assert(Lock == VFile::LOCK_NO || Lock == VFile::LOCK_UNKNOWN);
 				goto failed;
 			}
 
 			// If a journal file exists, and there is no RESERVED lock on the database file, then it either needs to be played back or deleted.
 			bool hotJournal = true; // True if there exists a hot journal-file
-			if (Lock <= VFile::LOCK::SHARED)
+			if (Lock <= VFile::LOCK_SHARED)
 				rc = hasHotJournal(this, &hotJournal);
 			if (rc != RC::OK)
 				goto failed;
@@ -2517,7 +2517,7 @@ end_playback:
 				// this point in the code and fail to obtain its own EXCLUSIVE lock on the database file.
 				//
 				// Unless the pager is in locking_mode=exclusive mode, the lock is downgraded to SHARED_LOCK before this function returns.
-				rc = pagerLockDb(this, VFile::LOCK::EXCLUSIVE);
+				rc = pagerLockDb(this, VFile::LOCK_EXCLUSIVE);
 				if (rc != RC::OK)
 					goto failed;
 
@@ -2537,9 +2537,9 @@ end_playback:
 					{
 						_assert(!TempFile);
 						VSystem::OPEN fout = (VSystem::OPEN)0;
-						rc = vfs->Open(Journal, JournalFile, (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::MAIN_JOURNAL), &fout);
+						rc = vfs->Open(Journal, JournalFile, (VSystem::OPEN)(VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_JOURNAL), &fout);
 						_assert(rc != RC::OK || JournalFile->Opened);
-						if (rc == RC::OK && fout & VSystem::OPEN::READONLY)
+						if (rc == RC::OK && fout & VSystem::OPEN_READONLY)
 						{
 							rc = SysEx_CANTOPEN_BKPT;
 							JournalFile->Close();
@@ -2558,11 +2558,11 @@ end_playback:
 					if (rc == RC::OK)
 					{
 						rc = pager_playback(this, true);
-						State = PAGER::OPEN;
+						State = Pager::PAGER_OPEN;
 					}
 				}
 				else if (!ExclusiveMode)
-					pagerUnlockDb(this, VFile::LOCK::SHARED);
+					pagerUnlockDb(this, VFile::LOCK_SHARED);
 
 				if (rc != RC::OK)
 				{
@@ -2578,8 +2578,8 @@ end_playback:
 					goto failed;
 				}
 
-				_assert(State == PAGER::OPEN);
-				_assert((Lock == VFile::LOCK::SHARED) || (ExclusiveMode && Lock > VFile::LOCK::SHARED));
+				_assert(State == Pager::PAGER_OPEN);
+				_assert((Lock == VFile::LOCK_SHARED) || (ExclusiveMode && Lock > VFile::LOCK_SHARED));
 			}
 
 			if (!TempFile && (Backup || PCache->get_Pages() > 0))
@@ -2627,7 +2627,7 @@ end_playback:
 			rc = pagerBeginReadTransaction(this);
 		}
 
-		if (State == PAGER::OPEN && rc == RC::OK)
+		if (State == Pager::PAGER_OPEN && rc == RC::OK)
 			rc = pagerPagecount(this, &DBSize);
 
 failed:
@@ -2635,22 +2635,22 @@ failed:
 		{
 			_assert(!MemoryDB);
 			pager_unlock(this);
-			_assert(State == PAGER::OPEN);
+			_assert(State == Pager::PAGER_OPEN);
 		}
 		else
-			State = PAGER::READER;
+			State = Pager::PAGER_READER;
 		return rc;
 	}
 
-	static void pagerUnlockIfUnused(Pager *pager)
+	__device__ static void pagerUnlockIfUnused(Pager *pager)
 	{
 		if (pager->PCache->get_Refs() == 0)
 			pagerUnlockAndRollback(pager);
 	}
 
-	RC Pager::Acquire(Pid id, IPage **pageOut, bool noContent)
+	__device__ RC Pager::Acquire(Pid id, IPage **pageOut, bool noContent)
 	{
-		_assert(State >= PAGER::READER);
+		_assert(State >= Pager::PAGER_READER);
 		_assert(assert_pager_state(this));
 
 		if (id == 0)
@@ -2678,7 +2678,7 @@ failed:
 		{
 			// In this case the pcache already contains an initialized copy of the page. Return without further ado.
 			_assert(id <= MAX_PID && id != MJ_PID(this));
-			Stats[STAT::HIT]++;
+			Stats[STAT_HIT]++;
 			return RC::OK;
 		}
 		// The pager cache has created a new page. Its content needs to be initialized.
@@ -2720,7 +2720,7 @@ failed:
 		else
 		{
 			_assert(pg->Pager == this);
-			Stats[STAT::MISS]++;
+			Stats[STAT_MISS]++;
 			rc = readDbPage(pg);
 			if (rc != RC::OK)
 				goto pager_acquire_err;
@@ -2738,17 +2738,17 @@ pager_acquire_err:
 		return rc;
 	}
 
-	IPage *Pager::Lookup(Pid id)
+	__device__ IPage *Pager::Lookup(Pid id)
 	{
 		_assert(id != 0);
 		_assert(PCache != nullptr);
-		_assert(State >= PAGER::READER && State != PAGER::ERROR);
+		_assert(State >= Pager::PAGER_READER && State != Pager::PAGER_ERROR);
 		PgHdr *pg;
 		PCache->Fetch(id, false, &pg);
 		return pg;
 	}
 
-	void Pager::Unref(IPage *pg)
+	__device__ void Pager::Unref(IPage *pg)
 	{
 		if (pg)
 		{
@@ -2758,9 +2758,9 @@ pager_acquire_err:
 		}
 	}
 
-	static RC pager_open_journal(Pager *pager)
+	__device__ static RC pager_open_journal(Pager *pager)
 	{
-		_assert(pager->State == PAGER::WRITER_LOCKED);
+		_assert(pager->State == Pager::PAGER_WRITER_LOCKED);
 		_assert(assert_pager_state(pager));
 		_assert(pager->InJournal == nullptr);
 
@@ -2769,8 +2769,7 @@ pager_acquire_err:
 		if (SysEx_NEVER(pager->ErrorCode)) return pager->ErrorCode;
 
 		RC rc = RC::OK;
-		VSystem *const vfs = pager->Vfs; // Local cache of vfs pointer
-		if (!UseWal(pager) && pager->JournalMode != IPager::JOURNALMODE::OFF)
+		if (!UseWal(pager) && pager->JournalMode != IPager::JOURNALMODE_OFF)
 		{
 			pager->InJournal = new Bitvec(pager->DBSize);
 			if (pager->InJournal == nullptr)
@@ -2779,11 +2778,11 @@ pager_acquire_err:
 			// Open the journal file if it is not already open.
 			if (!pager->JournalFile->Opened)
 			{
-				if (pager->JournalMode == IPager::JOURNALMODE::JMEMORY)
+				if (pager->JournalMode == IPager::JOURNALMODE_JMEMORY)
 					VFile::MemoryVFileOpen(pager->JournalFile);
 				else
 				{
-					const VSystem::OPEN flags = (VSystem::OPEN)(VSystem::OPEN::OREADWRITE | VSystem::OPEN::CREATE | (pager->TempFile ? VSystem::OPEN::DELETEONCLOSE | VSystem::OPEN::TEMP_JOURNAL : VSystem::OPEN::MAIN_JOURNAL));
+					const VSystem::OPEN flags = (VSystem::OPEN)(VSystem::OPEN_READWRITE | VSystem::OPEN_CREATE | (pager->TempFile ? VSystem::OPEN_DELETEONCLOSE | VSystem::OPEN_TEMP_JOURNAL : VSystem::OPEN_MAIN_JOURNAL));
 #ifdef ENABLE_ATOMIC_WRITE
 					rc = VFile::JournalVFileOpen(pager->Vfs, pager->Journal, pager->JournalFile, flags, jrnlBufferSize(pager));
 #else
@@ -2812,21 +2811,21 @@ pager_acquire_err:
 		}
 		else
 		{
-			_assert(pager->State == PAGER::WRITER_LOCKED);
-			pager->State = PAGER::WRITER_CACHEMOD;
+			_assert(pager->State == Pager::PAGER_WRITER_LOCKED);
+			pager->State = Pager::PAGER_WRITER_CACHEMOD;
 		}
 
 		return rc;
 	}
 
-	RC Pager::Begin(int exFlag, bool subjInMemory)
+	__device__ RC Pager::Begin(int exFlag, bool subjInMemory)
 	{
 		if (ErrorCode) return ErrorCode;
-		_assert(State >= PAGER::READER && State < PAGER::ERROR);
+		_assert(State >= Pager::PAGER_READER && State < Pager::PAGER_ERROR);
 		SubjInMemory = subjInMemory;
 
 		RC rc = RC::OK;
-		if (SysEx_ALWAYS(State == PAGER::READER))
+		if (SysEx_ALWAYS(State == Pager::PAGER_READER))
 		{
 			_assert(InJournal == nullptr);
 
@@ -2835,7 +2834,7 @@ pager_acquire_err:
 				// If the pager is configured to use locking_mode=exclusive, and an exclusive lock on the database is not already held, obtain it now.
 				if (ExclusiveMode && Wal->ExclusiveMode(-1))
 				{
-					rc = pagerLockDb(this, VFile::LOCK::EXCLUSIVE);
+					rc = pagerLockDb(this, VFile::LOCK_EXCLUSIVE);
 					if (rc != RC::OK)
 						return rc;
 					Wal->ExclusiveMode(1);
@@ -2849,9 +2848,9 @@ pager_acquire_err:
 			{
 				// Obtain a RESERVED lock on the database file. If the exFlag parameter is true, then immediately upgrade this to an EXCLUSIVE lock. The
 				// busy-handler callback can be used when upgrading to the EXCLUSIVE lock, but not when obtaining the RESERVED lock.
-				rc = pagerLockDb(this, VFile::LOCK::RESERVED);
+				rc = pagerLockDb(this, VFile::LOCK_RESERVED);
 				if (rc == RC::OK && exFlag)
-					rc = pager_wait_on_lock(this, VFile::LOCK::EXCLUSIVE);
+					rc = pager_wait_on_lock(this, VFile::LOCK_EXCLUSIVE);
 			}
 
 			if (rc == RC::OK)
@@ -2861,15 +2860,15 @@ pager_acquire_err:
 				// WAL mode sets Pager.eState to PAGER_WRITER_LOCKED or CACHEMOD when it has an open transaction, but never to DBMOD or FINISHED.
 				// This is because in those states the code to roll back savepoint transactions may copy data from the sub-journal into the database 
 				// file as well as into the page cache. Which would be incorrect in WAL mode.
-				State = PAGER::WRITER_LOCKED;
+				State = Pager::PAGER_WRITER_LOCKED;
 				DBHintSize = DBSize;
 				DBFileSize = DBSize;
 				DBOrigSize = DBSize;
 				JournalOffset = 0;
 			}
 
-			_assert(rc == RC::OK || State == PAGER::READER);
-			_assert(rc != RC::OK || State == PAGER::WRITER_LOCKED);
+			_assert(rc == RC::OK || State == Pager::PAGER_READER);
+			_assert(rc != RC::OK || State == Pager::PAGER_WRITER_LOCKED);
 			_assert(assert_pager_state(this));
 		}
 
@@ -2877,15 +2876,15 @@ pager_acquire_err:
 		return rc;
 	}
 
-	static RC pager_write(PgHdr *pg)
+	__device__ static RC pager_write(PgHdr *pg)
 	{
 		void *data = pg->Data;
 		Pager *pager = pg->Pager;
 
 		// This routine is not called unless a write-transaction has already been started. The journal file may or may not be open at this point. It is never called in the ERROR state.
-		_assert(pager->State == PAGER::WRITER_LOCKED ||
-			pager->State == PAGER::WRITER_CACHEMOD ||
-			pager->State == PAGER::WRITER_DBMOD);
+		_assert(pager->State == Pager::PAGER_WRITER_LOCKED ||
+			pager->State == Pager::PAGER_WRITER_CACHEMOD ||
+			pager->State == Pager::PAGER_WRITER_DBMOD);
 		_assert(assert_pager_state(pager));
 
 		// If an error has been previously detected, report the same error again. This should not happen, but the check provides robustness.
@@ -2902,12 +2901,12 @@ pager_acquire_err:
 		// This is done before calling sqlite3PcacheMakeDirty() on the page. Otherwise, if it were done after calling sqlite3PcacheMakeDirty(), then
 		// an error might occur and the pager would end up in WRITER_LOCKED state with pages marked as dirty in the cache.
 		RC rc = RC::OK;
-		if (pager->State == PAGER::WRITER_LOCKED)
+		if (pager->State == Pager::PAGER_WRITER_LOCKED)
 		{
 			rc = pager_open_journal(pager);
 			if (rc != RC::OK) return rc;
 		}
-		_assert(pager->State >= PAGER::WRITER_CACHEMOD);
+		_assert(pager->State >= Pager::PAGER_WRITER_CACHEMOD);
 		_assert(assert_pager_state(pager));
 
 		// Mark the page as dirty.  If the page has already been written to the journal then we can return right away.
@@ -2933,7 +2932,7 @@ pager_acquire_err:
 					// Even if an IO or diskfull error occurs while journalling the page in the block above, set the need-sync flag for the page.
 					// Otherwise, when the transaction is rolled back, the logic in playback_one_page() will think that the page needs to be restored
 					// in the database file. And if an IO error occurs while doing so, then corruption may follow.
-					pg->Flags |= PgHdr::PGHDR::NEED_SYNC;
+					pg->Flags |= PgHdr::PGHDR_NEED_SYNC;
 
 					int64 offset = pager->JournalOffset;
 					rc = pager->JournalFile->Write4(offset, pg->ID);
@@ -2945,7 +2944,7 @@ pager_acquire_err:
 
 					SysEx_IOTRACE("JOUT %p %d %lld %d\n", pager, pg->ID, pager->JournalOffset, pager->PageSize);
 					PAGER_INCR(_writej_count);
-					PAGERTRACE("JOURNAL %d page %d needSync=%d hash(%08x)\n", PAGERID(pager), pg->ID, ((pg->Flags & PgHdr::PGHDR::NEED_SYNC) ? 1 : 0), pager_pagehash(pg));
+					PAGERTRACE("JOURNAL %d page %d needSync=%d hash(%08x)\n", PAGERID(pager), pg->ID, ((pg->Flags & PgHdr::PGHDR_NEED_SYNC) ? 1 : 0), pager_pagehash(pg));
 
 					pager->JournalOffset += 8 + pager->PageSize;
 					pager->Records++;
@@ -2962,9 +2961,9 @@ pager_acquire_err:
 				}
 				else
 				{
-					if (pager->State != PAGER::WRITER_DBMOD)
-						pg->Flags |= PgHdr::PGHDR::NEED_SYNC;
-					PAGERTRACE("APPEND %d page %d needSync=%d\n", PAGERID(pager), pg->ID, ((pg->Flags & PgHdr::PGHDR::NEED_SYNC) ? 1 : 0));
+					if (pager->State != Pager::PAGER_WRITER_DBMOD)
+						pg->Flags |= PgHdr::PGHDR_NEED_SYNC;
+					PAGERTRACE("APPEND %d page %d needSync=%d\n", PAGERID(pager), pg->ID, ((pg->Flags & PgHdr::PGHDR_NEED_SYNC) ? 1 : 0));
 				}
 			}
 
@@ -2980,14 +2979,14 @@ pager_acquire_err:
 		return rc;
 	}
 
-	RC Pager::Write(IPage *page)
+	__device__ RC Pager::Write(IPage *page)
 	{
 		PgHdr *pg = page;
 		Pager *pager = pg->Pager;
 		Pid pagePerSector = (pager->SectorSize / pager->PageSize);
 
-		_assert(pager->State >= PAGER::WRITER_LOCKED);
-		_assert(pager->State != PAGER::ERROR);
+		_assert(pager->State >= Pager::PAGER_WRITER_LOCKED);
+		_assert(pager->State != Pager::PAGER_ERROR);
 		_assert(assert_pager_state(pager));
 
 		RC rc = RC::OK;
@@ -3026,7 +3025,7 @@ pager_acquire_err:
 						if (rc == RC::OK)
 						{
 							rc = pager_write(page2);
-							if (page2->Flags & PgHdr::PGHDR::NEED_SYNC)
+							if (page2->Flags & PgHdr::PGHDR_NEED_SYNC)
 								needSync = true;
 							Unref(page2);
 						}
@@ -3034,7 +3033,7 @@ pager_acquire_err:
 				}
 				else if ((page2 = pager_lookup(pager, id)) != 0)
 				{
-					if (page2->Flags & PgHdr::PGHDR::NEED_SYNC)
+					if (page2->Flags & PgHdr::PGHDR_NEED_SYNC)
 						needSync = true;
 					Unref(page2);
 				}
@@ -3051,7 +3050,7 @@ pager_acquire_err:
 					PgHdr *page2 = pager_lookup(pager, pg1 + ii);
 					if (page2)
 					{
-						page2->Flags |= PgHdr::PGHDR::NEED_SYNC;
+						page2->Flags |= PgHdr::PGHDR_NEED_SYNC;
 						Unref(page2);
 					}
 				}
@@ -3066,28 +3065,28 @@ pager_acquire_err:
 	}
 
 #ifndef DEBUG
-	bool Pager::Iswriteable(IPage *pg)
+	__device__ bool Pager::Iswriteable(IPage *pg)
 	{
-		return (pg->Flags & PgHdr::PGHDR::DIRTY);
+		return (pg->Flags & PgHdr::PGHDR_DIRTY);
 	}
 #endif
 
-	void Pager::DontWrite(IPage *pg)
+	__device__ void Pager::DontWrite(IPage *pg)
 	{
 		Pager *pager = pg->Pager;
-		if ((pg->Flags & PgHdr::PGHDR::DIRTY) && __arrayLength(pager->Savepoints) == 0)
+		if ((pg->Flags & PgHdr::PGHDR_DIRTY) && __arrayLength(pager->Savepoints) == 0)
 		{
 			PAGERTRACE("DONT_WRITE page %d of %d\n", pg->ID, PAGERID(pager));
 			SysEx_IOTRACE("CLEAN %p %d\n", pager, pg->ID);
-			pg->Flags |= PgHdr::PGHDR::DONT_WRITE;
+			pg->Flags |= PgHdr::PGHDR_DONT_WRITE;
 			pager_set_pagehash(pg);
 		}
 	}
 
-	static RC pager_incr_changecounter(Pager *pager, int isDirectMode)
+	__device__ static RC pager_incr_changecounter(Pager *pager, int isDirectMode)
 	{
-		_assert(pager->State == PAGER::WRITER_CACHEMOD
-			|| pager->State == PAGER::WRITER_DBMOD);
+		_assert(pager->State == Pager::PAGER_WRITER_CACHEMOD
+			|| pager->State == Pager::PAGER_WRITER_DBMOD);
 		_assert(assert_pager_state(pager));
 
 		// Declare and initialize constant integer 'isDirect'. If the atomic-write optimization is enabled in this build, then isDirect
@@ -3130,7 +3129,7 @@ pager_acquire_err:
 					if (rc == RC::OK)
 					{
 						rc = pager->File->Write(buf, pager->PageSize, 0);
-						pager->Stats[STAT::WRITE]++;
+						pager->Stats[STAT_WRITE]++;
 					}
 					if (rc == RC::OK)
 						pager->ChangeCountDone = true;
@@ -3145,7 +3144,7 @@ pager_acquire_err:
 		return rc;
 	}
 
-	RC Pager::Sync()
+	__device__ RC Pager::Sync()
 	{
 		RC rc = RC::OK;
 		if (!NoSync)
@@ -3156,7 +3155,7 @@ pager_acquire_err:
 		else if (File->Opened)
 		{
 			_assert(!MemoryDB);
-			rc = File->FileControl(VFile::FCNTL::SYNC_OMITTED, 0);
+			rc = File->FileControl(VFile::FCNTL_SYNC_OMITTED, 0);
 			if (rc == RC::NOTFOUND)
 				rc = RC::OK;
 		}
@@ -3167,24 +3166,24 @@ pager_acquire_err:
 
 #pragma region Commit
 
-	RC Pager::ExclusiveLock()
+	__device__ RC Pager::ExclusiveLock()
 	{
-		_assert(State == PAGER::WRITER_CACHEMOD || 
-			State == PAGER::WRITER_DBMOD ||
-			State == PAGER::WRITER_LOCKED);
+		_assert(State == Pager::PAGER_WRITER_CACHEMOD || 
+			State == Pager::PAGER_WRITER_DBMOD ||
+			State == Pager::PAGER_WRITER_LOCKED);
 		_assert(assert_pager_state(this));
 		RC rc = RC::OK;
 		if (!UseWal(this))
-			rc = pager_wait_on_lock(this, VFile::LOCK::EXCLUSIVE);
+			rc = pager_wait_on_lock(this, VFile::LOCK_EXCLUSIVE);
 		return rc;
 	}
 
-	RC Pager::CommitPhaseOne(const char *master, bool noSync)
+	__device__ RC Pager::CommitPhaseOne(const char *master, bool noSync)
 	{
-		_assert(State == PAGER::WRITER_LOCKED ||
-			State == PAGER::WRITER_CACHEMOD ||
-			State == PAGER::WRITER_DBMOD ||
-			State == PAGER::ERROR);
+		_assert(State == Pager::PAGER_WRITER_LOCKED ||
+			State == Pager::PAGER_WRITER_CACHEMOD ||
+			State == Pager::PAGER_WRITER_DBMOD ||
+			State == Pager::PAGER_ERROR);
 		_assert(assert_pager_state(this));
 
 		// If a prior error occurred, report that error again.
@@ -3193,7 +3192,7 @@ pager_acquire_err:
 		PAGERTRACE("DATABASE SYNC: File=%s zMaster=%s nSize=%d\n", Filename, master, DBSize);
 
 		// If no database changes have been made, return early.
-		if (State < PAGER::WRITER_CACHEMOD) return RC::OK;
+		if (State < Pager::PAGER_WRITER_CACHEMOD) return RC::OK;
 
 		RC rc = RC::OK;
 		if (MemoryDB)
@@ -3240,8 +3239,8 @@ pager_acquire_err:
 #ifdef ENABLE_ATOMIC_WRITE
 				PgHdr *pg;
 				_assert(JournalFile->Opened ||
-					JournalMode == IPager::JOURNALMODE::OFF ||
-					JournalMode == IPager::JOURNALMODE::WAL);
+					JournalMode == IPager::JOURNALMODE_OFF ||
+					JournalMode == IPager::JOURNALMODE_WAL);
 				if (!master && JournalFile->Opened &&
 					JournalOffset == jrnlBufferSize(this) &&
 					DBSize >= DBOrigSize &&
@@ -3291,7 +3290,7 @@ pager_acquire_err:
 				if (DBSize > DBFileSize)
 				{
 					Pid newID = DBSize - (DBSize == MJ_PID(this) ? 1 : 0);
-					_assert(State == PAGER::WRITER_DBMOD);
+					_assert(State == Pager::PAGER_WRITER_DBMOD);
 					rc = pager_truncate(this, newID);
 					if (rc != RC::OK) goto commit_phase_one_exit;
 				}
@@ -3305,18 +3304,18 @@ pager_acquire_err:
 
 commit_phase_one_exit:
 		if (rc == RC::OK && !UseWal(this))
-			State = PAGER::WRITER_FINISHED;
+			State = Pager::PAGER_WRITER_FINISHED;
 		return rc;
 	}
 
-	RC Pager::CommitPhaseTwo()
+	__device__ RC Pager::CommitPhaseTwo()
 	{
 		// This routine should not be called if a prior error has occurred. But if (due to a coding error elsewhere in the system) it does get
 		// called, just return the same error code without doing anything.
 		if (SysEx_NEVER(ErrorCode)) return ErrorCode;
-		_assert(State == PAGER::WRITER_LOCKED ||
-			State == PAGER::WRITER_FINISHED ||
-			(UseWal(this) && State == PAGER::WRITER_CACHEMOD));
+		_assert(State == Pager::PAGER_WRITER_LOCKED ||
+			State == Pager::PAGER_WRITER_FINISHED ||
+			(UseWal(this) && State == Pager::PAGER_WRITER_CACHEMOD));
 		_assert(assert_pager_state(this));
 
 		// An optimization. If the database was not actually modified during this transaction, the pager is running in exclusive-mode and is
@@ -3325,12 +3324,12 @@ commit_phase_one_exit:
 		// The start of the journal file currently contains a single journal header with the nRec field set to 0. If such a journal is used as
 		// a hot-journal during hot-journal rollback, 0 changes will be made to the database file. So there is no need to zero the journal 
 		// header. Since the pager is in exclusive mode, there is no need to drop any locks either.
-		if (State == PAGER::WRITER_LOCKED &&
+		if (State == Pager::PAGER_WRITER_LOCKED &&
 			ExclusiveMode &&
-			JournalMode == IPager::JOURNALMODE::PERSIST)
+			JournalMode == IPager::JOURNALMODE_PERSIST)
 		{
 			_assert(JournalOffset == JOURNAL_HDR_SZ(this) || !JournalOffset);
-			State = PAGER::READER;
+			State = Pager::PAGER_READER;
 			return RC::OK;
 		}
 
@@ -3339,37 +3338,37 @@ commit_phase_one_exit:
 		return pager_error(this, rc);
 	}
 
-	RC Pager::Rollback()
+	__device__ RC Pager::Rollback()
 	{
 		PAGERTRACE("ROLLBACK %d\n", PAGERID(this));
 		// PagerRollback() is a no-op if called in READER or OPEN state. If the pager is already in the ERROR state, the rollback is not attempted here. Instead, the error code is returned to the caller.
 		_assert(assert_pager_state(this));
-		if (State == PAGER::ERROR) return ErrorCode;
-		if (State <= PAGER::READER) return RC::OK;
+		if (State == Pager::PAGER_ERROR) return ErrorCode;
+		if (State <= Pager::PAGER_READER) return RC::OK;
 
 		RC rc = RC::OK;
 		if (UseWal(this))
 		{
-			rc = Savepoint(IPager::SAVEPOINT::ROLLBACK, -1);
+			rc = Savepoint(IPager::SAVEPOINT_ROLLBACK, -1);
 			RC rc2 = pager_end_transaction(this, SetMaster, false);
 			if (rc == RC::OK) rc = rc2;
 		}
-		else if (!JournalFile->Opened || State == PAGER::WRITER_LOCKED)
+		else if (!JournalFile->Opened || State == Pager::PAGER_WRITER_LOCKED)
 		{
 			PAGER state = State;
 			rc = pager_end_transaction(this, false, false);
-			if (!MemoryDB && state > PAGER::WRITER_LOCKED)
+			if (!MemoryDB && state > Pager::PAGER_WRITER_LOCKED)
 			{
 				// This can happen using journal_mode=off. Move the pager to the error state to indicate that the contents of the cache may not be trusted. Any active readers will get SQLITE_ABORT.
 				ErrorCode = RC::ABORT;
-				State = PAGER::ERROR;
+				State = Pager::PAGER_ERROR;
 				return rc;
 			}
 		}
 		else
 			rc = pager_playback(this, false);
 
-		_assert(State == PAGER::READER || rc != RC::OK);
+		_assert(State == Pager::PAGER_READER || rc != RC::OK);
 		_assert(rc == RC::OK || rc == RC::FULL || rc == RC::NOMEM || (rc & 0xFF) == RC::IOERR);
 
 		// If an error occurs during a ROLLBACK, we can no longer trust the pager cache. So call pager_error() on the way out to make any error persistent.
@@ -3380,70 +3379,70 @@ commit_phase_one_exit:
 
 #pragma region Name4
 
-	bool Pager::get_Readonly()
+	__device__ bool Pager::get_Readonly()
 	{
 		return ReadOnly;
 	}
 
-	int Pager::get_Refs()
+	__device__ int Pager::get_Refs()
 	{
 		return PCache->get_Refs();
 	}
 
-	int Pager::get_MemUsed()
+	__device__ int Pager::get_MemUsed()
 	{
 		int perPageSize = PageSize + ExtraBytes + sizeof(PgHdr) + 5 * sizeof(void *);
 		return perPageSize * PCache->get_Pages() + SysEx::AllocSize(this) + PageSize;
 	}
 
-	int Pager::get_PageRefs(IPage *page)
+	__device__ int Pager::get_PageRefs(IPage *page)
 	{
 		return PCache::get_PageRefs(page);
 	}
 
 #ifdef TEST
-	int *Pager::get_Stats()
+	__device__ int *Pager::get_Stats()
 	{
 		static int a[11];
 		a[0] = PCache->get_Refs();
 		a[1] = PCache->get_Pages();
 		a[2] = PCache->get_CacheSize();
-		a[3] = (State == PAGER::OPEN ? -1 : (int)DBSize);
+		a[3] = (State == Pager::PAGER_OPEN ? -1 : (int)DBSize);
 		a[4] = State;
 		a[5] = ErrorCode;
-		a[6] = Stats[STAT::HIT];
-		a[7] = Stats[STAT::MISS];
+		a[6] = Stats[STAT_HIT];
+		a[7] = Stats[STAT_MISS];
 		a[8] = 0;  // Used to be pager->nOvfl
 		a[9] = Reads;
-		a[10] = Stats[STAT::WRITE];
+		a[10] = Stats[STAT_WRITE];
 		return a;
 	}
 #endif
 
-	void Pager::CacheStat(int dbStatus, bool reset, int *value)
+	__device__ void Pager::CacheStat(int dbStatus, bool reset, int *value)
 	{
-		//_assert(dbStatus == DBSTATUS::CACHE_HIT ||
-		//	dbStatus == DBSTATUS::CACHE_MISS ||
-		//	dbStatus == DBSTATUS::CACHE_WRITE);
-		//_assert(DBSTATUS::CACHE_HIT + 1 == DBSTATUS::CACHE_MISS);
-		//_assert(DBSTATUS::CACHE_HIT + 2 == DBSTATUS::CACHE_WRITE);
-		//_assert(STAT::HIT == 0 &&
-		//	STAT::MISS == 1 &&
-		//	STAT::WRITE == 2);
+		//_assert(dbStatus == DBSTATUS_CACHE_HIT ||
+		//	dbStatus == DBSTATUS_CACHE_MISS ||
+		//	dbStatus == DBSTATUS_CACHE_WRITE);
+		//_assert(DBSTATUS_CACHE_HIT + 1 == DBSTATUS_CACHE_MISS);
+		//_assert(DBSTATUS_CACHE_HIT + 2 == DBSTATUS_CACHE_WRITE);
+		//_assert(STAT_HIT == 0 &&
+		//	STAT_MISS == 1 &&
+		//	STAT_WRITE == 2);
 
-		//*value += Stats[dbStatus - DBSTATUS::CACHE_HIT];
+		//*value += Stats[dbStatus - DBSTATUS_CACHE_HIT];
 		//if (reset)
-		//	Stats[dbStatus - DBSTATUS::CACHE_HIT] = 0;
+		//	Stats[dbStatus - DBSTATUS_CACHE_HIT] = 0;
 	}
 
-	bool Pager::get_MemoryDB()
+	__device__ bool Pager::get_MemoryDB()
 	{
 		return MemoryDB;
 	}
 
-	RC Pager::OpenSavepoint(int savepoints)
+	__device__ RC Pager::OpenSavepoint(int savepoints)
 	{
-		_assert(State >= PAGER::WRITER_LOCKED);
+		_assert(State >= Pager::PAGER_WRITER_LOCKED);
 		_assert(assert_pager_state(this));
 
 		RC rc = RC::OK;
@@ -3477,22 +3476,22 @@ commit_phase_one_exit:
 		return rc;
 	}
 
-	RC Pager::Savepoint(IPager::SAVEPOINT op, int savepoints)
+	__device__ RC Pager::Savepoint(IPager::SAVEPOINT op, int savepoints)
 	{
-		_assert(op == IPager::SAVEPOINT::RELEASE || op == IPager::SAVEPOINT::ROLLBACK);
-		_assert(savepoints >= 0 || op == IPager::SAVEPOINT::ROLLBACK);
+		_assert(op == IPager::SAVEPOINT_RELEASE || op == IPager::SAVEPOINT_ROLLBACK);
+		_assert(savepoints >= 0 || op == IPager::SAVEPOINT_ROLLBACK);
 		RC rc = ErrorCode;
 		if (rc == RC::OK && savepoints < __arrayLength(Savepoints))
 		{
 			// Figure out how many savepoints will still be active after this operation. Store this value in nNew. Then free resources associated 
 			// with any savepoints that are destroyed by this operation.
-			int newLength = savepoints + (op == IPager::SAVEPOINT::RELEASE ? 0 : 1); // Number of remaining savepoints after this op.
+			int newLength = savepoints + (op == IPager::SAVEPOINT_RELEASE ? 0 : 1); // Number of remaining savepoints after this op.
 			for (int ii = newLength; ii < __arrayLength(Savepoints); ii++)
 				Bitvec::Destroy(Savepoints[ii].InSavepoint);
 			__arraySetLength(Savepoints, newLength);
 
 			// If this is a release of the outermost savepoint, truncate the sub-journal to zero bytes in size.
-			if (op == IPager::SAVEPOINT::RELEASE)
+			if (op == IPager::SAVEPOINT_RELEASE)
 			{
 				if (newLength == 0 && SubJournalFile->Opened)
 				{
@@ -3517,33 +3516,33 @@ commit_phase_one_exit:
 		return rc;
 	}
 
-	const char *Pager::get_Filename(bool nullIfMemDb)
+	__device__ const char *Pager::get_Filename(bool nullIfMemDb)
 	{
 		return (nullIfMemDb && MemoryDB ? "" : Filename);
 	}
 
-	const VSystem *Pager::get_Vfs()
+	__device__ const VSystem *Pager::get_Vfs()
 	{
 		return Vfs;
 	}
 
-	VFile *Pager::get_File()
+	__device__ VFile *Pager::get_File()
 	{
 		return File;
 	}
 
-	const char *Pager::get_Journalname()
+	__device__ const char *Pager::get_Journalname()
 	{
 		return Journal;
 	}
 
-	int Pager::get_NoSync()
+	__device__ int Pager::get_NoSync()
 	{
 		return NoSync;
 	}
 
 #ifdef HAS_CODEC
-	void sqlite3PagerSetCodec(Pager *pager, void *(*codec)(void *,void *, Pid, int), void (*codecSizeChange)(void *, int, int), void (*codecFree)(void *), void *codecArg)
+	__device__ void sqlite3PagerSetCodec(Pager *pager, void *(*codec)(void *,void *, Pid, int), void (*codecSizeChange)(void *, int, int), void (*codecFree)(void *), void *codecArg)
 	{
 		if (pager->CodecFree) pager->CodecFree(pager->Codec);
 		pager->Codec = (pager->MemoryDB ? nullptr : codec);
@@ -3553,18 +3552,18 @@ commit_phase_one_exit:
 		pagerReportSize(pager);
 	}
 
-	void *sqlite3PagerGetCodec(Pager *pager)
+	__device__ void *sqlite3PagerGetCodec(Pager *pager)
 	{
 		return pager->Codec;
 	}
 #endif
 
 #ifndef OMIT_AUTOVACUUM
-	RC Pager::Movepage(IPage *pg, Pid id, bool isCommit)
+	__device__ RC Pager::Movepage(IPage *pg, Pid id, bool isCommit)
 	{
 		_assert(pg->Refs > 0);
-		_assert(State == PAGER::WRITER_CACHEMOD ||
-			State==PAGER::WRITER_DBMOD);
+		_assert(State == Pager::PAGER_WRITER_CACHEMOD ||
+			State == Pager::PAGER_WRITER_DBMOD);
 		_assert(assert_pager_state(this));
 
 		// In order to be able to rollback, an in-memory database must journal the page we are moving from.
@@ -3589,12 +3588,12 @@ commit_phase_one_exit:
 		//
 		// subjournalPage() may need to allocate space to store pPg->pgno into one or more savepoint bitvecs. This is the reason this function
 		// may return SQLITE_NOMEM.
-		if (pg->Flags & PgHdr::PGHDR::DIRTY &&
+		if (pg->Flags & PgHdr::PGHDR_DIRTY &&
 			subjRequiresPage(pg) &&
 			(rc = subjournalPage(pg)) != RC::OK)
 			return rc;
 
-		PAGERTRACE("MOVE %d page %d (needSync=%d) moves to %d\n", PAGERID(this), pg->ID, (pg->Flags & PgHdr::PGHDR::NEED_SYNC ? 1 : 0), id);
+		PAGERTRACE("MOVE %d page %d (needSync=%d) moves to %d\n", PAGERID(this), pg->ID, (pg->Flags & PgHdr::PGHDR_NEED_SYNC ? 1 : 0), id);
 		SysEx_IOTRACE("MOVE %p %d %d\n", this, pg->ID, id);
 
 		// If the journal needs to be sync()ed before page pPg->pgno can be written to, store pPg->pgno in local variable needSyncPgno.
@@ -3602,21 +3601,21 @@ commit_phase_one_exit:
 		// If the isCommit flag is set, there is no need to remember that the journal needs to be sync()ed before database page pPg->pgno 
 		// can be written to. The caller has already promised not to write to it.
 		Pid needSyncID = 0; // Old value of pPg->pgno, if sync is required
-		if ((pg->Flags & PgHdr::PGHDR::NEED_SYNC) && !isCommit)
+		if ((pg->Flags & PgHdr::PGHDR_NEED_SYNC) && !isCommit)
 		{
 			needSyncID = pg->ID;
-			_assert(JournalMode == IPager::JOURNALMODE::OFF || pageInJournal(pg) || pg->ID > DBOrigSize);
-			_assert(pg->Flags & PgHdr::PGHDR::DIRTY);
+			_assert(JournalMode == IPager::JOURNALMODE_OFF || pageInJournal(pg) || pg->ID > DBOrigSize);
+			_assert(pg->Flags & PgHdr::PGHDR_DIRTY);
 		}
 
 		// If the cache contains a page with page-number pgno, remove it from its hash chain. Also, if the PGHDR_NEED_SYNC flag was set for 
 		// page pgno before the 'move' operation, it needs to be retained for the page moved there.
-		pg->Flags &= ~PgHdr::PGHDR::NEED_SYNC;
+		pg->Flags &= ~PgHdr::PGHDR_NEED_SYNC;
 		PgHdr *pgOld = pager_lookup(this, id); // The page being overwritten.
 		_assert(!pgOld || pgOld->Refs == 1);
 		if (pgOld)
 		{
-			pg->Flags |= (pgOld->Flags & PgHdr::PGHDR::NEED_SYNC);
+			pg->Flags |= (pgOld->Flags & PgHdr::PGHDR_NEED_SYNC);
 			if (MemoryDB)
 			{
 				// Do not discard pages from an in-memory database since we might need to rollback later.  Just move the page out of the way.
@@ -3659,7 +3658,7 @@ commit_phase_one_exit:
 				}
 				return rc;
 			}
-			pgHdr->Flags |= PgHdr::PGHDR::NEED_SYNC;
+			pgHdr->Flags |= PgHdr::PGHDR_NEED_SYNC;
 			PCache::MakeDirty(pgHdr);
 			Unref(pgHdr);
 		}
@@ -3667,31 +3666,31 @@ commit_phase_one_exit:
 	}
 #endif
 
-	void *Pager::GetData(IPage *pg)
+	__device__ void *Pager::GetData(IPage *pg)
 	{
 		_assert(pg->Refs > 0 || pg->Pager->MemoryDB);
 		return pg->Data;
 	}
 
-	void *Pager::GetExtra(IPage *pg)
+	__device__ void *Pager::GetExtra(IPage *pg)
 	{
 		return pg->Extra;
 	}
 
-	int Pager::LockingMode(IPager::LOCKINGMODE mode)
+	__device__ int Pager::LockingMode(IPager::LOCKINGMODE mode)
 	{
-		_assert(mode == IPager::LOCKINGMODE::QUERY ||
-			mode == IPager::LOCKINGMODE::NORMAL ||
-			mode == IPager::LOCKINGMODE::EXCLUSIVE);
-		_assert(IPager::LOCKINGMODE::QUERY < 0);
-		_assert(IPager::LOCKINGMODE::NORMAL >= 0 && IPager::LOCKINGMODE::EXCLUSIVE >= 0);
-		_assert(ExclusiveMode || Wal->HeapMemory() == 0);
-		if (mode >= 0 && !TempFile && !Wal->HeapMemory())
+		_assert(mode == IPager::LOCKINGMODE_QUERY ||
+			mode == IPager::LOCKINGMODE_NORMAL ||
+			mode == IPager::LOCKINGMODE_EXCLUSIVE);
+		_assert(IPager::LOCKINGMODE_QUERY < 0);
+		_assert(IPager::LOCKINGMODE_NORMAL >= 0 && IPager::LOCKINGMODE_EXCLUSIVE >= 0);
+		_assert(ExclusiveMode || Wal->get_HeapMemory() == 0);
+		if (mode >= 0 && !TempFile && !Wal->get_HeapMemory())
 			ExclusiveMode = (uint8)mode;
 		return (int)ExclusiveMode;
 	}
 
-	IPager::JOURNALMODE Pager::SetJournalMode(IPager::JOURNALMODE mode)
+	__device__ IPager::JOURNALMODE Pager::SetJournalMode(IPager::JOURNALMODE mode)
 	{
 #ifdef _DEBUG
 		// The print_pager_state() routine is intended to be used by the debugger only.  We invoke it once here to suppress a compiler warning.
@@ -3699,39 +3698,39 @@ commit_phase_one_exit:
 #endif
 
 		// The mode parameter is always valid
-		_assert(mode == IPager::JOURNALMODE::DELETE ||
-			mode == IPager::JOURNALMODE::TRUNCATE ||
-			mode == IPager::JOURNALMODE::PERSIST ||
-			mode == IPager::JOURNALMODE::OFF ||
-			mode == IPager::JOURNALMODE::WAL ||
-			mode == IPager::JOURNALMODE::JMEMORY);
+		_assert(mode == IPager::JOURNALMODE_DELETE ||
+			mode == IPager::JOURNALMODE_TRUNCATE ||
+			mode == IPager::JOURNALMODE_PERSIST ||
+			mode == IPager::JOURNALMODE_OFF ||
+			mode == IPager::JOURNALMODE_WAL ||
+			mode == IPager::JOURNALMODE_JMEMORY);
 
 		// This routine is only called from the OP_JournalMode opcode, and the logic there will never allow a temporary file to be changed to WAL mode.
-		_assert(!TempFile || mode != IPager::JOURNALMODE::WAL);
+		_assert(!TempFile || mode != IPager::JOURNALMODE_WAL);
 
 		// Do allow the journalmode of an in-memory database to be set to anything other than MEMORY or OFF
 		IPager::JOURNALMODE old = JournalMode; // Prior journalmode
 		if (MemoryDB)
 		{
-			_assert(old == IPager::JOURNALMODE::JMEMORY || old == IPager::JOURNALMODE::OFF);
-			if (mode != IPager::JOURNALMODE::JMEMORY && mode != IPager::JOURNALMODE::OFF)
+			_assert(old == IPager::JOURNALMODE_JMEMORY || old == IPager::JOURNALMODE_OFF);
+			if (mode != IPager::JOURNALMODE_JMEMORY && mode != IPager::JOURNALMODE_OFF)
 				mode = old;
 		}
 
 		if (mode != old)
 		{
 			// Change the journal mode
-			_assert(State != PAGER::ERROR);
+			_assert(State != Pager::PAGER_ERROR);
 			JournalMode = mode;
 
 			// When transistioning from TRUNCATE or PERSIST to any other journal mode except WAL, unless the pager is in locking_mode=exclusive mode,
 			// delete the journal file.
-			_assert((IPager::JOURNALMODE::TRUNCATE & 5) == 1);
-			_assert((IPager::JOURNALMODE::PERSIST & 5) == 1);
-			_assert((IPager::JOURNALMODE::DELETE & 5) == 0);
-			_assert((IPager::JOURNALMODE::JMEMORY & 5) == 4);
-			_assert((IPager::JOURNALMODE::OFF & 5) == 0);
-			_assert((IPager::JOURNALMODE::WAL & 5) == 5);
+			_assert((IPager::JOURNALMODE_TRUNCATE & 5) == 1);
+			_assert((IPager::JOURNALMODE_PERSIST & 5) == 1);
+			_assert((IPager::JOURNALMODE_DELETE & 5) == 0);
+			_assert((IPager::JOURNALMODE_JMEMORY & 5) == 4);
+			_assert((IPager::JOURNALMODE_OFF & 5) == 0);
+			_assert((IPager::JOURNALMODE_WAL & 5) == 5);
 
 			_assert(File->Opened || ExclusiveMode);
 			if (!ExclusiveMode && (old & 5) == 1 && (mode & 1) == 0)
@@ -3742,25 +3741,25 @@ commit_phase_one_exit:
 				// Before deleting the journal file, obtain a RESERVED lock on the database file. This ensures that the journal file is not deleted
 				// while it is in use by some other client.
 				JournalFile->Close();
-				if (Lock >= VFile::LOCK::RESERVED)
+				if (Lock >= VFile::LOCK_RESERVED)
 					Vfs->Delete(Journal, false);
 				else
 				{
 					RC rc = RC::OK;
 					PAGER state = State;
-					_assert(state == PAGER::OPEN || state == PAGER::READER);
-					if (state == PAGER::OPEN)
+					_assert(state == Pager::PAGER_OPEN || state == Pager::PAGER_READER);
+					if (state == Pager::PAGER_OPEN)
 						rc = SharedLock();
-					if (State == PAGER::READER)
+					if (State == Pager::PAGER_READER)
 					{
 						_assert(rc == RC::OK);
-						rc = pagerLockDb(this, VFile::LOCK::RESERVED);
+						rc = pagerLockDb(this, VFile::LOCK_RESERVED);
 					}
 					if (rc == RC::OK)
 						Vfs->Delete(Journal, false);
-					if (rc == RC::OK && state == PAGER::READER)
-						pagerUnlockDb(this, VFile::LOCK::SHARED);
-					else if (state == PAGER::OPEN)
+					if (rc == RC::OK && state == Pager::PAGER_READER)
+						pagerUnlockDb(this, VFile::LOCK_SHARED);
+					else if (state == Pager::PAGER_OPEN)
 						pager_unlock(this);
 					_assert(state == State);
 				}
@@ -3771,19 +3770,19 @@ commit_phase_one_exit:
 		return JournalMode;
 	}
 
-	IPager::JOURNALMODE Pager::GetJournalMode()
+	__device__ IPager::JOURNALMODE Pager::GetJournalMode()
 	{
 		return JournalMode;
 	}
 
-	bool Pager::OkToChangeJournalMode()
+	__device__ bool Pager::OkToChangeJournalMode()
 	{
 		_assert(assert_pager_state(this));
-		if (State >= PAGER::WRITER_CACHEMOD) return false;
+		if (State >= Pager::PAGER_WRITER_CACHEMOD) return false;
 		return (SysEx_NEVER(JournalFile->Opened && JournalOffset > 0) ? false : true);
 	}
 
-	int64 Pager::SetJournalSizeLimit(int64 limit)
+	__device__ int64 Pager::SetJournalSizeLimit(int64 limit)
 	{
 		if (limit >= -1)
 		{
@@ -3793,13 +3792,13 @@ commit_phase_one_exit:
 		return JournalSizeLimit;
 	}
 
-	IBackup **Pager::BackupPtr()
+	__device__ IBackup **Pager::BackupPtr()
 	{
 		return &Backup;
 	}
 
 #ifndef OMIT_VACUUM
-	void Pager::ClearCache()
+	__device__ void Pager::ClearCache()
 	{
 		if (!MemoryDB && !TempFile)
 			pager_reset(this);
@@ -3811,7 +3810,7 @@ commit_phase_one_exit:
 #pragma region Wal
 #ifndef OMIT_WAL
 
-	RC Pager::Checkpoint(int mode, int *logs, int *checkpoints)
+	__device__ RC Pager::Checkpoint(int mode, int *logs, int *checkpoints)
 	{
 		RC rc = RC::OK;
 		if (Wal)
@@ -3822,31 +3821,31 @@ commit_phase_one_exit:
 		return rc;
 	}
 
-	RC Pager::WalCallback()
+	__device__ RC Pager::WalCallback()
 	{
 		return Wal->Callback();
 	}
 
-	bool Pager::WalSupported()
+	__device__ bool Pager::WalSupported()
 	{
 		return ExclusiveMode || false;
 		//const sqlite3_io_methods *pMethods = pager->File->xShmMap;
 		//return ExclusiveMode || (pMethods->iVersion>=2 && pMethods->xShmMap);
 	}
 
-	static RC pagerExclusiveLock(Pager *pager)
+	__device__ static RC pagerExclusiveLock(Pager *pager)
 	{
-		_assert(pager->Lock == VFile::LOCK::SHARED || pager->Lock == VFile::LOCK::EXCLUSIVE);
-		RC rc = pagerLockDb(pager, VFile::LOCK::EXCLUSIVE);
+		_assert(pager->Lock == VFile::LOCK_SHARED || pager->Lock == VFile::LOCK_EXCLUSIVE);
+		RC rc = pagerLockDb(pager, VFile::LOCK_EXCLUSIVE);
 		if (rc != RC::OK) // If the attempt to grab the exclusive lock failed, release the pending lock that may have been obtained instead.
-			pagerUnlockDb(pager, VFile::LOCK::SHARED);
+			pagerUnlockDb(pager, VFile::LOCK_SHARED);
 		return rc;
 	}
 
-	static RC pagerOpenWal(Pager *pager)
+	__device__ static RC pagerOpenWal(Pager *pager)
 	{
 		_assert(pager->Wal == nullptr && !pager->TempFile);
-		_assert(pager->Lock == VFile::LOCK::SHARED || pager->Lock == VFile::LOCK::EXCLUSIVE);
+		_assert(pager->Lock == VFile::LOCK_SHARED || pager->Lock == VFile::LOCK_EXCLUSIVE);
 
 		// If the pager is already in exclusive-mode, the WAL module will use heap-memory for the wal-index instead of the VFS shared-memory 
 		// implementation. Take the exclusive lock now, before opening the WAL file, to make sure this is safe.
@@ -3861,11 +3860,11 @@ commit_phase_one_exit:
 		return rc;
 	}
 
-	RC Pager::OpenWal(bool *opened)
+	__device__ RC Pager::OpenWal(bool *opened)
 	{
 		_assert(assert_pager_state(this));
-		_assert(State == PAGER::OPEN || opened);
-		_assert(State == PAGER::READER || !opened);
+		_assert(State == Pager::PAGER_OPEN || opened);
+		_assert(State == Pager::PAGER_READER || !opened);
 		_assert(opened == nullptr || *opened == false);
 		_assert(opened != nullptr || (!TempFile && !Wal));
 
@@ -3880,8 +3879,8 @@ commit_phase_one_exit:
 			rc = pagerOpenWal(this);
 			if (rc == RC::OK)
 			{
-				JournalMode = IPager::JOURNALMODE::WAL;
-				State = PAGER::OPEN;
+				JournalMode = IPager::JOURNALMODE_WAL;
+				State = Pager::PAGER_OPEN;
 			}
 		}
 		else
@@ -3890,16 +3889,16 @@ commit_phase_one_exit:
 		return rc;
 	}
 
-	RC Pager::CloseWal()
+	__device__ RC Pager::CloseWal()
 	{
-		_assert(JournalMode == IPager::JOURNALMODE::WAL);
+		_assert(JournalMode == IPager::JOURNALMODE_WAL);
 
 		// If the log file is not already open, but does exist in the file-system, it may need to be checkpointed before the connection can switch to
 		// rollback mode. Open it now so this can happen.
 		RC rc = RC::OK;
 		if (!Wal)
 		{
-			rc = pagerLockDb(this, VFile::LOCK::SHARED);
+			rc = pagerLockDb(this, VFile::LOCK_SHARED);
 			int logexists = 0;
 			if (rc == RC::OK)
 				rc = Vfs->Access(WalName, VSystem::ACCESS::EXISTS, &logexists);
@@ -3926,15 +3925,15 @@ commit_phase_one_exit:
 #pragma region Misc
 
 #ifdef ENABLE_ZIPVFS
-	int Pager::WalFramesize()
+	__device__ int Pager::WalFramesize()
 	{
-		_assert(State == PAGER::READER);
+		_assert(State == Pager::PAGER_READER);
 		return Wal->Frames();
 	}
 #endif
 
 #if defined(HAS_CODEC) && !defined(OMIT_WAL)
-	void *Pager::get_Codec(IPage *pg)
+	__device__ void *Pager::get_Codec(IPage *pg)
 	{
 		void *data = nullptr;
 		CODEC2(void, data, pg->Pager, pg->Data, pg->ID, 6, return nullptr);

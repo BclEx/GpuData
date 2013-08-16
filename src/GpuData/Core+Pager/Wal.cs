@@ -27,7 +27,7 @@ namespace Core
         const int WAL_CKPT_LOCK = 1;
         const int WAL_RECOVER_LOCK = 2;
         static int WAL_READ_LOCK(int I) { return (3 + (I)); }
-        const int WAL_NREADER = ((int)VFile.SHM.SHM_MAX - 3);
+        const int WAL_NREADER = ((int)VFile.SHM.MAX - 3);
 
         class WalIndexHeader
         {
@@ -39,9 +39,9 @@ namespace Core
             public ushort SizePage;             // Database page size in bytes. 1==64K
             public uint MaxFrame;               // Index of last valid frame in the WAL
             public uint Pages;                  // Size of database in pages
-            public byte[] FrameChecksum = new byte[2 * 4];		// Checksum of last frame in log
-            public byte[] Salt = new byte[2 * 4];				// Two salt values copied from WAL header
-            public byte[] Checksum = new byte[2 * 4];			// Checksum over all prior fields
+            public byte[] FrameChecksum = new byte[2 * 4];	// Checksum of last frame in log
+            public byte[] Salt = new byte[2 * 4];			// Two salt values copied from WAL header
+            public byte[] Checksum = new byte[2 * 4];		// Checksum over all prior fields
 
             public WalIndexHeader copy()
             {
@@ -73,7 +73,7 @@ namespace Core
         const int WAL_FRAME_HDRSIZE = 24;
         const int WAL_HDRSIZE = 32;
         const int WAL_MAGIC = 0x377f0682;
-        static long walFrameOffset(int Frame, long SizePage) { return (WAL_HDRSIZE + ((Frame) - 1) * (long)((SizePage) + WAL_FRAME_HDRSIZE)); }
+        static long walFrameOffset(int frame, long sizePage) { return (WAL_HDRSIZE + ((frame) - 1) * (long)((sizePage) + WAL_FRAME_HDRSIZE)); }
 
         enum MODE : byte
         {
@@ -92,7 +92,7 @@ namespace Core
         VSystem Vfs;			// The VFS used to create pDbFd
         VFile DBFile;				// File handle for the database file
         VFile WalFile;				// File handle for WAL file
-        uint Callback;				// Value to pass to log callback (or 0)
+        uint Callback_;				// Value to pass to log callback (or 0)
         long MaxWalSize;			// Truncate WAL to this size upon reset
         int SizeFirstBlock;			// Size of first block written to WAL file
         //int nWiData;				// Size of array apWiData
@@ -100,9 +100,9 @@ namespace Core
         uint SizePage;              // Database page size
         short ReadLock;				// Which read lock is being held.  -1 for none
         byte SyncFlags;				// Flags to use to sync header writes
-        MODE ExclusiveMode;			// Non-zero if connection is in exclusive mode
-        byte WriteLock;				// True if in a write transaction
-        byte CheckpointLock;        // True if holding a checkpoint lock
+        MODE ExclusiveMode_;		// Non-zero if connection is in exclusive mode
+        bool WriteLock;				// True if in a write transaction
+        bool CheckpointLock;        // True if holding a checkpoint lock
         READONLY ReadOnly;			// WAL_RDWR, WAL_RDONLY, or WAL_SHM_RDONLY
         byte TruncateOnCommit;		// True to truncate WAL file on commit
         byte SyncHeader;			// Fsync the WAL header if true
@@ -113,10 +113,6 @@ namespace Core
 #if DEBUG
         byte LockError;				// True if a locking error has occurred
 #endif
-
-        const int WAL_RDWR = 0;    // Normal read/write connection
-        const int WAL_RDONLY = 1;    // The WAL file is readonly
-        const int WAL_SHM_RDONLY = 2;   // The SHM file is readonly
 
         class WalIterator
         {
@@ -163,7 +159,7 @@ namespace Core
             var rc = RC.OK;
             if (wal.WiData[id] == null)
             {
-                if (wal.ExclusiveMode == MODE.HEAPMEMORY)
+                if (wal.ExclusiveMode_ == Wal.MODE.HEAPMEMORY)
                 {
                     wal.WiData[id] = SysEx.Alloc<Pid>(4, WALINDEX_PGSZ, true);
                     if (wal.WiData[id] != null) rc = RC.NOMEM;
@@ -173,7 +169,7 @@ namespace Core
                     rc = wal.DBFile.ShmMap((int)id, WALINDEX_PGSZ, (int)wal.WriteLock, wal.WiData, (int)id);
                     if (rc == RC.READONLY)
                     {
-                        wal.ReadOnly |= READONLY.SHM_RDONLY;
+                        wal.ReadOnly_ |= READONLY.SHM_RDONLY;
                         rc = RC.OK;
                     }
                 }
@@ -247,7 +243,7 @@ namespace Core
 
         static void walShmBarrier(Wal wal)
         {
-            if (wal.ExclusiveMode != MODE.HEAPMEMORY)
+            if (wal.ExclusiveMode_ != MODE.HEAPMEMORY)
                 wal.DBFile.ShmBarrier();
         }
 
@@ -315,147 +311,133 @@ namespace Core
 
         #region Lock
 
-#if TEST && _DEBUG
-	static const char *walLockName(int lockIdx)
-	{
-		if (lockIdx == WAL_WRITE_LOCK)
-			return "WRITE-LOCK";
-		else if (lockIdx == WAL_CKPT_LOCK)
-			return "CKPT-LOCK";
-		else if (lockIdx == WAL_RECOVER_LOCK)
-			return "RECOVER-LOCK";
-		else
-		{
-			static char name[15];
-			_snprintf(name, sizeof(name), "READ-LOCK[%d]", lockIdx - WAL_READ_LOCK(0));
-			return name;
-		}
-	}
-#endif
+        static string walLockName(int lockIdx)
+        {
+            if (lockIdx == WAL_WRITE_LOCK)
+                return "WRITE-LOCK";
+            else if (lockIdx == WAL_CKPT_LOCK)
+                return "CKPT-LOCK";
+            else if (lockIdx == WAL_RECOVER_LOCK)
+                return "RECOVER-LOCK";
+            else
+                return string.Format("READ-LOCK[{0}]", lockIdx - WAL_READ_LOCK(0));
+        }
 
         static RC walLockShared(Wal wal, int lockIdx)
         {
-            if (wal.ExclusiveMode != MODE.NORMAL) return RC.OK;
+            if (wal.ExclusiveMode_ != MODE.NORMAL) return RC.OK;
             RC rc = wal.DBFile.ShmLock(lockIdx, 1, VFile.SHM.LOCK | VFile.SHM.SHARED);
-#if TEST && _DEBUG
-		WALTRACE("WAL%p: acquire SHARED-%s %s\n", wal, walLockName(lockIdx), rc != 0 ? "failed" : "ok");
-#endif
+            WALTRACE("WAL%p: acquire SHARED-%s %s\n", wal, walLockName(lockIdx), rc != 0 ? "failed" : "ok");
             return rc;
         }
 
         static void walUnlockShared(Wal wal, int lockIdx)
         {
-            if (wal.ExclusiveMode != MODE.NORMAL) return;
+            if (wal.ExclusiveMode_ != MODE.NORMAL) return;
             wal.DBFile.ShmLock(lockIdx, 1, VFile.SHM.UNLOCK | VFile.SHM.SHARED);
-#if TEST && _DEBUG
-		WALTRACE("WAL%p: release SHARED-%s\n", wal, walLockName(lockIdx));
-#endif
+            WALTRACE("WAL%p: release SHARED-%s\n", wal, walLockName(lockIdx));
         }
 
         static RC walLockExclusive(Wal wal, int lockIdx, int n)
         {
-            if (wal.ExclusiveMode != MODE.NORMAL) return RC.OK;
+            if (wal.ExclusiveMode_ != MODE.NORMAL) return RC.OK;
             RC rc = wal.DBFile.ShmLock(lockIdx, n, VFile.SHM.LOCK | VFile.SHM.EXCLUSIVE);
-#if TEST && _DEBUG
-        WALTRACE("WAL%p: acquire EXCLUSIVE-%s cnt=%d %s\n", wal, walLockName(lockIdx), n, rc != 0 ? "failed" : "ok");
-#endif
+            WALTRACE("WAL%p: acquire EXCLUSIVE-%s cnt=%d %s\n", wal, walLockName(lockIdx), n, rc != 0 ? "failed" : "ok");
             return rc;
         }
 
         static void walUnlockExclusive(Wal wal, int lockIdx, int n)
         {
-            if (wal.ExclusiveMode != MODE.NORMAL) return;
+            if (wal.ExclusiveMode_ != MODE.NORMAL) return;
             wal.DBFile.ShmLock(lockIdx, n, VFile.SHM.UNLOCK | VFile.SHM.EXCLUSIVE);
-#if TEST && _DEBUG
-		WALTRACE("WAL%p: release EXCLUSIVE-%s cnt=%d\n", wal, walLockName(lockIdx), n);
-#endif
+            WALTRACE("WAL%p: release EXCLUSIVE-%s cnt=%d\n", wal, walLockName(lockIdx), n);
         }
 
         #endregion
 
         #region Hash
 
-	static int walHash(uint id)
-	{
-		Debug.Assert(id > 0);
-		Debug.Assert((HASHTABLE_NSLOT & (HASHTABLE_NSLOT-1)) == 0);
-		return (int)(id * HASHTABLE_HASH_1) & (HASHTABLE_NSLOT-1);
-	}
+        static int walHash(uint id)
+        {
+            Debug.Assert(id > 0);
+            Debug.Assert((HASHTABLE_NSLOT & (HASHTABLE_NSLOT - 1)) == 0);
+            return (int)(id * HASHTABLE_HASH_1) & (HASHTABLE_NSLOT - 1);
+        }
 
-	static int walNextHash(int priorHash)
-	{
-		return (priorHash + 1) & (HASHTABLE_NSLOT - 1);
-	}
+        static int walNextHash(int priorHash)
+        {
+            return (priorHash + 1) & (HASHTABLE_NSLOT - 1);
+        }
 
-	static RC walHashGet(Wal wal, int id, ht_slot[]hashOut, Pid[]idsOut, out uint zeroOut)
-	{
-		object ids;
-		RC rc = walIndexPage(wal, id, ref ids);
-		Debug.Assert(rc == RC.OK || id > 0);
+        static RC walHashGet(Wal wal, Pid id, ht_slot[] hashOut, Pid[] idsOut, out uint zeroOut)
+        {
+            object ids;
+            RC rc = walIndexPage(wal, id, ref ids);
+            Debug.Assert(rc == RC.OK || id > 0);
 
-		if (rc == RC.OK)
-		{
-			Pid zero;
-			var hash = (ht_slot)ids[HASHTABLE_NPAGE];
-			if (id == 0)
-			{
-				ids = &ids[WALINDEX_HDR_SIZE / sizeof(Pid)];
-				zero = 0;
-			}
-			else
-				zero = (uint)(HASHTABLE_NPAGE_ONE + (id - 1) * HASHTABLE_NPAGE);
+            if (rc == RC.OK)
+            {
+                Pid zero;
+                var hash = (ht_slot)ids[HASHTABLE_NPAGE];
+                if (id == 0)
+                {
+                    ids = &ids[WALINDEX_HDR_SIZE / sizeof(Pid)];
+                    zero = 0;
+                }
+                else
+                    zero = (uint)(HASHTABLE_NPAGE_ONE + (id - 1) * HASHTABLE_NPAGE);
 
-			idsOut = &ids[-1];
-			hashOut = hash;
-			zeroOut = zero;
-		}
-		return rc;
-	}
+                idsOut = &ids[-1];
+                hashOut = hash;
+                zeroOut = zero;
+            }
+            return rc;
+        }
 
-	static int walFramePage(uint frame)
-	{
-		int hash = (int)(frame + HASHTABLE_NPAGE-HASHTABLE_NPAGE_ONE-1) / HASHTABLE_NPAGE;
-		Debug.Assert((hash == 0 || frame > HASHTABLE_NPAGE_ONE) && 
-			(hash >= 1 || frame <= HASHTABLE_NPAGE_ONE) && 
-			(hash <= 1 || frame > (HASHTABLE_NPAGE_ONE + HASHTABLE_NPAGE)) && 
-			(hash >= 2 || frame <= HASHTABLE_NPAGE_ONE + HASHTABLE_NPAGE) && 
-			(hash <= 2 || frame > (HASHTABLE_NPAGE_ONE + 2 * HASHTABLE_NPAGE)));
-		return hash;
-	}
+        static int walFramePage(uint frame)
+        {
+            int hash = (int)(frame + HASHTABLE_NPAGE - HASHTABLE_NPAGE_ONE - 1) / HASHTABLE_NPAGE;
+            Debug.Assert((hash == 0 || frame > HASHTABLE_NPAGE_ONE) &&
+                (hash >= 1 || frame <= HASHTABLE_NPAGE_ONE) &&
+                (hash <= 1 || frame > (HASHTABLE_NPAGE_ONE + HASHTABLE_NPAGE)) &&
+                (hash >= 2 || frame <= HASHTABLE_NPAGE_ONE + HASHTABLE_NPAGE) &&
+                (hash <= 2 || frame > (HASHTABLE_NPAGE_ONE + 2 * HASHTABLE_NPAGE)));
+            return hash;
+        }
 
-	static uint walFramePgno(Wal wal, uint frame)
-	{
-		int hash = walFramePage(frame);
-		if (hash == 0)
-			return wal.WiData[0][WALINDEX_HDR_SIZE / sizeof(uint) + frame - 1];
-		return wal.WiData[hash][(frame - 1 - HASHTABLE_NPAGE_ONE) % HASHTABLE_NPAGE];
-	}
+        static uint walFramePgno(Wal wal, uint frame)
+        {
+            int hash = walFramePage(frame);
+            if (hash == 0)
+                return wal.WiData[0][WALINDEX_HDR_SIZE / sizeof(uint) + frame - 1];
+            return wal.WiData[hash][(frame - 1 - HASHTABLE_NPAGE_ONE) % HASHTABLE_NPAGE];
+        }
 
-	static void walCleanupHash(Wal wal)
-	{
-		Debug.Assert(wal.WriteLock);
+        static void walCleanupHash(Wal wal)
+        {
+            Debug.Assert(wal.WriteLock);
 
-		if (wal.Header.MaxFrame == 0) return;
+            if (wal.Header.MaxFrame == 0) return;
 
-		// Obtain pointers to the hash-table and page-number array containing the entry that corresponds to frame pWal->hdr.mxFrame. It is guaranteed
-		// that the page said hash-table and array reside on is already mapped.
-		Debug.Assert(wal.WiData.Length > walFramePage(wal.Header.MaxFrame));
-		Debug.Assert(wal.WiData[walFramePage(wal.Header.MaxFrame)] != 0);
-		ht_slot[] hash = null; // Pointer to hash table to clear
-		Pid[] ids = null; // Page number array for hash table
-		int zero = 0; // frame == (aHash[x]+iZero)
-		walHashGet(wal, walFramePage(wal.Header.MaxFrame), ref hash, ref ids, ref zero);
+            // Obtain pointers to the hash-table and page-number array containing the entry that corresponds to frame pWal->hdr.mxFrame. It is guaranteed
+            // that the page said hash-table and array reside on is already mapped.
+            Debug.Assert(wal.WiData.Length > walFramePage(wal.Header.MaxFrame));
+            Debug.Assert(wal.WiData[walFramePage(wal.Header.MaxFrame)] != 0);
+            ht_slot[] hash = null; // Pointer to hash table to clear
+            Pid[] ids = null; // Page number array for hash table
+            int zero = 0; // frame == (aHash[x]+iZero)
+            walHashGet(wal, walFramePage(wal.Header.MaxFrame), ref hash, ref ids, ref zero);
 
-		// Zero all hash-table entries that correspond to frame numbers greater than pWal->hdr.mxFrame.
-		int limit = wal.Header.MaxFrame - zero; // Zero values greater than this
-		Debug.Assert(limit > 0);
-		for (int i = 0; i < HASHTABLE_NSLOT; i++)
-			if (hash[i] > limit)
-				hash[i] = 0;
+            // Zero all hash-table entries that correspond to frame numbers greater than pWal->hdr.mxFrame.
+            int limit = wal.Header.MaxFrame - zero; // Zero values greater than this
+            Debug.Assert(limit > 0);
+            for (int i = 0; i < HASHTABLE_NSLOT; i++)
+                if (hash[i] > limit)
+                    hash[i] = 0;
 
-		// Zero the entries in the aPgno array that correspond to frames with frame numbers greater than pWal->hdr.mxFrame. 
-		int bytes = (int)((char *)hash - (char *)&ids[limit + 1]); // Number of bytes to zero in aPgno[]
-		_memset((void *)&ids[limit + 1], 0, bytes);
+            // Zero the entries in the aPgno array that correspond to frames with frame numbers greater than pWal->hdr.mxFrame. 
+            int bytes = (int)((char*)hash - (char*)&ids[limit + 1]); // Number of bytes to zero in aPgno[]
+            _memset((void*)&ids[limit + 1], 0, bytes);
 
 #if ENABLE_EXPENSIVE_ASSERT
 		// Verify that the every entry in the mapping region is still reachable via the hash table even after the cleanup.
@@ -468,9 +450,9 @@ namespace Core
 				_assert(hash[key] == i);
 			}
 #endif
-	}
+        }
 
-#endregion
+        #endregion
     }
 }
 #endif

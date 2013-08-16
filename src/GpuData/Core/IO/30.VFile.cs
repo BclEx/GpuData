@@ -79,11 +79,11 @@ namespace Core.IO
         [Flags]
         public enum SHM : byte
         {
-            SHM_UNLOCK = 1,
-            SHM_LOCK = 2,
-            SHM_SHARED = 4,
-            SHM_EXCLUSIVE = 8,
-            SHM_MAX = 8,
+            UNLOCK = 1,
+            LOCK = 2,
+            SHARED = 4,
+            EXCLUSIVE = 8,
+            MAX = 8,
         };
 
         public byte Type;

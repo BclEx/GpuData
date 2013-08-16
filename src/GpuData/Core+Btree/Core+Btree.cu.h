@@ -18,9 +18,9 @@ struct CollSeq
 
 enum SCHEMA_ : uint8
 {
-	SchemaLoaded = 0x0001, // The schema has been loaded
-	UnresetViews = 0x0002, // Some views have defined column names
-	Empty = 0x0004, // The file is empty (length 0 bytes)
+	SCHEMA_SchemaLoaded = 0x0001, // The schema has been loaded
+	SCHEMA_UnresetViews = 0x0002, // Some views have defined column names
+	SCHEMA_Empty = 0x0004, // The file is empty (length 0 bytes)
 };
 
 typedef struct ISchema ISchema;
@@ -40,10 +40,10 @@ struct ISchema
 class IVdbe
 {
 public:
-	virtual UnpackedRecord *AllocUnpackedRecord(KeyInfo *keyInfo, char *space, int spaceLength, char **free);
-	virtual void RecordUnpack(KeyInfo *keyInfo, int keyLength, const void *key, UnpackedRecord *p);
-	virtual void DeleteUnpackedRecord(UnpackedRecord *r);
-	virtual int RecordCompare(int cells, const void *cellKey, UnpackedRecord *idxKey);
+	__device__ virtual UnpackedRecord *AllocUnpackedRecord(KeyInfo *keyInfo, char *space, int spaceLength, char **free);
+	__device__ virtual void RecordUnpack(KeyInfo *keyInfo, int keyLength, const void *key, UnpackedRecord *p);
+	__device__ virtual void DeleteUnpackedRecord(UnpackedRecord *r);
+	__device__ virtual int RecordCompare(int cells, const void *cellKey, UnpackedRecord *idxKey);
 };
 
 #pragma endregion

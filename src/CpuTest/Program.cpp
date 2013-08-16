@@ -24,7 +24,7 @@ static void TestVFS()
 {
 	auto vfs = VSystem::Find("win32");
 	auto file = (VFile *)SysEx::Alloc(vfs->SizeOsFile);
-	auto rc = vfs->Open("C:\\T_\\Test.db", file, VSystem::OPEN::CREATE | VSystem::OPEN::OREADWRITE | VSystem::OPEN::MAIN_DB, nullptr);
+	auto rc = vfs->Open("C:\\T_\\Test.db", file, VSystem::OPEN_CREATE | VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_DB, nullptr);
 	file->Write4(0, 123145);
 	file->Close();
 }
@@ -36,7 +36,7 @@ static Pager *Open(VSystem *vfs)
 	byte dbHeader[100]; // Database header content
 
 	IPager::PAGEROPEN flags = (IPager::PAGEROPEN)0;
-	VSystem::OPEN vfsFlags = VSystem::OPEN::CREATE | VSystem::OPEN::OREADWRITE | VSystem::OPEN::MAIN_DB;
+	VSystem::OPEN vfsFlags = VSystem::OPEN_CREATE | VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_DB;
 	//
 	Pager *pager;
 	auto rc = Pager::Open(vfs, &pager, "C:\\T_\\Test.db", 0, flags, vfsFlags, nullptr);

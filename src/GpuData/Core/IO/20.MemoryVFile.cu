@@ -37,7 +37,7 @@ namespace Core { namespace IO
 		__device__ virtual RC get_FileSize(int64 &size);
 	};
 
-	RC MemoryVFile::Read(void *buffer, int amount, int64 offset)
+	__device__ RC MemoryVFile::Read(void *buffer, int amount, int64 offset)
 	{
 		// SQLite never tries to read past the end of a rollback journal file
 		_assert(offset + amount <= _endpoint.Offset);
@@ -67,7 +67,7 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	RC MemoryVFile::Write(const void *buffer, int amount, int64 offset)
+	__device__ RC MemoryVFile::Write(const void *buffer, int amount, int64 offset)
 	{
 		// An in-memory journal file should only ever be appended to. Random access writes are not required by sqlite.
 		_assert(offset == _endpoint.Offset);
@@ -96,7 +96,7 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	RC MemoryVFile::Truncate(int64 size)
+	__device__ RC MemoryVFile::Truncate(int64 size)
 	{
 		_assert(size == 0);
 		FileChunk *chunk = First;
@@ -110,18 +110,18 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	RC MemoryVFile::Close()
+	__device__ RC MemoryVFile::Close()
 	{
 		Truncate(0);
 		return RC::OK;
 	}
 
-	RC MemoryVFile::Sync(int flags)
+	__device__ RC MemoryVFile::Sync(int flags)
 	{
 		return RC::OK;
 	}
 
-	RC MemoryVFile::get_FileSize(int64 &size)
+	__device__ RC MemoryVFile::get_FileSize(int64 &size)
 	{
 		size = (int64)_endpoint.Offset;
 		return RC::OK;

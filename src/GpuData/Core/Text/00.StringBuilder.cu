@@ -2,7 +2,7 @@
 
 namespace Core { namespace Text
 {
-	void StringBuilder::Append(const char *z, int length)
+	__device__ void StringBuilder::Append(const char *z, int length)
 	{
 		_assert(z != nullptr || length == 0);
 		if (Overflowed | MallocFailed)
@@ -61,7 +61,7 @@ namespace Core { namespace Text
 		Index += length;
 	}
 
-	char *StringBuilder::ToString()
+	__device__ char *StringBuilder::ToString()
 	{
 		if (Text)
 		{
@@ -81,7 +81,7 @@ namespace Core { namespace Text
 		return Text;
 	}
 
-	void StringBuilder::Reset()
+	__device__ void StringBuilder::Reset()
 	{
 		if (Text != Base)
 		{
@@ -93,7 +93,7 @@ namespace Core { namespace Text
 		Text = nullptr;
 	}
 
-	void StringBuilder::Init(StringBuilder *b, char *text, int capacity, int maxSize)
+	__device__ void StringBuilder::Init(StringBuilder *b, char *text, int capacity, int maxSize)
 	{
 		b->Text = b->Base = text;
 		b->Ctx = nullptr;

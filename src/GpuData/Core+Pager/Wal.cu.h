@@ -1,49 +1,47 @@
 ﻿// wal.h
 namespace Core
 {
-	//typedef struct WalIndexHeader WalIndexHeader;
-
 	struct Wal
 	{
 #ifdef OMIT_WAL
 
-		inline static RC Open(VSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut) { return RC::OK; }
-		inline void Limit(int64 limit) { }
-		inline RC Close(VFile::SYNC sync_flags, int bufLength, uint8 *buf) { return RC::OK; }
-		inline RC BeginReadTransaction(bool *changed) { return RC::OK; }
-		inline void EndReadTransaction() { }
-		inline RC Read(Pid id, bool *inWal, int bufLength, uint8 *buf) { return RC::OK; }
-		inline Pid DBSize() { return 0; }
-		inline RC BeginWriteTransaction() { return RC::OK; }
-		inline RC EndWriteTransaction() { return RC::OK; }
-		inline RC Undo(RC (*undo)(void *, Pid), void *undoCtx) { return RC::OK; }
-		inline void Savepoint(uint32 *walData) { }
-		inline RC SavepointUndo(uint32 *walData) { return RC::OK; }
-		inline RC Frames(int sizePage, PgHdr *list, Pid truncate, bool isCommit, VFile::SYNC sync_flags) { return RC::OK; }
-		inline RC Checkpoint(int mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints) { *logs = 0, *checkpoints = 0; return RC::OK; }
-		inline RC Callback() { return RC::OK; }
-		inline bool ExclusiveMode(int op) { return false; }
-		inline bool HeapMemory() { return false; }
+		__device__ inline static RC Open(VSystem *vfs, VFile *dbFile, const char *walName, bool noShm, int64 maxWalSize, Wal **walOut) { return RC::OK; }
+		__device__ inline void Limit(int64 limit) { }
+		__device__ inline RC Close(VFile::SYNC sync_flags, int bufLength, uint8 *buf) { return RC::OK; }
+		__device__ inline RC BeginReadTransaction(bool *changed) { return RC::OK; }
+		__device__ inline void EndReadTransaction() { }
+		__device__ inline RC Read(Pid id, bool *inWal, int bufLength, uint8 *buf) { return RC::OK; }
+		__device__ inline Pid DBSize() { return 0; }
+		__device__ inline RC BeginWriteTransaction() { return RC::OK; }
+		__device__ inline RC EndWriteTransaction() { return RC::OK; }
+		__device__ inline RC Undo(RC (*undo)(void *, Pid), void *undoCtx) { return RC::OK; }
+		__device__ inline void Savepoint(uint32 *walData) { }
+		__device__ inline RC SavepointUndo(uint32 *walData) { return RC::OK; }
+		__device__ inline RC Frames(int sizePage, PgHdr *list, Pid truncate, bool isCommit, VFile::SYNC sync_flags) { return RC::OK; }
+		__device__ inline RC Checkpoint(int mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints) { *logs = 0, *checkpoints = 0; return RC::OK; }
+		__device__ inline int get_Callback() { return 0; }
+		__device__ inline bool ExclusiveMode(int op) { return false; }
+		__device__ inline bool get_HeapMemory() { return false; }
 #ifdef ENABLE_ZIPVFS
-		inline int Framesize() { return 0; }
+		__device__ inline int get_Framesize() { return 0; }
 #endif
 
 #else
 		enum MODE : uint8
 		{
-			NORMAL = 0,
-			EXCLUSIVE = 1,
-			HEAPMEMORY = 2,
+			MODE_NORMAL = 0,
+			MODE_EXCLUSIVE = 1,
+			MODE_HEAPMEMORY = 2,
 		};
 
 		enum RDONLY : uint8
 		{
-			RDWR = 0,			// Normal read/write connection
-			RDONLY = 1,			// The WAL file is readonly
-			SHM_RDONLY = 2,		// The SHM file is readonly
+			RDONLY_RDWR = 0,			// Normal read/write connection
+			RDONLY_RDONLY = 1,			// The WAL file is readonly
+			RDONLY_SHM_RDONLY = 2,		// The SHM file is readonly
 		};
 
-		VSystem *Vfs;				// The VFS used to create pDbFd
+		VSystem *Vfs;					// The VFS used to create pDbFd
 		VFile *DBFile;					// File handle for the database file
 		VFile *WalFile;					// File handle for WAL file
 		uint32 Callback;				// Value to pass to log callback (or 0)
@@ -54,10 +52,10 @@ namespace Core
 		uint32 SizePage;                // Database page size
 		int16 ReadLock;					// Which read lock is being held.  -1 for none
 		uint8 SyncFlags;				// Flags to use to sync header writes
-		MODE ExclusiveMode;				// Non-zero if connection is in exclusive mode
+		MODE ExclusiveMode_;			// Non-zero if connection is in exclusive mode
 		bool WriteLock;					// True if in a write transaction
 		bool CheckpointLock;			// True if holding a checkpoint lock
-		RDONLY ReadOnly;			// WAL_RDWR, WAL_RDONLY, or WAL_SHM_RDONLY
+		RDONLY ReadOnly;				// WAL_RDWR, WAL_RDONLY, or WAL_SHM_RDONLY
 		bool TruncateOnCommit;			// True to truncate WAL file on commit
 		uint8 SyncHeader;				// Fsync the WAL header if true
 		uint8 PadToSectorBoundary;		// Pad transactions out to the next sector
@@ -94,12 +92,12 @@ namespace Core
 		void Savepoint(uint32 *walData);
 		RC SavepointUndo(uint32 *walData);
 		RC Frames(int sizePage, PgHdr *list, Pid truncate, bool isCommit, VFile::SYNC sync_flags);
-		RC Checkpoint(int mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints);
-		int Callback();
+		RC Checkpoint(IPager::CHECKPOINT mode, int (*busy)(void*), void *busyArg, VFile::SYNC sync_flags, int bufLength, uint8 *buf, int *logs, int *checkpoints);
+		int get_Callback();
 		bool ExclusiveMode(int op);
-		bool HeapMemory();
+		bool get_HeapMemory();
 #ifdef ENABLE_ZIPVFS
-		int Framesize();
+		int get_Framesize();
 #endif
 
 #endif

@@ -5,16 +5,16 @@
 	public:
 		enum MUTEX
 		{
-			FAST = 0,
-			RECURSIVE = 1,
-			STATIC_MASTER = 2,
-			STATIC_MEM = 3,  // sqlite3_malloc()
-			STATIC_MEM2 = 4,  // NOT USED
-			STATIC_OPEN = 4,  // sqlite3BtreeOpen()
-			STATIC_PRNG = 5,  // sqlite3_random()
-			STATIC_LRU = 6,   // lru page list
-			STATIC_LRU2 = 7,  // NOT USED
-			STATIC_PMEM = 7, // sqlite3PageMalloc()
+			MUTEX_FAST = 0,
+			MUTEX_RECURSIVE = 1,
+			MUTEX_STATIC_MASTER = 2,
+			MUTEX_STATIC_MEM = 3,  // sqlite3_malloc()
+			MUTEX_STATIC_MEM2 = 4,  // NOT USED
+			MUTEX_STATIC_OPEN = 4,  // sqlite3BtreeOpen()
+			MUTEX_STATIC_PRNG = 5,  // sqlite3_random()
+			MUTEX_STATIC_LRU = 6,   // lru page list
+			MUTEX_STATIC_LRU2 = 7,  // NOT USED
+			MUTEX_STATIC_PMEM = 7, // sqlite3PageMalloc()
 		};
 
 		__device__ inline static MutexEx Alloc(MUTEX id)

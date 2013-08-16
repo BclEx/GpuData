@@ -6,21 +6,21 @@ namespace Core
 	public:
 		enum STATUS
 		{
-			MEMORY_USED = 0,
-			PAGECACHE_USED = 1,
-			PAGECACHE_OVERFLOW = 2,
-			SCRATCH_USED = 3,
-			SCRATCH_OVERFLOW = 4,
-			MALLOC_SIZE = 5,
-			PARSER_STACK = 6,
-			PAGECACHE_SIZE = 7,
-			SCRATCH_SIZE = 8,
-			MALLOC_COUNT = 9,
+			STATUS_MEMORY_USED = 0,
+			STATUS_PAGECACHE_USED = 1,
+			STATUS_PAGECACHE_OVERFLOW = 2,
+			STATUS_SCRATCH_USED = 3,
+			STATUS_SCRATCH_OVERFLOW = 4,
+			STATUS_MALLOC_SIZE = 5,
+			STATUS_PARSER_STACK = 6,
+			STATUS_PAGECACHE_SIZE = 7,
+			STATUS_SCRATCH_SIZE = 8,
+			STATUS_MALLOC_COUNT = 9,
 		};
 
-		static int StatusValue(STATUS op);
-		static void StatusAdd(STATUS op, int N);
-		static void StatusSet(StatusEx::STATUS op, int X);
-		static int Status(StatusEx::STATUS op, int *current, int *highwater, int resetFlag);
+		__device__ static int StatusValue(STATUS op);
+		__device__ static void StatusAdd(STATUS op, int N);
+		__device__ static void StatusSet(StatusEx::STATUS op, int X);
+		__device__ static int Status(StatusEx::STATUS op, int *current, int *highwater, int resetFlag);
 	};
 }

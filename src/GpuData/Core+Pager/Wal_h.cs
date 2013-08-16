@@ -19,8 +19,11 @@ namespace Core
         internal RC SavepointUndo(object z) { return 0; }
         internal RC Frames(int v, PgHdr w, Pid x, int y, int z) { return 0; }
         internal RC Checkpoint(int s, int t, byte[] u, int v, int w, byte[] x, ref int y, ref int z) { y = 0; z = 0; return 0; }
-        internal RC Callback() { return 0; }
+        internal int get_Callback() { return 0; }
         internal bool ExclusiveMode(int z) { return false; }
-        internal bool HeapMemory() { return false; }
+        internal bool get_HeapMemory() { return false; }
+#if ENABLE_ZIPVFS
+        internal int get_Framesize() { return 0; }
+#endif
     }
 }

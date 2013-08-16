@@ -13,28 +13,28 @@ namespace Core
 	class IPCache
 	{
 	public:
-		virtual RC Init() = 0;
-		virtual void Shutdown() = 0;
-		virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable) = 0;
-		virtual void Cachesize(uint max) = 0;
-		virtual void Shrink() = 0;
-		virtual int get_Pages() = 0;
-		virtual ICachePage *Fetch(Pid id, bool createFlag) = 0;
-		virtual void Unpin(ICachePage *pg, bool reuseUnlikely) = 0;
-		virtual void Rekey(ICachePage *pg, Pid old, Pid new_) = 0;
-		virtual void Truncate(Pid limit) = 0;
-		virtual void Destroy(IPCache *p) = 0;
+		__device__ virtual RC Init() = 0;
+		__device__ virtual void Shutdown() = 0;
+		__device__ virtual IPCache *Create(int sizePage, int sizeExtra, bool purgeable) = 0;
+		__device__ virtual void Cachesize(uint max) = 0;
+		__device__ virtual void Shrink() = 0;
+		__device__ virtual int get_Pages() = 0;
+		__device__ virtual ICachePage *Fetch(Pid id, bool createFlag) = 0;
+		__device__ virtual void Unpin(ICachePage *pg, bool reuseUnlikely) = 0;
+		__device__ virtual void Rekey(ICachePage *pg, Pid old, Pid new_) = 0;
+		__device__ virtual void Truncate(Pid limit) = 0;
+		__device__ virtual void Destroy(IPCache *p) = 0;
 	};
 
 	struct PgHdr
 	{
 		enum PGHDR : uint16
 		{
-			DIRTY = 0x002,			// Page has changed
-			NEED_SYNC = 0x004,		// Fsync the rollback journal before writing this page to the database
-			NEED_READ = 0x008,		// Content is unread
-			REUSE_UNLIKELY = 0x010, // A hint that reuse is unlikely
-			DONT_WRITE = 0x020		// Do not write content to disk 
+			PGHDR_DIRTY = 0x002,			// Page has changed
+			PGHDR_NEED_SYNC = 0x004,		// Fsync the rollback journal before writing this page to the database
+			PGHDR_NEED_READ = 0x008,		// Content is unread
+			PGHDR_REUSE_UNLIKELY = 0x010, // A hint that reuse is unlikely
+			PGHDR_DONT_WRITE = 0x020		// Do not write content to disk 
 		};
 		ICachePage *Page;			// Pcache object page handle
 		void *Data;					// Page data

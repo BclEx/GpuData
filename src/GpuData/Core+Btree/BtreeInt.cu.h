@@ -50,13 +50,13 @@ namespace Core
 
 	enum BTS : uint16
 	{
-		READ_ONLY = 0x0001,		// Underlying file is readonly
-		PAGESIZE_FIXED = 0x0002,// Page size can no longer be changed
-		SECURE_DELETE = 0x0004, // PRAGMA secure_delete is enabled
-		INITIALLY_EMPTY  = 0x0008, // Database was empty at trans start
-		NO_WAL = 0x0010,		// Do not open write-ahead-log files
-		EXCLUSIVE = 0x0020,		// pWriter has an exclusive lock
-		PENDING = 0x0040,		// Waiting for read-locks to clear
+		BTS_READ_ONLY = 0x0001,		// Underlying file is readonly
+		BTS_PAGESIZE_FIXED = 0x0002,// Page size can no longer be changed
+		BTS_SECURE_DELETE = 0x0004, // PRAGMA secure_delete is enabled
+		BTS_INITIALLY_EMPTY  = 0x0008, // Database was empty at trans start
+		BTS_NO_WAL = 0x0010,		// Do not open write-ahead-log files
+		BTS_EXCLUSIVE = 0x0020,		// pWriter has an exclusive lock
+		BTS_PENDING = 0x0040,		// Waiting for read-locks to clear
 	};
 
 	struct BtShared
@@ -110,12 +110,12 @@ namespace Core
 
 #define BTCURSOR_MAX_DEPTH 20
 
-	enum class CURSOR : uint8
+	enum CURSOR : uint8
 	{
-		INVALID = 0,
-		VALID = 1,
-		REQUIRESEEK = 2,
-		FAULT = 3,
+		CURSOR_INVALID = 0,
+		CURSOR_VALID = 1,
+		CURSOR_REQUIRESEEK = 2,
+		CURSOR_FAULT = 3,
 	};
 
 	struct BtCursor
@@ -153,17 +153,17 @@ namespace Core
 #define PTRMAP_PTROFFSET(ptrmapID, id) (5 * (id - ptrmapID - 1))
 #define PTRMAP_ISPAGE(bt, id) (PTRMAP_PAGENO((bt), (id)) == (id))
 
-	enum class PTRMAP : uint8
+	enum PTRMAP : uint8
 	{
-		ROOTPAGE = 1,
-		FREEPAGE = 2,
-		OVERFLOW1 = 3,
-		OVERFLOW2 = 4,
-		BTREE = 5,
+		PTRMAP_ROOTPAGE = 1,
+		PTRMAP_FREEPAGE = 2,
+		PTRMAP_OVERFLOW1 = 3,
+		PTRMAP_OVERFLOW2 = 4,
+		PTRMAP_BTREE = 5,
 	};
 
 #define btreeIntegrity(p) \
-	_assert(p->Bt->InTransaction != TRANS::NONE || p->Bt->Transactions == 0); \
+	_assert(p->Bt->InTransaction != TRANS_NONE || p->Bt->Transactions == 0); \
 	_assert(p->Bt->InTransaction >= p->InTrans); 
 
 	typedef struct IntegrityCk IntegrityCk;

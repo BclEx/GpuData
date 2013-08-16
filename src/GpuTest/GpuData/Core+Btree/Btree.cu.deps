@@ -239,7 +239,9 @@ c:\program files\nvidia gpu computing toolkit\cuda\v5.5\include\host_defines.h
 c:\program files\nvidia gpu computing toolkit\cuda\v5.5\include\vector_functions.h
 c:\program files\nvidia gpu computing toolkit\cuda\v5.5\include\device_launch_parameters.h
 c:\program files\nvidia gpu computing toolkit\cuda\v5.5\include\vector_types.h
-c:\_github\gpudata\src\gpudata\core\io\../Core.cu.h
+c:\_github\gpudata\src\gpudata\core+btree\Core+Btree.cu.h
+c:\_github\gpudata\src\gpudata\core+btree\../Core+Pager/Core+Pager.cu.h
+c:\_github\gpudata\src\gpudata\core+pager\../Core/Core.cu.h
 c:\_github\gpudata\src\gpudata\core\..\..\Runtime.cu.h
 c:\_github\gpudata\src\..\packages\gpustructs.1.0.0\Runtime.src\Cuda.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v5.5\include\cuda_runtime.h
@@ -258,5 +260,9 @@ c:\_github\gpudata\src\gpudata\core\50.VSystem.cu.h
 c:\_github\gpudata\src\gpudata\core\60.MathEx.cu.h
 c:\_github\gpudata\src\gpudata\core\IO\30.VFile.cu.h
 c:\_github\gpudata\src\gpudata\core\Text\00.StringBuilder.cu.h
-C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\new.h
-C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\crtdefs.h
+c:\_github\gpudata\src\gpudata\core+pager\Pager.cu.h
+c:\_github\gpudata\src\gpudata\core+pager\PCache.cu.h
+c:\_github\gpudata\src\gpudata\core+pager\Wal.cu.h
+c:\_github\gpudata\src\gpudata\core+btree\Context.cu.h
+c:\_github\gpudata\src\gpudata\core+btree\Btree.cu.h
+c:\_github\gpudata\src\gpudata\core+btree\BtreeInt.cu.h

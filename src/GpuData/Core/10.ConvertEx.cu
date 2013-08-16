@@ -15,7 +15,7 @@ namespace Core
 #define getVarint ConvertEx::GetVarint
 #define putVarint ConvertEx::PutVarint
 
-	int ConvertEx::PutVarint(unsigned char *p, uint64 v)
+	__device__ int ConvertEx::PutVarint(unsigned char *p, uint64 v)
 	{
 		int i, j, n;
 		if (v & (((uint64)0xff000000) << 32))
@@ -43,7 +43,7 @@ namespace Core
 		return n;
 	}
 
-	int ConvertEx::PutVarint4(unsigned char *p, uint32 v)
+	__device__ int ConvertEx::PutVarint4(unsigned char *p, uint32 v)
 	{
 		if ((v & ~0x3fff) == 0)
 		{
@@ -54,7 +54,7 @@ namespace Core
 		return PutVarint(p, v);
 	}
 
-	uint8 ConvertEx::GetVarint(const unsigned char *p, uint64 *v)
+	__device__ uint8 ConvertEx::GetVarint(const unsigned char *p, uint64 *v)
 	{
 		uint32 a, b, s;
 		a = *p;
@@ -198,7 +198,7 @@ namespace Core
 		return 9;
 	}
 
-	uint8 ConvertEx::GetVarint4(const unsigned char *p, uint32 *v)
+	__device__ uint8 ConvertEx::GetVarint4(const unsigned char *p, uint32 *v)
 	{
 		uint32 a, b;
 		// The 1-byte case.  Overwhelmingly the most common.  Handled inline by the getVarin32() macro
@@ -286,7 +286,7 @@ namespace Core
 #endif
 	}
 
-	int ConvertEx::GetVarintLength(uint64 v)
+	__device__ int ConvertEx::GetVarintLength(uint64 v)
 	{
 		int i = 0;
 		do { i++; v >>= 7; }

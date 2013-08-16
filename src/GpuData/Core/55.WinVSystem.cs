@@ -89,6 +89,8 @@ namespace Core
 
         #region WinVFile
 
+        public class WinShm { }
+
         public partial class WinVFile : VFile
         {
             public VSystem Vfs;             // The VFS used to open this file
@@ -102,7 +104,7 @@ namespace Core
             public uint LastErrno;         // The Windows errno from the last I/O error
             public uint SectorSize;        // Sector size of the device file is on
 #if !OMIT_WAL
-            public winShm Shm;              // Instance of shared memory on this file
+            public WinShm Shm;              // Instance of shared memory on this file
 #else
             public object Shm;              // DUMMY Instance of shared memory on this file
 #endif

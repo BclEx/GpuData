@@ -35,7 +35,7 @@ template <typename T1, typename T2, typename T3, typename T4, typename T5, typen
 __device__ inline void _assert(const int condition) { if (!condition) assert(false); }
 __device__ inline void _assert(const int condition, const char *fmt) { if (!condition) printf(fmt); }
 #define ASSERTONLY(X) X
-inline void Coverage(int line) { }
+__device__ inline void Coverage(int line) { }
 #define ASSERTCOVERAGE(X) if (X) { Coverage(__LINE__); }
 #else
 #define _assert(X, ...)

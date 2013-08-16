@@ -45,11 +45,11 @@ namespace Core
 
 		enum MEMTYPE : uint8
 		{
-			HEAP = 0x01,         // General heap allocations
-			LOOKASIDE = 0x02,    // Might have been lookaside memory
-			SCRATCH = 0x04,      // Scratch allocations
-			PCACHE = 0x08,       // Page cache allocations
-			DB = 0x10,           // Uses sqlite3DbMalloc, not sqlite_malloc
+			MEMTYPE_HEAP = 0x01,         // General heap allocations
+			MEMTYPE_LOOKASIDE = 0x02,    // Might have been lookaside memory
+			MEMTYPE_SCRATCH = 0x04,      // Scratch allocations
+			MEMTYPE_PCACHE = 0x08,       // Page cache allocations
+			MEMTYPE_DB = 0x10,           // Uses sqlite3DbMalloc, not sqlite_malloc
 		};
 		__device__ inline static void BeginBenignAlloc() { }
 		__device__ inline static void EndBenignAlloc() { }
@@ -59,14 +59,14 @@ namespace Core
 		__device__ inline static void *TagAlloc(void *tag, size_t size, bool clear) { char *b = (char *)malloc(size); if (clear) _memset(b, 0, size); return b; }
 		__device__ inline static int AllocSize(void *p)
 		{
-			_assert(MemdebugHasType(p, MEMTYPE::HEAP));
-			_assert(MemdebugNoType(p, MEMTYPE::DB));
+			_assert(MemdebugHasType(p, MEMTYPE_HEAP));
+			_assert(MemdebugNoType(p, MEMTYPE_DB));
 			return 0; 
 		}
 		__device__ inline static int TagAllocSize(void *tag, void *p)
 		{
-			_assert(MemdebugHasType(p, MEMTYPE::HEAP));
-			_assert(MemdebugNoType(p, MEMTYPE::DB));
+			_assert(MemdebugHasType(p, MEMTYPE_HEAP));
+			_assert(MemdebugNoType(p, MEMTYPE_DB));
 			return 0; 
 		}
 		__device__ inline static void Free(void *p) { free(p); }

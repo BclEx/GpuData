@@ -1,7 +1,7 @@
 ﻿// pager.h
 namespace Core
 {
-	typedef struct Pager Pager;
+	typedef class Pager Pager;
 	typedef struct Wal Wal;
 	typedef struct PgHdr IPage;
 	typedef struct PagerSavepoint PagerSavepoint;
@@ -13,42 +13,42 @@ namespace Core
 		// NOTE: These values must match the corresponding BTREE_ values in btree.h.
 		enum PAGEROPEN : char
 		{
-			OMIT_JOURNAL = 0x0001,	// Do not use a rollback journal
-			MEMORY = 0x0002,		// In-memory database
+			PAGEROPEN_OMIT_JOURNAL = 0x0001,	// Do not use a rollback journal
+			PAGEROPEN_MEMORY = 0x0002,		// In-memory database
 		};
 
 		enum LOCKINGMODE : char
 		{
-			QUERY = -1,
-			NORMAL = 0,
-			EXCLUSIVE = 1,
+			LOCKINGMODE_QUERY = -1,
+			LOCKINGMODE_NORMAL = 0,
+			LOCKINGMODE_EXCLUSIVE = 1,
 		};
 
 		enum JOURNALMODE : char
 		{
-			JQUERY = -1,     // Query the value of journalmode
-			DELETE = 0,     // Commit by deleting journal file
-			PERSIST = 1,    // Commit by zeroing journal header
-			OFF = 2,        // Journal omitted.
-			TRUNCATE = 3,   // Commit by truncating journal
-			JMEMORY = 4,     // In-memory journal file
-			WAL = 5,        // Use write-ahead logging
+			JOURNALMODE_JQUERY = -1,     // Query the value of journalmode
+			JOURNALMODE_DELETE = 0,     // Commit by deleting journal file
+			JOURNALMODE_PERSIST = 1,    // Commit by zeroing journal header
+			JOURNALMODE_OFF = 2,        // Journal omitted.
+			JOURNALMODE_TRUNCATE = 3,   // Commit by truncating journal
+			JOURNALMODE_JMEMORY = 4,     // In-memory journal file
+			JOURNALMODE_WAL = 5,        // Use write-ahead logging
 		};
 
 		// sqlite3.h
 		enum CHECKPOINT : char
 		{
-			PASSIVE = 0,
-			FULL = 1,
-			RESTART = 2,
+			CHECKPOINT_PASSIVE = 0,
+			CHECKPOINT_FULL = 1,
+			CHECKPOINT_RESTART = 2,
 		};
 
 		// sqliteInt.h
 		enum SAVEPOINT : char
 		{
-			BEGIN = 0,
-			RELEASE = 1,
-			ROLLBACK = 2,
+			SAVEPOINT_BEGIN = 0,
+			SAVEPOINT_RELEASE = 1,
+			SAVEPOINT_ROLLBACK = 2,
 		};
 	};
 
@@ -60,13 +60,13 @@ namespace Core
 	public:
 		enum PAGER : char
 		{
-			OPEN = 0,
-			READER = 1,
-			WRITER_LOCKED = 2,
-			WRITER_CACHEMOD = 3,
-			WRITER_DBMOD = 4,
-			WRITER_FINISHED = 5,
-			ERROR = 6,
+			PAGER_OPEN = 0,
+			PAGER_READER = 1,
+			PAGER_WRITER_LOCKED = 2,
+			PAGER_WRITER_CACHEMOD = 3,
+			PAGER_WRITER_DBMOD = 4,
+			PAGER_WRITER_FINISHED = 5,
+			PAGER_ERROR = 6,
 		};
 
 		VSystem *Vfs;			// OS functions to use for IO
@@ -141,88 +141,88 @@ namespace Core
 		Wal *Wal;
 #endif
 		// Open and close a Pager connection. 
-		static RC Open(VSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VSystem::OPEN vfsFlags, void (*reinit)(IPage *));
-		RC Close();
-		RC ReadFileheader(int n, unsigned char *dest);
+		__device__ static RC Open(VSystem *vfs, Pager **pagerOut, const char *filename, int extraBytes, IPager::PAGEROPEN flags, VSystem::OPEN vfsFlags, void (*reinit)(IPage *));
+		__device__ RC Close();
+		__device__ RC ReadFileheader(int n, unsigned char *dest);
 
 		// Functions used to configure a Pager object.
-		void SetBusyhandler(int (*busyHandler)(void *), void *busyHandlerArg);
-		RC SetPageSize(uint32 *pageSizeRef, int reserveBytes);
-		int MaxPages(int maxPages);
-		void SetCacheSize(int maxPages);
-		void Shrink();
-		void SetSafetyLevel(int level, bool fullFsync, bool checkpointFullFsync);
-		int LockingMode(IPager::LOCKINGMODE mode);
-		IPager::JOURNALMODE SetJournalMode(IPager::JOURNALMODE mode);
-		IPager::JOURNALMODE Pager::GetJournalMode();
-		bool OkToChangeJournalMode();
-		int64 SetJournalSizeLimit(int64 limit);
-		IBackup **BackupPtr();
+		__device__ void SetBusyhandler(int (*busyHandler)(void *), void *busyHandlerArg);
+		__device__ RC SetPageSize(uint32 *pageSizeRef, int reserveBytes);
+		__device__ int MaxPages(int maxPages);
+		__device__ void SetCacheSize(int maxPages);
+		__device__ void Shrink();
+		__device__ void SetSafetyLevel(int level, bool fullFsync, bool checkpointFullFsync);
+		__device__ int LockingMode(IPager::LOCKINGMODE mode);
+		__device__ IPager::JOURNALMODE SetJournalMode(IPager::JOURNALMODE mode);
+		__device__ IPager::JOURNALMODE Pager::GetJournalMode();
+		__device__ bool OkToChangeJournalMode();
+		__device__ int64 SetJournalSizeLimit(int64 limit);
+		__device__ IBackup **BackupPtr();
 
 		// Functions used to obtain and release page references.
-		RC Acquire(Pid id, IPage **pageOut, bool noContent);
-		IPage *Lookup(Pid id);
-		static void Ref(IPage *pg);
-		static void Unref(IPage *pg);
+		__device__ RC Acquire(Pid id, IPage **pageOut, bool noContent);
+		__device__ IPage *Lookup(Pid id);
+		__device__ static void Ref(IPage *pg);
+		__device__ static void Unref(IPage *pg);
 
 		// Operations on page references.
-		static RC Write(IPage *page);
-		static void DontWrite(IPage *page);
-		RC Movepage(IPage *pg, Pid id, bool isCommit);
-		static int get_PageRefs(IPage *page);
-		static void *GetData(IPage *pg);
-		static void *GetExtra(IPage *pg);
+		__device__ static RC Write(IPage *page);
+		__device__ static void DontWrite(IPage *page);
+		__device__ RC Movepage(IPage *pg, Pid id, bool isCommit);
+		__device__ static int get_PageRefs(IPage *page);
+		__device__ static void *GetData(IPage *pg);
+		__device__ static void *GetExtra(IPage *pg);
 
 		// Functions used to manage pager transactions and savepoints.
-		void Pages(Pid *pagesOut);
-		RC Begin(int exFlag, bool subjInMemory);
-		RC CommitPhaseOne(const char *master, bool noSync);
-		RC ExclusiveLock();
-		RC Sync();
-		RC CommitPhaseTwo();
-		RC Rollback();
-		RC OpenSavepoint(int savepoints);
-		RC Savepoint(IPager::SAVEPOINT op, int savepoints);
-		RC SharedLock();
+		__device__ void Pages(Pid *pagesOut);
+		__device__ RC Begin(int exFlag, bool subjInMemory);
+		__device__ RC CommitPhaseOne(const char *master, bool noSync);
+		__device__ RC ExclusiveLock();
+		__device__ RC Sync();
+		__device__ RC CommitPhaseTwo();
+		__device__ RC Rollback();
+		__device__ RC OpenSavepoint(int savepoints);
+		__device__ RC Savepoint(IPager::SAVEPOINT op, int savepoints);
+		__device__ RC SharedLock();
 #ifndef OMIT_WAL
-		RC Checkpoint(int mode, int *logs, int *checkpoints);
-		bool WalSupported();
-		RC WalCallback();
-		RC OpenWal(bool *opened);
-		RC CloseWal();
+		__device__ RC Checkpoint(int mode, int *logs, int *checkpoints);
+		__device__ bool WalSupported();
+		__device__ RC WalCallback();
+		__device__ RC OpenWal(bool *opened);
+		__device__ RC CloseWal();
 #endif
 #ifdef ENABLE_ZIPVFS
-		int WalFramesize();
+		__device__ int WalFramesize();
 #endif
 
 		// Functions used to query pager state and configuration.
-		bool get_Readonly();
-		int get_Refs();
-		int get_MemUsed();
-		const char *get_Filename(bool nullIfMemDb);
-		const VSystem *get_Vfs();
-		VFile *get_File();
-		const char *get_Journalname();
-		int get_NoSync();
-		void *get_TempSpace();
-		bool get_MemoryDB();
-		void CacheStat(int dbStatus, bool reset, int *value);
-		void ClearCache();
-		static int get_SectorSize(VFile *file);
+		__device__ bool get_Readonly();
+		__device__ int get_Refs();
+		__device__ int get_MemUsed();
+		__device__ const char *get_Filename(bool nullIfMemDb);
+		__device__ const VSystem *get_Vfs();
+		__device__ VFile *get_File();
+		__device__ const char *get_Journalname();
+		__device__ int get_NoSync();
+		__device__ void *get_TempSpace();
+		__device__ bool get_MemoryDB();
+		__device__ void CacheStat(int dbStatus, bool reset, int *value);
+		__device__ void ClearCache();
+		__device__ static int get_SectorSize(VFile *file);
 
 		// Functions used to truncate the database file.
-		void TruncateImage(Pid pages);
+		__device__ void TruncateImage(Pid pages);
 
 #if defined(HAS_CODEC) && !defined(OMIT_WAL)
-		void *get_Codec(IPage *pg);
+		__device__ void *get_Codec(IPage *pg);
 #endif
 		// Functions to support testing and debugging.
 #if !defined(_DEBUG) || defined(TEST)
-		static Pid get_PageID(IPage *pg);
-		static bool Iswriteable(IPage *pg);
+		__device__ static Pid get_PageID(IPage *pg);
+		__device__ static bool Iswriteable(IPage *pg);
 #endif
 #ifdef TEST
-		int *get_Stats();
+		__device__ int *get_Stats();
 #endif
 	};
 

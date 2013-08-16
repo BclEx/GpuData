@@ -58,7 +58,7 @@ namespace Core
 		DB *DBs;						// All backends
 		int DBsUsed;					// Number of backends currently in use
 
-		int InvokeBusyHandler()
+		__device__ int InvokeBusyHandler()
 		{
 			if (SysEx_NEVER(BusyHandler == nullptr) || BusyHandler->Func == nullptr || BusyHandler->Busys < 0)
 				return 0;
@@ -72,22 +72,22 @@ namespace Core
 
 		// HOOKS
 #if ENABLE_UNLOCK_NOTIFY
-		public void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 );
-		internal void sqlite3ConnectionUnlocked(sqlite3 db);
-		internal void sqlite3ConnectionClosed(sqlite3 db);
+		__device__ void ConnectionBlocked(Context *a, Context *b);
+		__device__ void ConnectionUnlocked(Context *a);
+		__device__ void ConnectionClosed(Context *a);
 #else
-		static void ConnectionBlocked(Context *a, Context *b) { }
-		//internal static void sqlite3ConnectionUnlocked(sqlite3 x) { }
-		//internal static void sqlite3ConnectionClosed(sqlite3 x) { }
+		__device__ static void ConnectionBlocked(Context *a, Context *b) { }
+		//__device__ static void ConnectionUnlocked(Context *a) { }
+		//__device__ static void ConnectionClosed(Context *a) { }
 #endif
 
-		inline bool TempInMemory()
+		__device__ inline bool TempInMemory()
 		{
 			return true;
-			//if (SQLITE_TEMP_STORE == 1) return (temp_store == 2);
-			//if (SQLITE_TEMP_STORE == 2) return (temp_store != 1);
-			//if (SQLITE_TEMP_STORE == 3) return true;
-			//if (SQLITE_TEMP_STORE < 1 || SQLITE_TEMP_STORE > 3) return false;
+			//if (TEMP_STORE == 1) return (temp_store == 2);
+			//if (TEMP_STORE == 2) return (temp_store != 1);
+			//if (TEMP_STORE == 3) return true;
+			//if (TEMP_STORE < 1 || TEMP_STORE > 3) return false;
 			//return false;
 		}
 	};

@@ -5,11 +5,9 @@ namespace Core
 #define N_BTREE_META 10
 
 #ifndef DEFAULT_AUTOVACUUM
-#define DEFAULT_AUTOVACUUM AUTOVACUUM::NONE
+#define DEFAULT_AUTOVACUUM AUTOVACUUM_NONE
 #endif
 
-	//enum class LOCK : uint8;
-	//enum class TRANS : uint8;
 	typedef struct KeyInfo KeyInfo;
 	typedef struct UnpackedRecord UnpackedRecord;
 	typedef struct Btree Btree;
@@ -25,11 +23,11 @@ namespace Core
 		CollSeq *Colls[1];  // Collating sequence for each term of the key
 	};
 
-	enum class UNPACKED : uint8
+	enum UNPACKED : uint8
 	{
-		INCRKEY = 0x01,			// Make this key an epsilon larger
-		PREFIX_MATCH = 0x02,	// A prefix match is considered OK
-		PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
+		UNPACKED_INCRKEY = 0x01,			// Make this key an epsilon larger
+		UNPACKED_PREFIX_MATCH = 0x02,	// A prefix match is considered OK
+		UNPACKED_PREFIX_SEARCH = 0x04,	// Ignore final (rowid) field
 	};
 
 	struct UnpackedRecord
@@ -41,35 +39,35 @@ namespace Core
 		Mem *Mems;          // Values
 	};
 
-	enum class LOCK : uint8
+	enum LOCK : uint8
 	{
-		READ = 1,
-		WRITE = 2,
+		LOCK_READ = 1,
+		LOCK_WRITE = 2,
 	};
 
-	enum class TRANS : uint8
+	enum TRANS : uint8
 	{
-		NONE = 0,
-		READ = 1,
-		WRITE = 2,
+		TRANS_NONE = 0,
+		TRANS_READ = 1,
+		TRANS_WRITE = 2,
 	};
 
 	class Btree
 	{
 	public:
-		enum class AUTOVACUUM : uint8
+		enum AUTOVACUUM : uint8
 		{
-			NONE = 0,        // Do not do auto-vacuum
-			FULL = 1,        // Do full auto-vacuum
-			INCR = 2,        // Incremental vacuum
+			AUTOVACUUM_NONE = 0,        // Do not do auto-vacuum
+			AUTOVACUUM_FULL = 1,        // Do full auto-vacuum
+			AUTOVACUUM_INCR = 2,        // Incremental vacuum
 		};
 
-		enum class OPEN : uint8
+		enum OPEN : uint8
 		{
-			OMIT_JOURNAL = 1,   // Do not create or use a rollback journal
-			MEMORY = 2,         // This is an in-memory DB
-			SINGLE = 4,         // The file contains at most 1 b-tree
-			UNORDERED = 8,      // Use of a hash implementation is OK
+			OPEN_OMIT_JOURNAL = 1,   // Do not create or use a rollback journal
+			OPEN_MEMORY = 2,         // This is an in-memory DB
+			OPEN_SINGLE = 4,         // The file contains at most 1 b-tree
+			OPEN_UNORDERED = 8,      // Use of a hash implementation is OK
 		};
 
 		struct BtLock
@@ -93,136 +91,136 @@ namespace Core
 		BtLock Lock;			// Object used to lock page 1
 #endif
 
-		static RC Open(VSystem *vfs, const char *filename, Context *ctx, Btree **btree, OPEN flags, VSystem::OPEN vfsFlags);
-		RC Close();
-		RC SetCacheSize(int maxPage);
-		RC SetSafetyLevel(int level, bool fullSync, bool ckptFullSync);
-		bool SyncDisabled();
-		RC SetPageSize(int pageSize, int reserves, bool fix);
-		int GetPageSize();
-		int MaxPageCount(int maxPage);
-		Pid LastPage();
-		bool SecureDelete(bool newFlag);
-		int GetReserve();
+		__device__ static RC Open(VSystem *vfs, const char *filename, Context *ctx, Btree **btree, OPEN flags, VSystem::OPEN vfsFlags);
+		__device__ RC Close();
+		__device__ RC SetCacheSize(int maxPage);
+		__device__ RC SetSafetyLevel(int level, bool fullSync, bool ckptFullSync);
+		__device__ bool SyncDisabled();
+		__device__ RC SetPageSize(int pageSize, int reserves, bool fix);
+		__device__ int GetPageSize();
+		__device__ int MaxPageCount(int maxPage);
+		__device__ Pid LastPage();
+		__device__ bool SecureDelete(bool newFlag);
+		__device__ int GetReserve();
 #if defined(HAS_CODEC) || defined(_DEBUG)
-		int GetReserveNoMutex();
+		__device__ int GetReserveNoMutex();
 #endif
-		RC SetAutoVacuum(AUTOVACUUM autoVacuum);
-		AUTOVACUUM GetAutoVacuum();
-		RC BeginTrans(int wrflag);
-		RC CommitPhaseOne(const char *master);
-		RC CommitPhaseTwo(bool cleanup);
-		RC Commit();
-		RC Rollback(RC tripCode);
-		RC BeginStmt(int statement);
-		RC CreateTable(int *tableID, int flags);
-		bool IsInTrans();
-		bool IsInReadTrans();
-		bool IsInBackup();
-		ISchema *Schema(int bytes, void (*free)(void *));
-		RC SchemaLocked();
-		RC LockTable(Pid tableID, bool isWriteLock);
-		RC Savepoint(IPager::SAVEPOINT op, int savepoint);
+		__device__ RC SetAutoVacuum(AUTOVACUUM autoVacuum);
+		__device__ AUTOVACUUM GetAutoVacuum();
+		__device__ RC BeginTrans(int wrflag);
+		__device__ RC CommitPhaseOne(const char *master);
+		__device__ RC CommitPhaseTwo(bool cleanup);
+		__device__ RC Commit();
+		__device__ RC Rollback(RC tripCode);
+		__device__ RC BeginStmt(int statement);
+		__device__ RC CreateTable(int *tableID, int flags);
+		__device__ bool IsInTrans();
+		__device__ bool IsInReadTrans();
+		__device__ bool IsInBackup();
+		__device__ ISchema *Schema(int bytes, void (*free)(void *));
+		__device__ RC SchemaLocked();
+		__device__ RC LockTable(Pid tableID, bool isWriteLock);
+		__device__ RC Savepoint(IPager::SAVEPOINT op, int savepoint);
 
-		const char *get_Filename();
-		const char *get_Journalname();
-		//int sqlite3BtreeCopyFile(Btree *, Btree *);
+		__device__ const char *get_Filename();
+		__device__ const char *get_Journalname();
+		//__device__ int sqlite3BtreeCopyFile(Btree *, Btree *);
 
-		RC IncrVacuum();
+		__device__ RC IncrVacuum();
 
 #define BTREE_INTKEY 1 // Table has only 64-bit signed integer keys
 #define BTREE_BLOBKEY 2 // Table has keys only - no data
 
-		RC DropTable(int tableID, int *movedID);
-		RC ClearTable(int tableID, int *changes);
-		void TripAllCursors(RC errCode);
+		__device__ RC DropTable(int tableID, int *movedID);
+		__device__ RC ClearTable(int tableID, int *changes);
+		__device__ void TripAllCursors(RC errCode);
 
-		enum class META : uint8
+		enum META : uint8
 		{
-			FREE_PAGE_COUNT = 0,
-			SCHEMA_VERSION = 1,
-			FILE_FORMAT = 2,
-			DEFAULT_CACHE_SIZE  = 3,
-			LARGEST_ROOT_PAGE = 4,
-			TEXT_ENCODING = 5,
-			USER_VERSION = 6,
-			INCR_VACUUM = 7,
+			META_FREE_PAGE_COUNT = 0,
+			META_SCHEMA_VERSION = 1,
+			META_FILE_FORMAT = 2,
+			META_DEFAULT_CACHE_SIZE  = 3,
+			META_LARGEST_ROOT_PAGE = 4,
+			META_TEXT_ENCODING = 5,
+			META_USER_VERSION = 6,
+			META_INCR_VACUUM = 7,
 		};
-		void GetMeta(META id, uint32 *meta);
-		RC UpdateMeta(META id, uint32 meta);
+		__device__ void GetMeta(META id, uint32 *meta);
+		__device__ RC UpdateMeta(META id, uint32 meta);
 
-		RC NewDb();
+		__device__ RC NewDb();
 
 #define BTREE_BULKLOAD 0x00000001
 
-		RC Cursor(Pid tableID, bool wrFlag, struct KeyInfo *keyInfo, BtCursor *cur);
-		static int CursorSize();
-		static void CursorZero(BtCursor *p);
+		__device__ RC Cursor(Pid tableID, bool wrFlag, struct KeyInfo *keyInfo, BtCursor *cur);
+		__device__ static int CursorSize();
+		__device__ static void CursorZero(BtCursor *p);
 
-		static RC CloseCursor(BtCursor *cur);
-		static RC MovetoUnpacked(BtCursor *cur, UnpackedRecord *idxKey, int64 intKey, int biasRight, int *res);
-		static RC CursorHasMoved(BtCursor *cur, bool *hasMoved);
-		static RC Delete(BtCursor *cur);
-		static RC Insert(BtCursor *cur, const void *key, int64 keyLength, const void *data, int dataLength, int zero, int appendBias, int seekResult);
-		static RC First(BtCursor *cur, int *res);
-		static RC Last(BtCursor *cur, int *res);
-		static RC Next_(BtCursor *cur, int *res);
-		static bool Eof(BtCursor *cur);
-		static RC Previous(BtCursor *cur, int *res);
-		static RC KeySize(BtCursor *cur, int64 *size);
-		static RC Key(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
-		static const void *KeyFetch(BtCursor *cur, int *amount);
-		static const void *DataFetch(BtCursor *cur, int *amount);
-		static RC DataSize(BtCursor *cur, uint32 *size);
-		static RC Data(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
-		static void SetCachedRowID(BtCursor *cur, int64 rowid);
-		static int64 GetCachedRowID(BtCursor *cur);
+		__device__ static RC CloseCursor(BtCursor *cur);
+		__device__ static RC MovetoUnpacked(BtCursor *cur, UnpackedRecord *idxKey, int64 intKey, int biasRight, int *res);
+		__device__ static RC CursorHasMoved(BtCursor *cur, bool *hasMoved);
+		__device__ static RC Delete(BtCursor *cur);
+		__device__ static RC Insert(BtCursor *cur, const void *key, int64 keyLength, const void *data, int dataLength, int zero, int appendBias, int seekResult);
+		__device__ static RC First(BtCursor *cur, int *res);
+		__device__ static RC Last(BtCursor *cur, int *res);
+		__device__ static RC Next_(BtCursor *cur, int *res);
+		__device__ static bool Eof(BtCursor *cur);
+		__device__ static RC Previous(BtCursor *cur, int *res);
+		__device__ static RC KeySize(BtCursor *cur, int64 *size);
+		__device__ static RC Key(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
+		__device__ static const void *KeyFetch(BtCursor *cur, int *amount);
+		__device__ static const void *DataFetch(BtCursor *cur, int *amount);
+		__device__ static RC DataSize(BtCursor *cur, uint32 *size);
+		__device__ static RC Data(BtCursor *cur, uint32 offset, uint32 amount, void *buf);
+		__device__ static void SetCachedRowID(BtCursor *cur, int64 rowid);
+		__device__ static int64 GetCachedRowID(BtCursor *cur);
 
-		char *IntegrityCheck(Pid *roots, int rootsLength, int maxErrors, int *errors);
-		Pager *get_Pager();
+		__device__ char *IntegrityCheck(Pid *roots, int rootsLength, int maxErrors, int *errors);
+		__device__ Pager *get_Pager();
 
-		static RC PutData(BtCursor *cur, uint32 offset, uint32 amount, void *z);
-		static void CacheOverflow(BtCursor *cur);
-		static void ClearCursor(BtCursor *cur);
-		RC SetVersion(int version);
-		static void CursorHints(BtCursor *cur, unsigned int mask);
+		__device__ static RC PutData(BtCursor *cur, uint32 offset, uint32 amount, void *z);
+		__device__ static void CacheOverflow(BtCursor *cur);
+		__device__ static void ClearCursor(BtCursor *cur);
+		__device__ RC SetVersion(int version);
+		__device__ static void CursorHints(BtCursor *cur, unsigned int mask);
 
 #ifndef DEBUG
-		static bool CursorIsValid(BtCursor *cur);
+		__device__ static bool CursorIsValid(BtCursor *cur);
 #endif
 
 #ifndef OMIT_BTREECOUNT
-		static RC Count(BtCursor *cur, int64 *entrysOut);
+		__device__ static RC Count(BtCursor *cur, int64 *entrysOut);
 #endif
 
 #ifdef TEST
-		//int sqlite3BtreeCursorInfo(BtCursor*, int*, int);
-		//void sqlite3BtreeCursorList(Btree*);
+		//__device__ int sqlite3BtreeCursorInfo(BtCursor*, int*, int);
+		//__device__ void sqlite3BtreeCursorList(Btree*);
 #endif
 
 #ifndef OMIT_WAL
-		RC Checkpoint(int mode, int *logs, int *checkpoints);
+		__device__ RC Checkpoint(int mode, int *logs, int *checkpoints);
 #endif
 
 #ifndef OMIT_SHARED_CACHE
-		inline void Enter() { }
-		//static void EnterAll(Context *);
+		__device__ inline void Enter() { }
+		//__device__ static void EnterAll(Context *);
 #else
 #define Enter(X) 
 		//#define EnterAll(X)
 #endif
 
 #ifndef defined(OMIT_SHARED_CACHE)
-		//int Sharable();
-		inline void Leave() { }
-		//static void EnterCursor(BtCursor *);
-		//static void LeaveCursor(BtCursor *);
-		//static void LeaveAll(Context *);
+		//__device__ int Sharable();
+		__device__ inline void Leave() { }
+		//__device__ static void EnterCursor(BtCursor *);
+		//__device__ static void LeaveCursor(BtCursor *);
+		//__device__ static void LeaveAll(Context *);
 		//#ifndef _DEBUG
 		// These routines are used inside assert() statements only.
-		inline bool HoldsMutex() { return true; }
-		//int HoldsAllMutexes(sqlite3*);
-		//int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
+		__device__ inline bool HoldsMutex() { return true; }
+		//__device__ int HoldsAllMutexes(sqlite3*);
+		//__device__ int sqlite3SchemaMutexHeld(sqlite3*,int,Schema*);
 		//#endif
 #else
 #define Sharable(X) 0
