@@ -8,86 +8,92 @@ namespace GpuData
     {
         public static void Main(string[] args)
         {
+            SysEx.Initialize();
             //TestVFS();
-            //TestPager();
+            TestPager();
             //Console.ReadKey();
         }
 
-        //private static void TestVFS()
-        //{
-        //    var vfs = VSystem.FindVfs("win32");
-        //    if (vfs == null)
-        //        throw new InvalidOperationException();
-        //    var file = new CoreVFile();
-        //    VSystem.OPEN flagOut;
-        //    var rc = vfs.Open(@"Test", file, VSystem.OPEN.READWRITE | VSystem.OPEN.CREATE | VSystem.OPEN.MAIN_DB, out flagOut);
-        //    if (rc != RC.OK)
-        //        throw new InvalidOperationException();
-        //    file.Close();
-        //}
+        static void TestVFS()
+        {
+            var vfs = VSystem.FindVfs("win32");
+            if (vfs == null)
+                throw new InvalidOperationException();
+            var file = vfs.CreateOsFile();
+            VSystem.OPEN flagOut;
+            var rc = vfs.Open(@"C:\T_\Test.db", file, VSystem.OPEN.CREATE | VSystem.OPEN.READWRITE | VSystem.OPEN.MAIN_DB, out flagOut);
+            if (rc != RC.OK)
+                throw new InvalidOperationException();
+            file.Write4(0, 12345);
+            file.Close();
+        }
 
-        //private static void TestPager()
-        //{
-        //    var vfs = VSystem.FindVfs(null);
-        //    var pager = vfs.Open();
-        //    if (pager == null)
-        //        throw new Exception();
-        //    var rc = pager.SharedLock();
-        //    if (rc != RC.OK)
-        //        throw new Exception();
-        //    //
-        //    PgHdr p = null;
-        //    rc = pager.Get(1, ref p, 0);
-        //    if (rc != RC.OK)
-        //        throw new Exception();
-        //    rc = pager.Begin(false, false);
-        //    if (rc != RC.OK)
-        //        throw new Exception();
-        //    Array.Copy(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, p._Data, 10);
-        //    Pager.Write(p);
-        //    pager.CommitPhaseOne(null, false);
-        //    pager.CommitPhaseTwo();
-        //    //
-        //    if (pager != null)
-        //        pager.Close();
-        //}
+        static int BusyHandler(object x) { Console.WriteLine("BUSY"); return -1; }
 
-        //private static Pager Open(VSystem vfs)
-        //{
-        //    var zDbHeader = new byte[100]; // Database header content
-        //    Pager pager;
-        //    Pager.PAGEROPEN flags = 0;
-        //    var vfsFlags = VSystem.OPEN.CREATE | VSystem.OPEN.READWRITE | VSystem.OPEN.MAIN_DB;
-        //    //
-        //    var rc = Pager.Open(vfs, out pager, @"Test", 0, flags, vfsFlags, x => { }, null);
-        //    if (rc == RC.OK)
-        //        rc = pager.ReadFileHeader(zDbHeader.Length, zDbHeader);
-        //    pager.SetBusyHandler(BusyHandler, null);
-        //    var readOnly = pager.IsReadonly;
-        //    //
-        //    int nReserve;
-        //    var pageSize = (uint)((zDbHeader[16] << 8) | (zDbHeader[17] << 16));
-        //    if (pageSize < 512 || pageSize > Pager.SQLITE_MAX_PAGE_SIZE || ((pageSize - 1) & pageSize) != 0)
-        //    {
-        //        pageSize = 0;
-        //        nReserve = 0;
-        //    }
-        //    else
-        //        nReserve = zDbHeader[20];
-        //    rc = pager.SetPageSize(ref pageSize, nReserve);
-        //    if (rc != RC.OK)
-        //        goto _out;
-        //_out:
-        //    if (rc != RC.OK)
-        //    {
-        //        if (pager != null)
-        //            pager.Close();
-        //        pager = null;
-        //    }
-        //    pager.SetCacheSize(2000);
-        //    return pager;
-        //}
+        static Pager Open(VSystem vfs)
+        {
+            var dbHeader = new byte[100]; // Database header content
 
-        private static int BusyHandler(object x) { Console.WriteLine("BUSY"); return -1; }
+            IPager.PAGEROPEN flags = 0;
+            var vfsFlags = VSystem.OPEN.CREATE | VSystem.OPEN.READWRITE | VSystem.OPEN.MAIN_DB;
+            //
+            Pager pager;
+            var rc = Pager.Open(vfs, out pager, @"C:\T_\Test.db", 0, flags, vfsFlags, x => { }, null);
+            if (rc == RC.OK)
+                rc = pager.ReadFileHeader(dbHeader.Length, dbHeader);
+            if (rc != RC.OK)
+                goto _out;
+            pager.SetBusyHandler(BusyHandler, null);
+            var readOnly = pager.get_Readonly();
+            //
+            int reserves;
+            var pageSize = (uint)((dbHeader[16] << 8) | (dbHeader[17] << 16));
+            if (pageSize < 512 || pageSize > Pager.MAX_PAGE_SIZE || ((pageSize - 1) & pageSize) != 0)
+            {
+                pageSize = 0;
+                reserves = 0;
+            }
+            else
+                reserves = dbHeader[20];
+            rc = pager.SetPageSize(ref pageSize, reserves);
+            if (rc != RC.OK) goto _out;
+        _out:
+            if (rc != RC.OK)
+            {
+                if (pager != null)
+                    pager.Close();
+                pager = null;
+            }
+            else
+                pager.SetCacheSize(2000);
+            return pager;
+        }
+
+        static void TestPager()
+        {
+            var vfs = VSystem.FindVfs("win32");
+            var pager = Open(vfs);
+            if (pager == null)
+                throw new Exception();
+            var rc = pager.SharedLock();
+            if (rc != RC.OK)
+                throw new Exception();
+            //
+            PgHdr p = null;
+            rc = pager.Acquire(1, ref p, false);
+            if (rc != RC.OK)
+                throw new Exception();
+            rc = pager.Begin(false, false);
+            if (rc != RC.OK)
+                throw new Exception();
+            var values = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+            Array.Copy(values, p.Data, 10);
+            Pager.Write(p);
+            pager.CommitPhaseOne(null, false);
+            pager.CommitPhaseTwo();
+            //
+            if (pager != null)
+                pager.Close();
+        }
     }
 }

@@ -1,5 +1,10 @@
 #ifndef __RUNTIME_CU_H__
 #define __RUNTIME_CU_H__
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 100
+#error Atomics only used with > sm_10 architecture
+#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 200
+#include "Runtime.cu"
+#else
 
 ///////////////////////////////////////////////////////////////////////////////
 // DEVICE SIDE
@@ -12,12 +17,6 @@
 #define __arraySetLength(t,length) *((int*)&t-1)=length
 #define __arrayClear(t,length) nullptr;*((int*)&t-1)=0
 #define __arrayStaticLength(symbol) (sizeof(symbol) / sizeof(symbol[0]))
-
-#if __CUDA_ARCH__ == 100
-#error Atomics only used with > sm_10 architecture
-#elif defined(__CUDA_ARCH__) & __CUDA_ARCH__ < 200
-#include "Runtime.cu"
-#else
 
 //
 //	cuRuntimeRestrict
@@ -109,10 +108,11 @@ __device__ inline int _memcmp(T *a, Y *b, size_t length)
 // strlen30
 __device__ inline int _strlen30(const char *z)
 {
-  const char *z2 = z;
-  if (z == nullptr) return 0;
-  while (*z2) { z2++; }
-  return 0x3fffffff & (int)(z2 - z);
+	const char *z2 = z;
+	if (z == nullptr) return 0;
+	while (*z2) { z2++; }
+	return 0x3fffffff & (int)(z2 - z);
 }
 
+#endif // __CUDA_ARCH__
 #endif // __RUNTIME_CU_H__

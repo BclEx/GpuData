@@ -21,6 +21,28 @@ namespace Core
 
         #endregion
 
+        public static RC Initialize()
+        {
+            // mutex
+            var rc = RC.OK; // = 3MutexEx::Initialize();
+            if (rc != RC.OK) return rc;
+            //rc = Alloc::Initialize();
+            rc = PCache.Initialize();
+            if (rc != RC.OK) return rc;
+            rc = VSystem.Initialize();
+            if (rc != RC.OK) return rc;
+            //PCache.PageBufferSetup(_config.Page, _config.SizePage, _config.Pages);
+            return RC.OK;
+        }
+
+        public static void Shutdown()
+        {
+            VSystem.Shutdown();
+            PCache.Shutdown();
+            //Alloc.Shutdown();
+            //MutexEx.Shutdown();
+        }
+
         internal const int VERSION_NUMBER = 3007016;
 
         //internal static RC OSError(RC rc, string func, string path)

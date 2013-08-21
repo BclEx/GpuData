@@ -175,7 +175,7 @@ namespace Core
 
 		// Functions used to manage pager transactions and savepoints.
 		__device__ void Pages(Pid *pagesOut);
-		__device__ RC Begin(int exFlag, bool subjInMemory);
+		__device__ RC Begin(bool exFlag, bool subjInMemory);
 		__device__ RC CommitPhaseOne(const char *master, bool noSync);
 		__device__ RC ExclusiveLock();
 		__device__ RC Sync();

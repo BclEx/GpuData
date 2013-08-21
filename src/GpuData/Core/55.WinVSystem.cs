@@ -1335,17 +1335,23 @@ namespace Core
             return getLastErrorMsg(ref buf);
         }
 
-        static RC sqlite3_os_init()
-        {
-            //RegisterVfs(winVfs, 1);
-            return RC.OK;
-        }
-
-        static RC sqlite3_os_end()
-        {
-            return RC.OK;
-        }
-
         #endregion
     }
+
+    #region Bootstrap VSystem
+
+    public abstract partial class VSystem
+    {
+        public static RC Initialize()
+        {
+            RegisterVfs(new WinVSystem(), true, () => new WinVSystem.WinVFile());
+            return RC.OK;
+        }
+
+        public static void Shutdown()
+        {
+        }
+    }
+
+    #endregion
 }

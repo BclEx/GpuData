@@ -2818,7 +2818,7 @@ pager_acquire_err:
 		return rc;
 	}
 
-	__device__ RC Pager::Begin(int exFlag, bool subjInMemory)
+	__device__ RC Pager::Begin(bool exFlag, bool subjInMemory)
 	{
 		if (ErrorCode) return ErrorCode;
 		_assert(State >= Pager::PAGER_READER && State < Pager::PAGER_ERROR);

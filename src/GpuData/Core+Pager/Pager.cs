@@ -98,107 +98,107 @@ namespace Core
         #region Debug
 #if DEBUG
 
-        internal bool assert_pager_state()
+        internal static bool assert_pager_state(Pager p)
         {
             // State must be valid.
-            Debug.Assert(State == PAGER.OPEN ||
-                State == PAGER.READER ||
-                State == PAGER.WRITER_LOCKED ||
-                State == PAGER.WRITER_CACHEMOD ||
-                State == PAGER.WRITER_DBMOD ||
-                State == PAGER.WRITER_FINISHED ||
-                State == PAGER.ERROR);
+            Debug.Assert(p.State == PAGER.OPEN ||
+                p.State == PAGER.READER ||
+                p.State == PAGER.WRITER_LOCKED ||
+                p.State == PAGER.WRITER_CACHEMOD ||
+                p.State == PAGER.WRITER_DBMOD ||
+                p.State == PAGER.WRITER_FINISHED ||
+                p.State == PAGER.ERROR);
 
             // Regardless of the current state, a temp-file connection always behaves as if it has an exclusive lock on the database file. It never updates
             // the change-counter field, so the changeCountDone flag is always set.
-            Debug.Assert(!TempFile || Lock == VFile.LOCK.EXCLUSIVE);
-            Debug.Assert(!TempFile || ChangeCountDone);
+            Debug.Assert(!p.TempFile || p.Lock == VFile.LOCK.EXCLUSIVE);
+            Debug.Assert(!p.TempFile || p.ChangeCountDone);
 
             // If the useJournal flag is clear, the journal-mode must be "OFF". And if the journal-mode is "OFF", the journal file must not be open.
-            Debug.Assert(JournalMode == IPager.JOURNALMODE.OFF || UseJournal);
-            Debug.Assert(JournalMode != IPager.JOURNALMODE.OFF || !JournalFile.Opened);
+            Debug.Assert(p.JournalMode == IPager.JOURNALMODE.OFF || p.UseJournal);
+            Debug.Assert(p.JournalMode != IPager.JOURNALMODE.OFF || !p.JournalFile.Opened);
 
             // Check that MEMDB implies noSync. And an in-memory journal. Since  this means an in-memory pager performs no IO at all, it cannot encounter 
             // either SQLITE_IOERR or SQLITE_FULL during rollback or while finalizing a journal file. (although the in-memory journal implementation may 
             // return SQLITE_IOERR_NOMEM while the journal file is being written). It is therefore not possible for an in-memory pager to enter the ERROR state.
-            if (MemoryDB)
+            if (p.MemoryDB)
             {
-                Debug.Assert(NoSync);
-                Debug.Assert(JournalMode == IPager.JOURNALMODE.OFF || JournalMode == IPager.JOURNALMODE.JMEMORY);
-                Debug.Assert(State != PAGER.ERROR && State != PAGER.OPEN);
-                Debug.Assert(!UseWal());
+                Debug.Assert(p.NoSync);
+                Debug.Assert(p.JournalMode == IPager.JOURNALMODE.OFF || p.JournalMode == IPager.JOURNALMODE.JMEMORY);
+                Debug.Assert(p.State != PAGER.ERROR && p.State != PAGER.OPEN);
+                Debug.Assert(!p.UseWal());
             }
 
             // If changeCountDone is set, a RESERVED lock or greater must be held on the file.
-            Debug.Assert(!ChangeCountDone || Lock >= VFile.LOCK.RESERVED);
-            Debug.Assert(Lock != VFile.LOCK.PENDING);
+            Debug.Assert(!p.ChangeCountDone || p.Lock >= VFile.LOCK.RESERVED);
+            Debug.Assert(p.Lock != VFile.LOCK.PENDING);
 
-            switch (State)
+            switch (p.State)
             {
                 case PAGER.OPEN:
-                    Debug.Assert(!MemoryDB);
-                    Debug.Assert(ErrorCode == RC.OK);
-                    Debug.Assert(PCache.get_Refs() == 0 || TempFile);
+                    Debug.Assert(!p.MemoryDB);
+                    Debug.Assert(p.ErrorCode == RC.OK);
+                    Debug.Assert(p.PCache.get_Refs() == 0 || p.TempFile);
                     break;
 
                 case PAGER.READER:
-                    Debug.Assert(ErrorCode == RC.OK);
-                    Debug.Assert(Lock != VFile.LOCK.UNKNOWN);
-                    Debug.Assert(Lock >= VFile.LOCK.SHARED);
+                    Debug.Assert(p.ErrorCode == RC.OK);
+                    Debug.Assert(p.Lock != VFile.LOCK.UNKNOWN);
+                    Debug.Assert(p.Lock >= VFile.LOCK.SHARED);
                     break;
 
                 case PAGER.WRITER_LOCKED:
-                    Debug.Assert(Lock != VFile.LOCK.UNKNOWN);
-                    Debug.Assert(ErrorCode == RC.OK);
-                    if (!UseWal())
-                        Debug.Assert(Lock >= VFile.LOCK.RESERVED);
-                    Debug.Assert(DBSize == DBOrigSize);
-                    Debug.Assert(DBOrigSize == DBFileSize);
-                    Debug.Assert(DBOrigSize == DBHintSize);
-                    Debug.Assert(!SetMaster);
+                    Debug.Assert(p.Lock != VFile.LOCK.UNKNOWN);
+                    Debug.Assert(p.ErrorCode == RC.OK);
+                    if (!p.UseWal())
+                        Debug.Assert(p.Lock >= VFile.LOCK.RESERVED);
+                    Debug.Assert(p.DBSize == p.DBOrigSize);
+                    Debug.Assert(p.DBOrigSize == p.DBFileSize);
+                    Debug.Assert(p.DBOrigSize == p.DBHintSize);
+                    Debug.Assert(!p.SetMaster);
                     break;
 
                 case PAGER.WRITER_CACHEMOD:
-                    Debug.Assert(Lock != VFile.LOCK.UNKNOWN);
-                    Debug.Assert(ErrorCode == RC.OK);
-                    if (!UseWal())
+                    Debug.Assert(p.Lock != VFile.LOCK.UNKNOWN);
+                    Debug.Assert(p.ErrorCode == RC.OK);
+                    if (!p.UseWal())
                     {
                         // It is possible that if journal_mode=wal here that neither the journal file nor the WAL file are open. This happens during
                         // a rollback transaction that switches from journal_mode=off to journal_mode=wal.
-                        Debug.Assert(Lock >= VFile.LOCK.RESERVED);
-                        Debug.Assert(JournalFile.Opened || JournalMode == IPager.JOURNALMODE.OFF || JournalMode == IPager.JOURNALMODE.WAL);
+                        Debug.Assert(p.Lock >= VFile.LOCK.RESERVED);
+                        Debug.Assert(p.JournalFile.Opened || p.JournalMode == IPager.JOURNALMODE.OFF || p.JournalMode == IPager.JOURNALMODE.WAL);
                     }
-                    Debug.Assert(DBOrigSize == DBFileSize);
-                    Debug.Assert(DBOrigSize == DBHintSize);
+                    Debug.Assert(p.DBOrigSize == p.DBFileSize);
+                    Debug.Assert(p.DBOrigSize == p.DBHintSize);
                     break;
 
                 case PAGER.WRITER_DBMOD:
-                    Debug.Assert(Lock == VFile.LOCK.EXCLUSIVE);
-                    Debug.Assert(ErrorCode == RC.OK);
-                    Debug.Assert(!UseWal());
-                    Debug.Assert(Lock >= VFile.LOCK.EXCLUSIVE);
-                    Debug.Assert(JournalFile.Opened || JournalMode == IPager.JOURNALMODE.OFF || JournalMode == IPager.JOURNALMODE.WAL);
-                    Debug.Assert(DBOrigSize <= DBHintSize);
+                    Debug.Assert(p.Lock == VFile.LOCK.EXCLUSIVE);
+                    Debug.Assert(p.ErrorCode == RC.OK);
+                    Debug.Assert(!p.UseWal());
+                    Debug.Assert(p.Lock >= VFile.LOCK.EXCLUSIVE);
+                    Debug.Assert(p.JournalFile.Opened || p.JournalMode == IPager.JOURNALMODE.OFF || p.JournalMode == IPager.JOURNALMODE.WAL);
+                    Debug.Assert(p.DBOrigSize <= p.DBHintSize);
                     break;
 
                 case PAGER.WRITER_FINISHED:
-                    Debug.Assert(Lock == VFile.LOCK.EXCLUSIVE);
-                    Debug.Assert(ErrorCode == RC.OK);
-                    Debug.Assert(!UseWal());
-                    Debug.Assert(JournalFile.Opened || JournalMode == IPager.JOURNALMODE.OFF || JournalMode == IPager.JOURNALMODE.WAL);
+                    Debug.Assert(p.Lock == VFile.LOCK.EXCLUSIVE);
+                    Debug.Assert(p.ErrorCode == RC.OK);
+                    Debug.Assert(!p.UseWal());
+                    Debug.Assert(p.JournalFile.Opened || p.JournalMode == IPager.JOURNALMODE.OFF || p.JournalMode == IPager.JOURNALMODE.WAL);
                     break;
 
                 case PAGER.ERROR:
                     // There must be at least one outstanding reference to the pager if in ERROR state. Otherwise the pager should have already dropped back to OPEN state.
-                    Debug.Assert(ErrorCode != RC.OK);
-                    Debug.Assert(PCache.get_Refs() > 0);
+                    Debug.Assert(p.ErrorCode != RC.OK);
+                    Debug.Assert(p.PCache.get_Refs() > 0);
                     break;
             }
 
             return true;
         }
 
-        internal string print_pager_state()
+        internal static string print_pager_state(Pager p)
         {
             return string.Format(@"
 Filename:      {0}
@@ -209,30 +209,30 @@ Journal mode:  journal_mode={5}
 Backing store: tempFile={6} memDb={7} useJournal={8}
 Journal:       journalOff={9.11} journalHdr={10.11}
 Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
-          , Filename
-          , State == PAGER.OPEN ? "OPEN" :
-              State == PAGER.READER ? "READER" :
-              State == PAGER.WRITER_LOCKED ? "WRITER_LOCKED" :
-              State == PAGER.WRITER_CACHEMOD ? "WRITER_CACHEMOD" :
-              State == PAGER.WRITER_DBMOD ? "WRITER_DBMOD" :
-              State == PAGER.WRITER_FINISHED ? "WRITER_FINISHED" :
-              State == PAGER.ERROR ? "ERROR" : "?error?"
-          , (int)ErrorCode
-          , Lock == VFile.LOCK.NO ? "NO_LOCK" :
-              Lock == VFile.LOCK.RESERVED ? "RESERVED" :
-              Lock == VFile.LOCK.EXCLUSIVE ? "EXCLUSIVE" :
-              Lock == VFile.LOCK.SHARED ? "SHARED" :
-              Lock == VFile.LOCK.UNKNOWN ? "UNKNOWN" : "?error?"
-          , ExclusiveMode ? "exclusive" : "normal"
-          , JournalMode == IPager.JOURNALMODE.JMEMORY ? "memory" :
-              JournalMode == IPager.JOURNALMODE.OFF ? "off" :
-              JournalMode == IPager.JOURNALMODE.DELETE ? "delete" :
-              JournalMode == IPager.JOURNALMODE.PERSIST ? "persist" :
-              JournalMode == IPager.JOURNALMODE.TRUNCATE ? "truncate" :
-              JournalMode == IPager.JOURNALMODE.WAL ? "wal" : "?error?"
-          , (TempFile ? 1 : 0), (MemoryDB ? 1 : 0), (UseJournal ? 1 : 0)
-          , JournalOffset, JournalHeader
-          , (int)DBSize, (int)DBOrigSize, (int)DBFileSize);
+          , p.Filename
+          , p.State == PAGER.OPEN ? "OPEN" :
+              p.State == PAGER.READER ? "READER" :
+              p.State == PAGER.WRITER_LOCKED ? "WRITER_LOCKED" :
+              p.State == PAGER.WRITER_CACHEMOD ? "WRITER_CACHEMOD" :
+              p.State == PAGER.WRITER_DBMOD ? "WRITER_DBMOD" :
+              p.State == PAGER.WRITER_FINISHED ? "WRITER_FINISHED" :
+              p.State == PAGER.ERROR ? "ERROR" : "?error?"
+          , (int)p.ErrorCode
+          , p.Lock == VFile.LOCK.NO ? "NO_LOCK" :
+              p.Lock == VFile.LOCK.RESERVED ? "RESERVED" :
+              p.Lock == VFile.LOCK.EXCLUSIVE ? "EXCLUSIVE" :
+              p.Lock == VFile.LOCK.SHARED ? "SHARED" :
+              p.Lock == VFile.LOCK.UNKNOWN ? "UNKNOWN" : "?error?"
+          , p.ExclusiveMode ? "exclusive" : "normal"
+          , p.JournalMode == IPager.JOURNALMODE.JMEMORY ? "memory" :
+              p.JournalMode == IPager.JOURNALMODE.OFF ? "off" :
+              p.JournalMode == IPager.JOURNALMODE.DELETE ? "delete" :
+              p.JournalMode == IPager.JOURNALMODE.PERSIST ? "persist" :
+              p.JournalMode == IPager.JOURNALMODE.TRUNCATE ? "truncate" :
+              p.JournalMode == IPager.JOURNALMODE.WAL ? "wal" : "?error?"
+          , (p.TempFile ? 1 : 0), (p.MemoryDB ? 1 : 0), (p.UseJournal ? 1 : 0)
+          , p.JournalOffset, p.JournalHeader
+          , (int)p.DBSize, (int)p.DBOrigSize, (int)p.DBFileSize);
         }
 
 #endif
@@ -716,7 +716,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             //
             //   2. If a connection with locking_mode=exclusive holding an EXCLUSIVE lock switches back to locking_mode=normal and then executes a
             //      read-transaction, this function is called with eState==PAGER_READER and eLock==EXCLUSIVE_LOCK when the read-transaction is closed.
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             Debug.Assert(State != PAGER.ERROR);
             if (State < PAGER.WRITER_LOCKED && Lock < VFile.LOCK.RESERVED)
                 return RC.OK;
@@ -799,7 +799,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         {
             if (State != PAGER.ERROR && State != PAGER.OPEN)
             {
-                Debug.Assert(assert_pager_state());
+                Debug.Assert(assert_pager_state(this));
                 if (State >= PAGER.WRITER_LOCKED)
                 {
                     SysEx.BeginBenignAlloc();
@@ -1811,7 +1811,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         public RC Close()
         {
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             disable_simulated_io_errors();
             SysEx.BeginBenignAlloc();
             ErrorCode = RC.OK;
@@ -1877,7 +1877,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         {
 
             Debug.Assert(State == PAGER.WRITER_CACHEMOD || State == PAGER.WRITER_DBMOD);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             Debug.Assert(!UseWal());
 
             var rc = ExclusiveLock();
@@ -1961,7 +1961,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             // Unless the pager is in noSync mode, the journal file was just successfully synced. Either way, clear the PGHDR_NEED_SYNC flag on all pages.
             PCache.ClearSyncFlags();
             State = PAGER.WRITER_DBMOD;
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             return RC.OK;
         }
 
@@ -2190,6 +2190,14 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             {
                 rc = vfs.FullPathname(filename, out pathname);
                 var z = uri = filename;
+                // TODO: CONVERT
+                //const char* z = uri = &filename[_strlen30(filename) + 1];
+                //while (*z)
+                //{
+                //    z += _strlen30(z) + 1;
+                //    z += _strlen30(z) + 1;
+                //}
+                //uriLength = (int)(&z[1] - uri);
                 Debug.Assert(uri.Length >= 0);
                 // This branch is taken when the journal path required by the database being opened will be more than pVfs->mxPathname
                 // bytes in length. This means the database cannot be opened, as it will not be possible to open the journal file or even
@@ -2203,7 +2211,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             // Allocate memory for the Pager structure, PCache object, the three file descriptors, the database file name and the journal file name.
             var pager = new Pager(); //memPageBuilder);
             pager.PCache = new PCache();
-            pager.File = new MemoryVFile();
+            pager.File = vfs.CreateOsFile();
             pager.SubJournalFile = new MemoryVFile();
             pager.JournalFile = new MemoryVFile();
 
@@ -2231,7 +2239,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             {
                 VSystem.OPEN fout = 0; // VFS flags returned by xOpen()
                 rc = vfs.Open(filename, pager.File, vfsFlags, out fout);
-                Debug.Assert(memoryDB);
+                Debug.Assert(!memoryDB);
                 readOnly = ((fout & VSystem.OPEN.READONLY) != 0);
 
                 // If the file was successfully opened for read/write access, choose a default page size in case we have to create the
@@ -2338,7 +2346,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             Debug.Assert(File.Opened);
             Debug.Assert(State == PAGER.OPEN);
             var journalOpened = JournalFile.Opened;
-            Debug.Assert(journalOpened || (JournalFile.get_DeviceCharacteristics() & VFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
+            Debug.Assert(!journalOpened || (JournalFile.get_DeviceCharacteristics() & VFile.IOCAP.UNDELETABLE_WHEN_OPEN) != 0);
 
             existsOut = false;
             var vfs = Vfs;
@@ -2412,14 +2420,14 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             // This routine is only called from b-tree and only when there are no outstanding pages. This implies that the pager state should either
             // be OPEN or READER. READER is only possible if the pager is or was in exclusive access mode.
             Debug.Assert(PCache.get_Refs() == 0);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             Debug.Assert(State == PAGER.OPEN || State == PAGER.READER);
             if (SysEx.NEVER(MemoryDB && ErrorCode != 0)) return ErrorCode;
 
             var rc = RC.OK;
             if (!UseWal() && State == PAGER.OPEN)
             {
-                Debug.Assert(MemoryDB);
+                Debug.Assert(!MemoryDB);
 
                 rc = pager_wait_on_lock(VFile.LOCK.SHARED);
                 if (rc != RC.OK)
@@ -2584,7 +2592,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         public RC Acquire(Pid id, ref PgHdr pageOut, bool noContent)
         {
             Debug.Assert(State >= PAGER.READER);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
 
             if (id == 0)
                 return SysEx.CORRUPT_BKPT();
@@ -2687,7 +2695,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         private RC pager_open_journal()
         {
             Debug.Assert(State == PAGER.WRITER_LOCKED);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             Debug.Assert(InJournal == null);
 
             // If already in the error state, this function is a no-op.  But on the other hand, this routine is never called if we are already in
@@ -2796,7 +2804,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
                 Debug.Assert(rc == RC.OK || State == PAGER.READER);
                 Debug.Assert(rc != RC.OK || State == PAGER.WRITER_LOCKED);
-                Debug.Assert(assert_pager_state());
+                Debug.Assert(assert_pager_state(this));
             }
 
             PAGERTRACE("TRANSACTION {0}", PAGERID(this));
@@ -2812,7 +2820,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             Debug.Assert(pager.State == PAGER.WRITER_LOCKED ||
                 pager.State == PAGER.WRITER_CACHEMOD ||
                 pager.State == PAGER.WRITER_DBMOD);
-            Debug.Assert(pager.assert_pager_state());
+            Debug.Assert(assert_pager_state(pager));
 
             // If an error has been previously detected, report the same error again. This should not happen, but the check provides robustness. 
             if (SysEx.NEVER(pager.ErrorCode != RC.OK)) return pager.ErrorCode;
@@ -2834,7 +2842,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 if (rc != RC.OK) return rc;
             }
             Debug.Assert(pager.State >= PAGER.WRITER_CACHEMOD);
-            Debug.Assert(pager.assert_pager_state());
+            Debug.Assert(assert_pager_state(pager));
 
             // Mark the page as dirty.  If the page has already been written to the journal then we can return right away.
             PCache.MakeDirty(pg);
@@ -2914,7 +2922,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
             Debug.Assert(pager.State >= PAGER.WRITER_LOCKED);
             Debug.Assert(pager.State != PAGER.ERROR);
-            Debug.Assert(pager.assert_pager_state());
+            Debug.Assert(assert_pager_state(pager));
 
             var rc = RC.OK;
 
@@ -3016,7 +3024,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         {
             Debug.Assert(State == PAGER.WRITER_CACHEMOD ||
                 State == PAGER.WRITER_DBMOD);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
 
             // Declare and initialize constant integer 'isDirect'. If the atomic-write optimization is enabled in this build, then isDirect
             // is initialized to the value passed as the isDirectMode parameter to this function. Otherwise, it is always set to zero.
@@ -3101,7 +3109,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             Debug.Assert(State == PAGER.WRITER_CACHEMOD ||
                 State == PAGER.WRITER_DBMOD ||
                 State == PAGER.WRITER_LOCKED);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             var rc = RC.OK;
             if (!UseWal())
                 rc = pager_wait_on_lock(VFile.LOCK.EXCLUSIVE);
@@ -3114,7 +3122,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                 State == PAGER.WRITER_CACHEMOD ||
                 State == PAGER.WRITER_DBMOD ||
                 State == PAGER.ERROR);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
 
             // If a prior error occurred, report that error again.
             if (SysEx.NEVER(ErrorCode != 0)) return ErrorCode;
@@ -3246,7 +3254,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             Debug.Assert(State == PAGER.WRITER_LOCKED ||
                 State == PAGER.WRITER_FINISHED ||
                 (UseWal() && State == PAGER.WRITER_CACHEMOD));
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
 
             // An optimization. If the database was not actually modified during this transaction, the pager is running in exclusive-mode and is
             // using persistent journals, then this function is a no-op.
@@ -3272,7 +3280,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         {
             PAGERTRACE("ROLLBACK {0}", PAGERID(this));
             // PagerRollback() is a no-op if called in READER or OPEN state. If the pager is already in the ERROR state, the rollback is not attempted here. Instead, the error code is returned to the caller.
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             if (State == PAGER.ERROR) return ErrorCode;
             if (State <= PAGER.READER) return RC.OK;
 
@@ -3372,7 +3380,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         public RC OpenSavepoint(int savepoints)
         {
             Debug.Assert(State >= PAGER.WRITER_LOCKED);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
 
             var rc = RC.OK;
             var currentSavepoints = Savepoints.Length; // Current number of savepoints 
@@ -3493,7 +3501,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
             Debug.Assert(pg.Refs > 0);
             Debug.Assert(State == PAGER.WRITER_CACHEMOD ||
                 State == PAGER.WRITER_DBMOD);
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
 
             // In order to be able to rollback, an in-memory database must journal the page we are moving from.
             var rc = RC.OK;
@@ -3622,7 +3630,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
         {
 #if DEBUG
             // The print_pager_state() routine is intended to be used by the debugger only.  We invoke it once here to suppress a compiler warning. */
-            print_pager_state();
+            print_pager_state(this);
 #endif
 
             // The eMode parameter is always valid
@@ -3704,7 +3712,7 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
 
         private bool OkToChangeJournalMode()
         {
-            Debug.Assert(assert_pager_state());
+            Debug.Assert(assert_pager_state(this));
             if (State >= PAGER.WRITER_CACHEMOD) return false;
             return (SysEx.NEVER(JournalFile.Opened && JournalOffset > 0) ? false : true);
         }

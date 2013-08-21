@@ -1,8 +1,9 @@
+using Core.IO;
 using System;
 using System.Diagnostics;
-namespace Core.IO
+namespace Core
 {
-    public abstract class VSystem
+    public abstract partial class VSystem
     {
         internal static VSystem _vfsList;
         internal static bool isInit = false;
@@ -43,11 +44,7 @@ namespace Core.IO
         public object Tag;              // Pointer to application-specific data
         public int SizeOsFile = -1;     // Size of subclassed VirtualFile
         public int MaxPathname = 256;   // Maximum file pathname length
-
-        static VSystem()
-        {
-            RegisterVfs(new WinVSystem(), true);
-        }
+        public Func<VFile> CreateOsFile;
 
         public void CopyTo(VSystem ct)
         {
@@ -102,11 +99,12 @@ namespace Core.IO
             }
         }
 
-        public static RC RegisterVfs(VSystem vfs, bool @default)
+        public static RC RegisterVfs(VSystem vfs, bool @default, Func<VFile> createOsFile)
         {
             var mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_MASTER);
             MutexEx.Enter(mutex);
             UnlinkVfs(vfs);
+            vfs.CreateOsFile = createOsFile;
             if (@default || _vfsList == null)
             {
                 vfs.Next = _vfsList;
