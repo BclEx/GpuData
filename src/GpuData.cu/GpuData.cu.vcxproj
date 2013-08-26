@@ -1,0 +1,139 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <LD>V</LD>
+    <LC>20</LC>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{780961B3-26FB-4322-90F1-909E861E9628}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>GpuTest</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 5.5.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;THREADSAFE;OMIT_WAL;EXPENSIVE_ASSERT;TEST;CHECK_PAGES;ENABLE_MEMORY_MANAGEMENT;ENABLE_ATOMIC_WRITE;HAS_CODEC;ENABLE_OVERSIZE_CELL_CHECK;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <TargetMachine>MachineX64</TargetMachine>
+      <AdditionalDependencies>Runtime.$(LC)$(LD).lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)packages\Runtime.1.0.0\lib\native;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+    </Link>
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <CodeGeneration>compute_$(LC),sm_$(LC)</CodeGeneration>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;THREADSAFE;OMIT_WAL;EXPENSIVE_ASSERT;TEST;CHECK_PAGES;ENABLE_MEMORY_MANAGEMENT;ENABLE_ATOMIC_WRITE;HAS_CODEC;ENABLE_OVERSIZE_CELL_CHECK;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <TargetMachine>MachineX64</TargetMachine>
+      <AdditionalDependencies>Runtime.$(LC)$(LD).lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)packages\Runtime.1.0.0\lib\native;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+    </Link>
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <CodeGeneration>compute_$(LC),sm_$(LC)</CodeGeneration>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CudaCompile Include="..\GpuData.net\Core+Btree\Btree.cu" />
+    <CudaCompile Include="..\GpuData.net\Core+Pager\Pager.cu" />
+    <CudaCompile Include="..\GpuData.net\Core+Pager\PCache.cu" />
+    <CudaCompile Include="..\GpuData.net\Core+Pager\PCache1.cu" />
+    <CudaCompile Include="..\GpuData.net\Core+Pager\Wal.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\00.And.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\00.Bitvec.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\10.ConvertEx.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\40.StatusEx.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\50.SysEx.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\50.VSystem.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\55.GpuVSystem.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\IO\20.MemoryVFile.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\IO\25.JournalVFile.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\IO\30.VFile.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\Text\00.StringBuilder.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\GpuData.net\Core+Btree\Btree.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Btree\BtreeInt.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Btree\Context.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Btree\Core+Btree.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Pager\Core+Pager.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Pager\Pager.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Pager\PCache.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core+Pager\Wal.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\00.Bitvec.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\10.ConvertEx.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\20.MutexEx.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\30.RC.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\40.StatusEx.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\45.VAlloc.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\50.SysEx.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\50.VSystem.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\60.MathEx.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\Core+Types.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\Core.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\IO\30.VFile.cu.h" />
+    <ClInclude Include="..\GpuData.net\Core\Text\00.StringBuilder.cu.h" />
+    <ClInclude Include="..\Runtime.cu.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 5.5.targets" />
+  </ImportGroup>
+</Project>
