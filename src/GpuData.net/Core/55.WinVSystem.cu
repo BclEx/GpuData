@@ -2,7 +2,7 @@
 #define OS_WIN 1
 #if OS_WIN // This file is used for Windows only
 #include "Core.cu.h"
-#include <Windows.h>
+#include <windows.h>
 #include <new.h>
 
 namespace Core
@@ -44,6 +44,18 @@ namespace Core
 #define OpenCounter(X) open_file_count += (X)
 #else
 #define OpenCounter(X)
+#endif
+
+#if OS_WIN && !defined(OS_WINNT)
+#define OS_WINNT 1
+#endif
+#if defined(_WIN32_WCE)
+#define OS_WINCE 1
+#else
+#define OS_WINCE 0
+#endif
+#if !defined(OS_WINRT)
+#define OS_WINRT 0
 #endif
 
 #pragma endregion
@@ -101,34 +113,6 @@ namespace Core
 #endif
 #ifndef INVALID_SET_FILE_POINTER
 #define INVALID_SET_FILE_POINTER ((DWORD)-1)
-#endif
-
-	// The following variable is (normally) set once and never changes thereafter.  It records whether the operating system is Win9x or WinNT.
-	// 0:   Operating system unknown.
-	// 1:   Operating system is Win9x.
-	// 2:   Operating system is WinNT.
-	// In order to facilitate testing on a WinNT system, the test fixture can manually set this value to 1 to emulate Win98 behavior.
-#ifdef TEST
-	int os_type = 0;
-#else
-	static int os_type = 0;
-#endif
-#if OS_WINCE || OS_WINRT
-#define isNT() (true)
-#elif !defined(WIN32_HAS_WIDE)
-#define isNT() (false)
-#else
-	static bool isNT()
-	{
-		if (os_type == 0)
-		{
-			OSVERSIONINFOA sInfo;
-			sInfo.dwOSVersionInfoSize = sizeof(sInfo);
-			osGetVersionExA(&sInfo);
-			os_type = (sInfo.dwPlatformId == VER_PLATFORM_WIN32_NT ? 2 : 1);
-		}
-		return (os_type == 2);
-	}
 #endif
 
 	// LOCKFILE_FAIL_IMMEDIATELY is undefined on some Windows systems.
@@ -674,6 +658,34 @@ namespace Core
 #endif
 #define osCreateFileMappingFromApp ((HANDLE(WINAPI *)(HANDLE,LPSECURITY_ATTRIBUTES,ULONG,ULONG64,LPCWSTR))Syscalls[73].Current)
 	}; // End of the overrideable system calls
+
+	// The following variable is (normally) set once and never changes thereafter.  It records whether the operating system is Win9x or WinNT.
+	// 0:   Operating system unknown.
+	// 1:   Operating system is Win9x.
+	// 2:   Operating system is WinNT.
+	// In order to facilitate testing on a WinNT system, the test fixture can manually set this value to 1 to emulate Win98 behavior.
+#ifdef TEST
+	int os_type = 0;
+#else
+	static int os_type = 0;
+#endif
+#if OS_WINCE || OS_WINRT
+#define isNT() (true)
+#elif !defined(WIN32_HAS_WIDE)
+#define isNT() (false)
+#else
+	static bool isNT()
+	{
+		if (os_type == 0)
+		{
+			OSVERSIONINFOA sInfo;
+			sInfo.dwOSVersionInfoSize = sizeof(sInfo);
+			osGetVersionExA(&sInfo);
+			os_type = (sInfo.dwPlatformId == VER_PLATFORM_WIN32_NT ? 2 : 1);
+		}
+		return (os_type == 2);
+	}
+#endif
 
 	RC WinVSystem::SetSystemCall(const char *name, syscall_ptr newFunc)
 	{
@@ -2023,10 +2035,10 @@ namespace Core
 #ifndef OMIT_WAL
 
 	SYSTEM_INFO winSysInfo;
-	static void winShmEnterMutex() { MutexEx::Enter(Mutex::Alloc(MUTEX_STATIC_MASTER)); }
-	static void winShmLeaveMutex() { MutexEx::Leave(MutexEx::Alloc(MUTEX_STATIC_MASTER)); }
+	static void winShmEnterMutex() { MutexEx::Enter(MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER)); }
+	static void winShmLeaveMutex() { MutexEx::Leave(MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER)); }
 #ifdef _DEBUG
-	static bool winShmMutexHeld() { return MutexEx::Held(MutexEx::Alloc(MUTEX_STATIC_MASTER)); }
+	static bool winShmMutexHeld() { return MutexEx::Held(MutexEx::Alloc(MutexEx::MUTEX_STATIC_MASTER)); }
 #endif
 
 	struct winShmNode
@@ -2035,7 +2047,7 @@ namespace Core
 		char *Filename;			// Name of the file
 		WinVFile File;			// File handle from winOpen
 		int SizeRegion;         // Size of shared-memory regions
-		int regionsLength;		// Size of array apRegion
+		int RegionsLength;		// Size of array apRegion
 		struct ShmRegion
 		{
 			HANDLE MapHandle;   // File handle from CreateFileMapping
@@ -2064,23 +2076,23 @@ namespace Core
 #endif
 	};
 
-#define WIN_SHM_BASE   ((22+SHM_NLOCK)*4)        // first lock byte
-#define WIN_SHM_DMS    (WIN_SHM_BASE+SHM_NLOCK)  // deadman switch
+#define WIN_SHM_BASE ((22+SHM_NLOCK)*4)        // first lock byte
+#define WIN_SHM_DMS (WIN_SHM_BASE+SHM_NLOCK)  // deadman switch
 
 	enum _SHM
 	{
-		UNLCK = 1,
-		RDLCK = 2,
-		WRLCK = 3,
+		_SHM_UNLCK = 1,
+		_SHM_RDLCK = 2,
+		_SHM_WRLCK = 3,
 	};
 
 	static int winShmSystemLock(winShmNode *file, _SHM lock, int offset, int bytes)
 	{
 		// Access to the winShmNode object is serialized by the caller
-		_assert(MutexEx::Held(file->Mutex) || pFile->Refs == 0);
+		_assert(MutexEx::Held(file->Mutex) || file->Refs == 0);
 		// Release/Acquire the system-level lock
 		int rc = 0; // Result code form Lock/UnlockFileEx()
-		if (loc == _SHM_UNLCK)
+		if (lock == _SHM_UNLCK)
 			rc = winUnlockFile(&file->File.H, offset, 0, bytes, 0);
 		else
 		{
@@ -2093,16 +2105,16 @@ namespace Core
 			rc = RC::OK;
 		else
 		{
-			file->LastErrno =  osGetLastError();
+			file->LastErrno = osGetLastError();
 			rc = RC::BUSY;
 		}
-		OSTRACE("SHM-LOCK %d %s %s 0x%08lx\n", file->File.H, rc == RC::OK ? "ok" : "failed", lock == SHM_UNLCK ? "UnlockFileEx" : "LockFileEx", file->LastErrno));
+		OSTRACE("SHM-LOCK %d %s %s 0x%08lx\n", file->File.H, rc == RC::OK ? "ok" : "failed", lock == _SHM_UNLCK ? "UnlockFileEx" : "LockFileEx", file->LastErrno);
 		return rc;
 	}
 
-	// Forward references to VFS methods
-	static int winOpen(VSystem *, const char *, VFile *, int, int *);
-	static int winDelete(VSystem **, const char *, int);
+	//// Forward references to VFS methods
+	//static int winOpen(VSystem *, const char *, VFile *, int, int *);
+	//static int winDelete(VSystem **, const char *, int);
 
 	static void winShmPurge(VSystem *vfs, bool deleteFlag)
 	{
@@ -2112,25 +2124,25 @@ namespace Core
 		while ((p = *pp) != nullptr)
 			if (p->Refs == 0)
 			{
-				if (p->Mutex) MutexEx::Free(p->Mutex);
+				//if (p->Mutex) MutexEx::Free(p->Mutex);
 				for (int i = 0; i < p->RegionLength; i++)
 				{
-					BOOL rc = osUnmapViewOfFile(p->aRegion[i].pMap);
+					BOOL rc = osUnmapViewOfFile(p->Regions[i].Map);
 					OSTRACE("SHM-PURGE pid-%d unmap region=%d %s\n", (int)osGetCurrentProcessId(), i, rc ? "ok" : "failed");
-					bRc = osCloseHandle(p->aRegion[i].hMap);
-					OSTRACE("SHM-PURGE pid-%d close region=%d %s\n", (int)osGetCurrentProcessId(), i, rc ? "ok" : "failed"));
+					rc = osCloseHandle(p->Regions[i].Map);
+					OSTRACE("SHM-PURGE pid-%d close region=%d %s\n", (int)osGetCurrentProcessId(), i, rc ? "ok" : "failed");
 				}
 				if (p->File.H != NULL && p->File.H != INVALID_HANDLE_VALUE)
 				{
 					SimulateIOErrorBenign(true);
-					p->File->Close();
+					p->File.Close();
 					SimulateIOErrorBenign(false);
 				}
 				if (deleteFlag)
 				{
 					SimulateIOErrorBenign(true);
 					SysEx::BeginBenignAlloc();
-					winDelete(vfs, p->Filename, 0);
+					vfs->Delete(p->Filename, false);
 					SysEx::EndBenignAlloc();
 					SimulateIOErrorBenign(false);
 				}
@@ -2147,10 +2159,11 @@ namespace Core
 		_assert(file->Shm == nullptr); // Not previously opened
 
 		// Allocate space for the new sqlite3_shm object.  Also speculatively allocate space for a new winShmNode and filename.
-		struct winShm *p = SysEx::Alloc(sizeof(*p), true); // The connection to be opened */
+		struct winShm *p = (struct winShm *)SysEx::Alloc(sizeof(*p), true); // The connection to be opened */
 		if (!p) return RC::IOERR_NOMEM;
 		int nameLength = _strlen30(file->Path); // Size of zName in bytes
-		struct winShmNode *newNode = SysEx::Alloc(sizeof(*shmNode) + nameLength + 17. true); // Newly allocated winShmNode
+		struct winShmNode *shmNode; // The underlying mmapped file
+		struct winShmNode *newNode = (struct winShmNode *)SysEx::Alloc(sizeof(*shmNode) + nameLength + 17, true); // Newly allocated winShmNode
 		if (!newNode)
 		{
 			SysEx::Free(p);
@@ -2162,10 +2175,9 @@ namespace Core
 
 		// Look to see if there is an existing winShmNode that can be used. If no matching winShmNode currently exists, create a new one.
 		winShmEnterMutex();
-		struct winShmNode *pShmNode; // The underlying mmapped file
-		for (shmNode = _winShmNodeList; shmNode; shmNode = shmNode->Next)
-			// TBD need to come up with better match here.  Perhaps use FILE_ID_BOTH_DIR_INFO Structure.
-				if (_strICmp(shmNode->Filename, newNode->Filename) == 0) break;
+		for (shmNode = _winShmNodeList; shmNode; shmNode = shmNode->Next) // TBD need to come up with better match here.  Perhaps use FILE_ID_BOTH_DIR_INFO Structure.
+			if (_strICmp(shmNode->Filename, newNode->Filename) == 0) break;
+		RC rc;
 		if (shmNode)
 			SysEx::Free(newNode);
 		else
@@ -2175,14 +2187,14 @@ namespace Core
 			shmNode->File->H = INVALID_HANDLE_VALUE;
 			shmNode->Next = _winShmNodeList;
 			_winShmNodeList = shmNode;
-			shmNode->Mutex = MutexEx::Alloc(MUTEX_FAST);
-			RC rc = winOpen(file->Vfs, shmNode->Filename, &shmNode->File, OPEN_WAL|OPEN_READWRITE|OPEN_CREATE, 0);
+			shmNode->Mutex = MutexEx::Alloc(MutexEx::MUTEX_FAST);
+			rc = file->Vfs->Open(shmNode->Filename, &shmNode->File, VSystem::OPEN_WAL | VSystem::OPEN_READWRITE | VSystem::OPEN_CREATE, nullptr);
 			if (rc != RC::OK)
 				goto shm_open_err;
 			// Check to see if another process is holding the dead-man switch. If not, truncate the file to zero length. 
 			if (winShmSystemLock(shmNode, _SHM_WRLCK, WIN_SHM_DMS, 1) == RC::OK)
 			{
-				rc = winTruncate(shmNode->File, 0);
+				rc = shmNode->File.Truncate(0);
 				if (rc != RC::OK)
 					rc = winLogError(RC::IOERR_SHMOPEN, osGetLastError(), "winOpenShm", file->Path);
 			}
@@ -2207,7 +2219,7 @@ namespace Core
 		// at pShmNode->pFirst. This must be done while holding the pShmNode->mutex mutex.
 		MutexEx::Enter(shmNode->Mutex);
 		p->Next = shmNode->First;
-		sShmNode->First = p;
+		shmNode->First = p;
 		MutexEx::Leave(shmNode->Mutex);
 		return RC::OK;
 
@@ -2246,9 +2258,9 @@ shm_open_err:
 		return RC::OK;
 	}
 
-	RC WinVFile::ShmLock(int offset, int count, SHM flags)
+	RC WinVFile::ShmLock(int offset, int count, _SHM flags)
 	{
-		_assert(offset >= 0 && offset+count <= SHM_NLOCK);
+		_assert(offset >= 0 && offset+count <= _SHM_NLOCK);
 		_assert(count >= 1);
 		_assert(flags == (SHM_LOCK|SHM_SHARED) || flags == (SHM_LOCK|SHM_EXCLUSIVE) ||
 			flags == (SHM_UNLOCK|SHM_SHARED) || flags == (SHM_UNLOCK|SHM_EXCLUSIVE));
@@ -2263,7 +2275,7 @@ shm_open_err:
 		if (flags & SHM_UNLOCK)
 		{
 			// See if any siblings hold this same lock
-			u16 allMask = 0; // Mask of locks held by siblings
+			uint16 allMask = 0; // Mask of locks held by siblings
 			for (x = shmNode->First; x; x = x->Next)
 			{
 				if (x == p) continue;
