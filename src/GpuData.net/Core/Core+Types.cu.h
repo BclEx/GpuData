@@ -18,10 +18,9 @@ typedef unsigned long long	uint64;
 
 #define MAX(x,y) ((x)<(y)?(x):(y))
 #define MIN(x,y) ((x)>(y)?(x):(y))
-
-#define MAX_TYPE(x) ((((1 << ((sizeof(x) - 1) * 8 - 1)) - 1) << 8) | 255)
-#define MIN_TYPE(x) (-MAX_TYPE(x) - 1)
-#define MAX_UTYPE(x) ((((1U << ((sizeof(x) - 1) * 8)) - 1) << 8) | 255U)
+#define MAX_TYPE(x) (((((x)1<<((sizeof(x)-1)*8-1))-1)<<8)|255)
+#define MIN_TYPE(x) (-MAX_TYPE(x)-1)
+#define MAX_UTYPE(x) (((((x)1U<<((sizeof(x)-1)*8))-1)<<8)|255U)
 #define MIN_UTYPE(x) 0
 
 // Macros to determine whether the machine is big or little endian, evaluated at runtime.

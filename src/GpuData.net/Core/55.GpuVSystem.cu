@@ -1,11 +1,11 @@
 ﻿// os_win.c
-#define OS_WIN 1
-#if OS_WIN // This file is used for Windows only
+//#define OS_GPU 1
+#if OS_GPU // This file is used for Windows only
 #include "Core.cu.h"
 #include <Windows.h>
 #include <new.h>
 
-namespace Core { namespace IO
+namespace Core
 {
 #pragma region Preamble
 
@@ -211,8 +211,8 @@ namespace Core { namespace IO
 		//__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp);
 	};
 
-	WinVFile::WINFILE inline operator |= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a | b); }
-	//WinVFile::WINFILE inline operator &= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a & b); }
+	WinVFile::WINFILE inline operator|=(WinVFile::WINFILE a, int b) { return (WinVFile::WINFILE)(a | b); }
+	//WinVFile::WINFILE inline operator&=(WinVFile::WINFILE a, int b) { return (WinVFile::WINFILE)(a & b); }
 
 #pragma endregion
 
@@ -1150,11 +1150,11 @@ namespace Core { namespace IO
 		}
 #endif
 		if (!dwLen)
-			_snprintf(buf, bufLength, "OsError 0x%x (%u)", lastErrno, lastErrno);
+			__snprintf(buf, bufLength, "OsError 0x%x (%u)", lastErrno, lastErrno);
 		else
 		{
 			// copy a maximum of nBuf chars to output buffer
-			_snprintf(buf, bufLength, "%s", out);
+			__snprintf(buf, bufLength, "%s", out);
 			// free the UTF8 buffer
 			SysEx::Free(out);
 		}
@@ -2157,7 +2157,7 @@ namespace Core { namespace IO
 			return RC::IOERR_NOMEM;
 		}
 		newNode->Filename = (char *)&newNode[1];
-		_snprintf(newNode->Filename, nameLength + 15, "%s-shm", file->Path);
+		__snprintf(newNode->Filename, nameLength + 15, "%s-shm", file->Path);
 		sqlite3FileSuffix3(file->Path, newNode->Filename); 
 
 		// Look to see if there is an existing winShmNode that can be used. If no matching winShmNode currently exists, create a new one.
@@ -2467,7 +2467,7 @@ shmpage_out:
 		char tempPath[MAX_PATH+2];
 		memset(tempPath, 0, MAX_PATH+2);
 		if (temp_directory)
-			_snprintf(tempPath, MAX_PATH-30, "%s", temp_directory);
+			__snprintf(tempPath, MAX_PATH-30, "%s", temp_directory);
 #if !OS_WINRT
 		else if (isNT())
 		{
@@ -2477,7 +2477,7 @@ shmpage_out:
 			multi = UnicodeToUtf8(widePath);
 			if (multi)
 			{
-				_snprintf(tempPath, MAX_PATH-30, "%s", multi);
+				__snprintf(tempPath, MAX_PATH-30, "%s", multi);
 				SysEx::Free(multi);
 			}
 			else
@@ -2492,7 +2492,7 @@ shmpage_out:
 			utf8 = win32_MbcsToUtf8(mbcsPath);
 			if (utf8)
 			{
-				_snprintf(tempPath, MAX_PATH-30, "%s", utf8);
+				__snprintf(tempPath, MAX_PATH-30, "%s", utf8);
 				SysEx::Free(utf8);
 			}
 			else
@@ -2508,7 +2508,7 @@ shmpage_out:
 		for (i = tempPathLength; i > 0 && tempPath[i-1] == '\\'; i--) { }
 		tempPath[i] = 0;
 		size_t j;
-		_snprintf(buf, bufLength-18, (tempPathLength > 0 ? "%s\\"TEMP_FILE_PREFIX : TEMP_FILE_PREFIX, tempPath));
+		__snprintf(buf, bufLength-18, (tempPathLength > 0 ? "%s\\"TEMP_FILE_PREFIX : TEMP_FILE_PREFIX, tempPath));
 		j = _strlen30(buf);
 		SysEx::PutRandom(15, &buf[j]);
 		for (i = 0; i < 15; i++, j++)
@@ -2888,7 +2888,7 @@ shmpage_out:
 			char out[MAX_PATH+1];
 			memset(out, 0, MAX_PATH+1);
 			cygwin_conv_path(CCP_POSIX_TO_WIN_A|CCP_RELATIVE, relative, out, MAX_PATH+1);
-			_snprintf(full, MIN(fullLength, MaxPathname), "%s\\%s", data_directory, out);
+			__snprintf(full, MIN(fullLength, MaxPathname), "%s\\%s", data_directory, out);
 		}
 		else
 			cygwin_conv_path(CCP_POSIX_TO_WIN_A, relative, full, fullLength);
@@ -2901,9 +2901,9 @@ shmpage_out:
 		// NOTE: We are dealing with a relative path name and the data directory has been set.  Therefore, use it as the basis
 		//       for converting the relative path name to an absolute one by prepending the data directory and a backslash.
 		if (data_directory && !winIsVerbatimPathname(relative))
-			_snprintf(full, MIN(fullLength, MaxPathname), "%s\\%s", data_directory, relative);
+			__snprintf(full, MIN(fullLength, MaxPathname), "%s\\%s", data_directory, relative);
 		else
-			_snprintf(full, MIN(fullLength, MaxPathname), "%s", relative);
+			__snprintf(full, MIN(fullLength, MaxPathname), "%s", relative);
 		return RC::OK;
 #endif
 #if !OS_WINCE && !OS_WINRT && !defined(__CYGWIN__)
@@ -2917,7 +2917,7 @@ shmpage_out:
 		//       for converting the relative path name to an absolute one by prepending the data directory and a backslash.
 		if (data_directory && !winIsVerbatimPathname(relative))
 		{
-			_snprintf(full, MIN(fullLength, MaxPathname), "%s\\%s", data_directory, relative);
+			__snprintf(full, MIN(fullLength, MaxPathname), "%s\\%s", data_directory, relative);
 			return RC::OK;
 		}
 		void *converted = ConvertUtf8Filename(relative);
@@ -2987,7 +2987,7 @@ shmpage_out:
 #endif
 		if (out)
 		{
-			_snprintf(full, MIN(fullLength, MaxPathname), "%s", out);
+			__snprintf(full, MIN(fullLength, MaxPathname), "%s", out);
 			SysEx::Free(out);
 			return RC::OK;
 		}
@@ -3168,5 +3168,5 @@ shmpage_out:
 
 #pragma endregion
 
-}}
+}
 #endif

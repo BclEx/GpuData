@@ -7,8 +7,8 @@
 class IBackup
 {
 public:
-	virtual void Update(Pid id, byte data[]);
-	virtual void Restart();
+	__device__ virtual void Update(Pid id, byte data[]);
+	__device__ virtual void Restart();
 };
 
 #pragma endregion

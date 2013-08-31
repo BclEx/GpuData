@@ -242,7 +242,7 @@ namespace Core
 		else
 		{
 			static char name[15];
-			_snprintf(name, sizeof(name), "READ-LOCK[%d]", lockIdx - WAL_READ_LOCK(0));
+			__snprintf(name, sizeof(name), "READ-LOCK[%d]", lockIdx - WAL_READ_LOCK(0));
 			return name;
 		}
 	}

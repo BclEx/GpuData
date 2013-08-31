@@ -1,8 +1,8 @@
 ﻿// sqlite.h
 #pragma once
-namespace Core { namespace IO
+namespace Core { namespace IO { typedef class VFile VFile; }}
+namespace Core
 {
-	typedef class VFile VFile;
 	typedef void (*syscall_ptr)();
 
 	class VSystem
@@ -52,7 +52,7 @@ namespace Core { namespace IO
 		__device__ static int RegisterVfs(VSystem *vfs, bool _default);
 		__device__ static int UnregisterVfs(VSystem *vfs);
 
-		__device__ virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags) = 0;
+		__device__ virtual RC Open(const char *path, IO::VFile *file, OPEN flags, OPEN *outFlags) = 0;
 		__device__ virtual RC Delete(const char *path, bool syncDirectory) = 0;
 		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;
 		__device__ virtual RC FullPathname(const char *path, int pathOutLength, char *pathOut) = 0;
@@ -73,6 +73,6 @@ namespace Core { namespace IO
 		__device__ virtual const char *NextSystemCall(const char *name) = 0;
 	};
 
-	VSystem::OPEN inline operator | (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
-	VSystem::OPEN inline operator |= (VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
-}}
+	__device__ VSystem::OPEN inline operator|(VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
+	__device__ VSystem::OPEN inline operator|=(VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
+}

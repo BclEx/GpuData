@@ -1,4 +1,5 @@
-﻿namespace Core {
+﻿namespace Core
+{
 
 	// sqlite3.h
 	class VAlloc

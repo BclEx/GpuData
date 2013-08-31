@@ -136,12 +136,12 @@ bitvec_set_end:
 		Bitvec *bitvec = new Bitvec(size);
 		unsigned char *v = (unsigned char *)SysEx::Alloc((size + 7) / 8 + 1, true);
 		void *tmpSpace = SysEx::Alloc(BITVEC_SZ);
+		int pc = 0;
+		int i, nx, op;
 		if (!bitvec || !v || !tmpSpace)
 			goto bitvec_end;
 
 		// Run the program
-		int pc = 0;
-		int i, nx, op;
 		while ((op = ops[pc]))
 		{
 			switch (op)

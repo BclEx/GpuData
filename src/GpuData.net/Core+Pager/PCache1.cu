@@ -34,23 +34,23 @@ namespace Core
 		// Hash table of all pages. The following variables may only be accessed when the accessor is holding the PGroup mutex.
 		uint Recyclables;       // Number of pages in the LRU list
 		uint Pages;             // Total number of pages in apHash
-		uint _0; PgHdr1 **Hash;	// Hash table for fast lookup by key
+		array_t<PgHdr1 *>Hash;	// Hash table for fast lookup by key
 	public:
 		//static void *PageAlloc(int size);
 		//static void PageFree(void *p);
 		//bool UnderMemoryPressure();
 		//
-		RC Init();
-		void Shutdown();
-		IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
-		void Cachesize(uint max);
-		void Shrink();
-		int get_Pages();
-		ICachePage *Fetch(Pid id, bool createFlag);
-		void Unpin(ICachePage *pg, bool reuseUnlikely);
-		void Rekey(ICachePage *pg, Pid old, Pid new_);
-		void Truncate(Pid limit);
-		void Destroy(IPCache *p);
+		__device__ RC Init();
+		__device__ void Shutdown();
+		__device__ IPCache *Create(int sizePage, int sizeExtra, bool purgeable);
+		__device__ void Cachesize(uint max);
+		__device__ void Shrink();
+		__device__ int get_Pages();
+		__device__ ICachePage *Fetch(Pid id, bool createFlag);
+		__device__ void Unpin(ICachePage *pg, bool reuseUnlikely);
+		__device__ void Rekey(ICachePage *pg, Pid old, Pid new_);
+		__device__ void Truncate(Pid limit);
+		__device__ void Destroy(IPCache *p);
 	};
 
 	struct PgHdr1
@@ -280,7 +280,8 @@ namespace Core
 				}
 			}
 			SysEx::Free(p->Hash);
-			p->Hash = __arraySet(newHash, newLength);
+			p->Hash = newHash;
+			p->Hash.length = newLength;
 		}
 		return (p->Hash ? RC::OK : RC::NOMEM);
 	}
@@ -482,6 +483,7 @@ namespace Core
 		}
 
 		// Step 2: Abort if no existing page is found and createFlag is 0
+		uint pinned;
 		if (page || !createFlag)
 		{
 			PinPage(page);
@@ -497,7 +499,7 @@ namespace Core
 
 		// Step 3: Abort if createFlag is 1 but the cache is nearly full
 		_assert(Pages >= Recyclables);
-		uint pinned = Pages - Recyclables;	
+		pinned = Pages - Recyclables;	
 		_assert(group->MaxPinned == group->MaxPages + 10 - group->MinPages);
 		_assert(N90pct == Max * 9 / 10);
 		if (createFlag && (pinned >= group->MaxPinned || pinned >= N90pct || UnderMemoryPressure(this)))

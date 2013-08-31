@@ -26,7 +26,7 @@ namespace Core { namespace IO
 		__device__ virtual RC get_FileSize(int64 &size);
 	};
 
-	RC JournalVFile::CreateFile()
+	__device__ RC JournalVFile::CreateFile()
 	{
 		RC rc = RC::OK;
 		if (!Real)
@@ -53,7 +53,7 @@ namespace Core { namespace IO
 		return rc;
 	}
 
-	RC JournalVFile::Close()
+	__device__ RC JournalVFile::Close()
 	{
 		if (Real)
 			Real->Close();
@@ -61,7 +61,7 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	RC JournalVFile::Read(void *buffer, int amount, int64 offset)
+	__device__ RC JournalVFile::Read(void *buffer, int amount, int64 offset)
 	{
 		if (Real)
 			return Real->Read(buffer, amount, offset);
@@ -71,7 +71,7 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	RC JournalVFile::Write(const void *buffer, int amount, int64 offset)
+	__device__ RC JournalVFile::Write(const void *buffer, int amount, int64 offset)
 	{
 		RC rc = RC::OK;
 		if (!Real && (offset + amount) > BufferLength)
@@ -87,7 +87,7 @@ namespace Core { namespace IO
 		return rc;
 	}
 
-	RC JournalVFile::Truncate(int64 size)
+	__device__ RC JournalVFile::Truncate(int64 size)
 	{
 		if (Real)
 			return Real->Truncate(size);
@@ -96,14 +96,14 @@ namespace Core { namespace IO
 		return RC::OK;
 	}
 
-	RC JournalVFile::Sync(int flags)
+	__device__ RC JournalVFile::Sync(int flags)
 	{
 		if (Real)
 			return Real->Sync(flags);
 		return RC::OK;
 	}
 
-	RC JournalVFile::get_FileSize(int64 &size)
+	__device__ RC JournalVFile::get_FileSize(int64 &size)
 	{
 		if (Real)
 			return Real->get_FileSize(size);

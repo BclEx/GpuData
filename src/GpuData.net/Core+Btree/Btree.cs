@@ -543,7 +543,7 @@ namespace Core
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
             for (var i = page.Overflows - 1; i >= 0; i--)
             {
-                var k = page.OvflIdxs[i];
+                ushort k = page.OvflIdxs[i];
                 if (k <= cell)
                 {
                     if (k == cell)
@@ -730,18 +730,18 @@ namespace Core
             Debug.Assert(page.Bt.UsableSize <= Pager.MAX_PAGE_SIZE);
             Debug.Assert(page.Overflows == 0);
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
-            var temp = page.Bt.Pager.get_TempSpace(); // Temp area for cell content
-            var data = page.Data; // The page data
-            var hdr = page.HdrOffset; // Offset to the page header
-            var cellOffset = page.CellOffset; // Offset to the cell pointer array
-            var cells = page.Cells; // Number of cells on the page
+            byte[] temp = page.Bt.Pager.get_TempSpace(); // Temp area for cell content
+            byte[] data = page.Data; // The page data
+            int hdr = page.HdrOffset; // Offset to the page header
+            int cellOffset = page.CellOffset; // Offset to the cell pointer array
+            int cells = page.Cells; // Number of cells on the page
             Debug.Assert(cells == ConvertEx.Get2(data, hdr + 3));
-            var usableSize = page.Bt.UsableSize; // Number of usable bytes on a page
-            var cbrk = (uint)ConvertEx.Get2(data, hdr + 5); // Offset to the cell content area
+            uint usableSize = page.Bt.UsableSize; // Number of usable bytes on a page
+            uint cbrk = (uint)ConvertEx.Get2(data, hdr + 5); // Offset to the cell content area
             Buffer.BlockCopy(data, (int)cbrk, temp, (int)cbrk, (int)(usableSize - cbrk)); // memcpy(temp[cbrk], ref data[cbrk], usableSize - cbrk);
             cbrk = usableSize;
-            var cellFirst = cellOffset + 2 * cells; // First allowable cell index
-            var cellLast = usableSize - 4; // Last possible cell index
+            ushort cellFirst = (ushort)(cellOffset + 2 * cells); // First allowable cell index
+            ushort cellLast = (ushort)(usableSize - 4); // Last possible cell index
             var addr = 0;  // The i-th cell pointer
             for (var i = 0; i < cells; i++)
             {
@@ -4036,7 +4036,7 @@ namespace Core
         {
             if (rcRef != RC.OK) return;
 
-            Debug.Assert(idx >= 0 && idx < page.Cells);
+            Debug.Assert(idx < page.Cells);
             Debug.Assert(size == cellSize(page, idx));
             Debug.Assert(Pager.Iswriteable(page.DBPage));
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));
@@ -4078,7 +4078,7 @@ namespace Core
         {
             if (rcRef != RC.OK) return;
 
-            Debug.Assert(i >= 0 && i <= page.Cells + page.Overflows);
+            Debug.Assert(i <= page.Cells + page.Overflows);
             Debug.Assert(page.Cells <= MX_CELL(page.Bt) && MX_CELL(page.Bt) <= 10921);
             Debug.Assert(page.Overflows <= page.Ovfls.Length);
             Debug.Assert(MutexEx.Held(page.Bt.Mutex));

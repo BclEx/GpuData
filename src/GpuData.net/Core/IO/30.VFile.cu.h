@@ -1,4 +1,5 @@
 ﻿// sqlite3.h
+namespace Core { typedef class VSystem VSystem; }
 namespace Core { namespace IO
 {
 #define PENDING_BYTE 0x40000000
@@ -7,8 +8,7 @@ namespace Core { namespace IO
 #define SHARED_SIZE 510
 
 	// sqliteInt.h
-	typedef struct VSystem VSystem;
-	typedef struct VFile VFile;
+	typedef class VFile VFile;
 
 	class VFile
 	{
@@ -142,5 +142,5 @@ namespace Core { namespace IO
 		__device__ static int MemoryVFileSize() ;
 	};
 
-	VFile::SYNC inline operator |= (VFile::SYNC a, VFile::SYNC b) { return (VFile::SYNC)(a | b); }
+	__device__ VFile::SYNC inline operator|=(VFile::SYNC a, int b) { return (VFile::SYNC)(a | b); }
 }}

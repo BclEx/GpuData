@@ -161,7 +161,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\GpuData.net\Core\55.WinVSystem.cu">
+    <ClCompile Include="..\GpuData.net\Core\IO\30.VFile.cu">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\GpuData.net\Core\00.And.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>
@@ -171,12 +176,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\GpuData.net\Core\IO\30.VFile.cu">
-      <FileType>Document</FileType>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\GpuData.net\Core\00.And.cu">
+    <ClCompile Include="..\GpuData.net\Core\55.WinVSystem.cu">
       <FileType>Document</FileType>
     </ClCompile>
   </ItemGroup>

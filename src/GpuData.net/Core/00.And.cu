@@ -1,5 +1,5 @@
 ﻿//bitvec.c
-#include "..\..\Runtime.cu.h"
+#include "Core.cu.h"
 
 namespace Core
 {
@@ -13,9 +13,10 @@ namespace Core
 		__device__ inline void None() { }
 	};
 
-	__device__ int Test()
+	extern "C" __device__ long long Test()
 	{
-		return Wal::Open(5);
+		return MAX_TYPE(long long);
+		//return Wal::Open(5);
 	}
 
 	//__global__ void GO()

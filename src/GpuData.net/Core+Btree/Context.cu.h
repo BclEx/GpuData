@@ -1,6 +1,6 @@
 namespace Core
 {
-	typedef struct Btree Btree;
+	typedef class Btree Btree;
 
 	class Context
 	{

@@ -42,9 +42,6 @@
     <CudaCompile Include="..\GpuData.net\Core\40.StatusEx.cu">
       <Filter>Core</Filter>
     </CudaCompile>
-    <CudaCompile Include="..\GpuData.net\Core\50.VSystem.cu">
-      <Filter>Core</Filter>
-    </CudaCompile>
     <CudaCompile Include="..\GpuData.net\Core\Text\00.StringBuilder.cu">
       <Filter>Core\Text</Filter>
     </CudaCompile>
@@ -62,6 +59,9 @@
     </CudaCompile>
     <CudaCompile Include="..\GpuData.net\Core+Btree\Btree.cu">
       <Filter>Core+Btree</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GpuData.net\Core\50.VSystem.cu">
+      <Filter>Core</Filter>
     </CudaCompile>
     <CudaCompile Include="..\GpuData.net\Core\55.GpuVSystem.cu">
       <Filter>Core</Filter>
@@ -96,9 +96,6 @@
     <ClInclude Include="..\GpuData.net\Core\45.VAlloc.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData.net\Core\50.VSystem.cu.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\GpuData.net\Core\60.MathEx.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
@@ -130,6 +127,9 @@
       <Filter>Core+Btree</Filter>
     </ClInclude>
     <ClInclude Include="..\GpuData.net\Core\30.RC.cu.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData.net\Core\50.VSystem.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>

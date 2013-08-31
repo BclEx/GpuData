@@ -1,3 +1,4 @@
+using Core.IO;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -11,7 +12,6 @@ using Windows.Storage.Streams;
 #elif WINDOWS_PHONE || SILVERLIGHT
 using System.IO.IsolatedStorage;
 #endif
-using Core.IO;
 namespace Core
 {
     public class WinVSystem : VSystem

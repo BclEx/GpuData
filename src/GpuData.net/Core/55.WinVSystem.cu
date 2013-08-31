@@ -5,7 +5,7 @@
 #include <Windows.h>
 #include <new.h>
 
-namespace Core { namespace IO
+namespace Core
 {
 #pragma region Preamble
 
@@ -150,7 +150,7 @@ namespace Core { namespace IO
 #endif
 
 	// other
-#undef ERROR;
+#undef ERROR
 
 #pragma endregion
 
@@ -211,8 +211,8 @@ namespace Core { namespace IO
 		//__device__ virtual RC ShmMap(int region, int sizeRegion, bool isWrite, void volatile **pp);
 	};
 
-	WinVFile::WINFILE inline operator |= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a | b); }
-	//WinVFile::WINFILE inline operator &= (WinVFile::WINFILE a, uint8 b) { return (WinVFile::WINFILE)(a & b); }
+	WinVFile::WINFILE inline operator|=(WinVFile::WINFILE a, int b) { return (WinVFile::WINFILE)(a | b); }
+	//WinVFile::WINFILE inline operator&=(WinVFile::WINFILE a, int b) { return (WinVFile::WINFILE)(a & b); }
 
 #pragma endregion
 
@@ -1822,7 +1822,7 @@ namespace Core { namespace IO
 				OSTRACE("could not get a PENDING lock. cnt=%d\n", cnt);
 				if (cnt) win32_Sleep(1);
 			}
-			gotPendingLock = res;
+			gotPendingLock = (res != 0);
 			if (!res)
 				lastErrno = osGetLastError();
 		}
@@ -2467,7 +2467,7 @@ shmpage_out:
 		char tempPath[MAX_PATH+2];
 		memset(tempPath, 0, MAX_PATH+2);
 		if (temp_directory)
-			_snprintf(tempPath, MAX_PATH-30, "%s", temp_directory);
+			__snprintf(tempPath, MAX_PATH-30, "%s", temp_directory);
 #if !OS_WINRT
 		else if (isNT())
 		{
@@ -2477,7 +2477,7 @@ shmpage_out:
 			multi = UnicodeToUtf8(widePath);
 			if (multi)
 			{
-				_snprintf(tempPath, MAX_PATH-30, "%s", multi);
+				__snprintf(tempPath, MAX_PATH-30, "%s", multi);
 				SysEx::Free(multi);
 			}
 			else
@@ -2492,7 +2492,7 @@ shmpage_out:
 			utf8 = win32_MbcsToUtf8(mbcsPath);
 			if (utf8)
 			{
-				_snprintf(tempPath, MAX_PATH-30, "%s", utf8);
+				__snprintf(tempPath, MAX_PATH-30, "%s", utf8);
 				SysEx::Free(utf8);
 			}
 			else
@@ -2508,7 +2508,7 @@ shmpage_out:
 		for (i = tempPathLength; i > 0 && tempPath[i-1] == '\\'; i--) { }
 		tempPath[i] = 0;
 		size_t j;
-		_snprintf(buf, bufLength-18, (tempPathLength > 0 ? "%s\\"TEMP_FILE_PREFIX : TEMP_FILE_PREFIX, tempPath));
+		__snprintf(buf, bufLength-18, (tempPathLength > 0 ? "%s\\"TEMP_FILE_PREFIX : TEMP_FILE_PREFIX, tempPath));
 		j = _strlen30(buf);
 		SysEx::PutRandom(15, &buf[j]);
 		for (i = 0; i < 15; i++, j++)
@@ -2551,12 +2551,12 @@ shmpage_out:
 
 		RC rc = RC::OK;
 		OPEN type = (OPEN)(flags & 0xFFFFFF00);  // Type of file to open
-		bool isExclusive = (flags & OPEN_EXCLUSIVE);
-		bool isDelete = (flags & OPEN_DELETEONCLOSE);
-		bool isCreate = (flags & OPEN_CREATE);
-		bool isReadonly = (flags & OPEN_READONLY);
-		bool isReadWrite = (flags & OPEN_READWRITE);
-		bool isOpenJournal = (isCreate && (type == OPEN_MASTER_JOURNAL || type == OPEN_MAIN_JOURNAL || type == OPEN_WAL));
+		int isExclusive = (flags & OPEN_EXCLUSIVE);
+		int isDelete = (flags & OPEN_DELETEONCLOSE);
+		int isCreate = (flags & OPEN_CREATE);
+		int isReadonly = (flags & OPEN_READONLY);
+		int isReadWrite = (flags & OPEN_READWRITE);
+		int isOpenJournal = (isCreate && (type == OPEN_MASTER_JOURNAL || type == OPEN_MAIN_JOURNAL || type == OPEN_WAL));
 
 		// Check the following statements are true: 
 		//
@@ -3168,5 +3168,5 @@ shmpage_out:
 
 #pragma endregion
 
-}}
+}
 #endif

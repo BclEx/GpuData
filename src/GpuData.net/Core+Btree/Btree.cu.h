@@ -10,7 +10,7 @@ namespace Core
 
 	typedef struct KeyInfo KeyInfo;
 	typedef struct UnpackedRecord UnpackedRecord;
-	typedef struct Btree Btree;
+	typedef class Btree Btree;
 	typedef struct BtCursor BtCursor;
 	typedef struct BtShared BtShared;
 
@@ -210,7 +210,7 @@ namespace Core
 		//#define EnterAll(X)
 #endif
 
-#ifndef defined(OMIT_SHARED_CACHE)
+#ifndef OMIT_SHARED_CACHE
 		//__device__ int Sharable();
 		__device__ inline void Leave() { }
 		//__device__ static void EnterCursor(BtCursor *);
@@ -239,6 +239,6 @@ namespace Core
 	};
 
 	typedef struct Btree::BtLock BtLock;
-	Btree::OPEN inline operator |= (Btree::OPEN a, Btree::OPEN b) { return (Btree::OPEN)((uint8)a | (uint8)b); }
-	uint8 inline operator & (Btree::OPEN a, Btree::OPEN b) { return ((uint8)a & (uint8)b); }
+	Btree::OPEN __device__ inline operator|=(Btree::OPEN a, int b) { return (Btree::OPEN)((uint8)a | (uint8)b); }
+	//uint8 __device__ inline operator&(Btree::OPEN a, int b) { return ((uint8)a & (uint8)b); }
 }

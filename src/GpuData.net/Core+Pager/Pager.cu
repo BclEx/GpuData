@@ -6,7 +6,7 @@ namespace Core
 {
 #if _DEBUG
 	__device__ bool PagerTrace = true;
-#define PAGERTRACE(X, ...) if (PagerTrace) { printf(X, __VA_ARGS__); }
+#define PAGERTRACE(X, ...) if (PagerTrace) { _printf(X, __VA_ARGS__); }
 #else
 #define PAGERTRACE(X, ...)
 #endif
@@ -189,8 +189,8 @@ namespace Core
 
 	__device__ static char *print_pager_state(Pager *p)
 	{
-		static char r[1024];
-		_snprintf(r, 1024,
+		__shared__ static char r[1024];
+		int len = __snprintf(r, 1024,
 			"Filename:      %s\n"
 			"State:         %s errCode=%d\n"
 			"Lock:          %s\n"
@@ -220,7 +220,10 @@ namespace Core
 			p->JournalMode == IPager::JOURNALMODE_PERSIST ? "persist" :
 			p->JournalMode == IPager::JOURNALMODE_TRUNCATE ? "truncate" :
 			p->JournalMode == IPager::JOURNALMODE_WAL ? "wal" : "?error?"
-			, (int)p->TempFile, (int)p->MemoryDB, (int)p->UseJournal
+			, (int)p->TempFile, (int)p->MemoryDB, (int)p->UseJournal);
+		__snprintf(r + len, 1024,
+			"Journal:       journalOff=%lld journalHdr=%lld\n"
+			"Size:          dbsize=%d dbOrigSize=%d dbFileSize=%d\n"
 			, p->JournalOffset, p->JournalHeader
 			, (int)p->DBSize, (int)p->DBOrigSize, (int)p->DBFileSize);
 		return r;
@@ -377,7 +380,11 @@ namespace Core
 		RC rc = RC::OK;
 		if (pager->JournalOffset)
 		{
+#if __CUDACC__
+			const char zeroHeader[28] = { 0 };
+#else
 			static const char zeroHeader[28] = { 0 };
+#endif
 			const int64 limit = pager->JournalSizeLimit; // Local cache of jsl
 			SysEx_IOTRACE("JZEROHDR %p\n", pager);
 			if (doTruncate || limit == 0)
@@ -601,7 +608,8 @@ namespace Core
 		if (!pager->ExclusiveMode || VFile::HasMemoryVFile(pager->SubJournalFile))
 			pager->SubJournalFile->Close();
 		SysEx::Free(pager->Savepoints);
-		__arrayClear(pager->Savepoints);
+		pager->Savepoints = nullptr;
+		pager->Savepoints.length = 0;
 		pager->SubRecords = 0;
 	}
 
@@ -1007,6 +1015,10 @@ namespace Core
 			rc = RC::NOMEM;
 		else
 			rc = vfs->Open(master, masterFile, (VSystem::OPEN)(VSystem::OPEN_READONLY | VSystem::OPEN_MASTER_JOURNAL), 0);
+		int masterPtrSize;
+		char *masterJournal;
+		char *masterPtr;
+		char *journal;
 		if (rc != RC::OK) goto delmaster_out;
 
 		// Load the entire master journal file into space obtained from sqlite3_malloc() and pointed to by zMasterJournal.   Also obtain
@@ -1014,19 +1026,19 @@ namespace Core
 		int64 masterJournalSize; // Size of master journal file
 		rc = masterFile->get_FileSize(masterJournalSize);
 		if (rc != RC::OK) goto delmaster_out;
-		int masterPtrSize = vfs->MaxPathname + 1; // Amount of space allocated to zMasterPtr[]
-		char *masterJournal = (char *)SysEx::Alloc((int)masterJournalSize + masterPtrSize + 1); // Contents of master journal file
+		masterPtrSize = vfs->MaxPathname + 1; // Amount of space allocated to zMasterPtr[]
+		masterJournal = (char *)SysEx::Alloc((int)masterJournalSize + masterPtrSize + 1); // Contents of master journal file
 		if (!masterJournal)
 		{
 			rc = RC::NOMEM;
 			goto delmaster_out;
 		}
-		char *masterPtr = &masterJournal[masterJournalSize + 1]; // Space to hold MJ filename from a journal file
+		masterPtr = &masterJournal[masterJournalSize + 1]; // Space to hold MJ filename from a journal file
 		rc = masterFile->Read(masterJournal, (int)masterJournalSize, 0);
 		if (rc != RC::OK) goto delmaster_out;
 		masterJournal[masterJournalSize] = 0;
 
-		char *journal = masterJournal; // Pointer to one journal within MJ file
+		journal = masterJournal; // Pointer to one journal within MJ file
 		while ((journal - masterJournal) < masterJournalSize)
 		{
 			int exists;
@@ -1135,6 +1147,8 @@ delmaster_out:
 		_assert(pager->JournalFile->Opened);
 		int64 sizeJournal; // Size of the journal file in bytes
 		RC rc = pager->JournalFile->get_FileSize(sizeJournal);
+		VSystem *vfs;
+		bool needPagerReset;
 		if (rc != RC::OK)
 			goto end_playback;
 
@@ -1144,7 +1158,7 @@ delmaster_out:
 		// TODO: Technically the following is an error because it assumes that buffer Pager.pTmpSpace is (mxPathname+1) bytes or larger. i.e. that
 		// (pPager->pageSize >= pPager->pVfs->mxPathname+1). Using os_unix.c, mxPathname is 512, which is the same as the minimum allowable value
 		// for pageSize.
-		VSystem *vfs = pager->Vfs;
+		vfs = pager->Vfs;
 		master = (char *)pager->TmpSpace; // Name of master journal file if any
 		rc = readMasterJournal(pager->JournalFile, master, vfs->MaxPathname + 1);
 		if (rc == RC::OK && master[0])
@@ -1153,7 +1167,7 @@ delmaster_out:
 		if (rc != RC::OK || !res)
 			goto end_playback;
 		pager->JournalOffset = 0;
-		bool needPagerReset = isHot; // True to reset page prior to first page rollback
+		needPagerReset = isHot; // True to reset page prior to first page rollback
 
 		// This loop terminates either when a readJournalHdr() or pager_playback_one_page() call returns SQLITE_DONE or an IO error occurs. 
 		while (true)
@@ -1229,7 +1243,6 @@ delmaster_out:
 					}
 			}
 		}
-		_assert(false);
 
 end_playback:
 		// Following a rollback, the database file should be back in its original state prior to the start of the transaction, so invoke the
@@ -1652,7 +1665,7 @@ end_playback:
 #ifdef TEST
 		_opentemp_count++; // Used for testing and analysis only
 #endif
-		vfsFlags |= (VSystem::OPEN)(VSystem::OPEN_READWRITE | VSystem::OPEN_CREATE | VSystem::OPEN_EXCLUSIVE | VSystem::OPEN_DELETEONCLOSE);
+		vfsFlags |= (VSystem::OPEN_READWRITE | VSystem::OPEN_CREATE | VSystem::OPEN_EXCLUSIVE | VSystem::OPEN_DELETEONCLOSE);
 		RC rc = pager->Vfs->Open(nullptr, file, vfsFlags, nullptr);
 		_assert(rc != RC::OK || file->Opened);
 		return rc;
@@ -1893,6 +1906,11 @@ end_playback:
 
 #pragma region Main
 
+#if __CUDACC__
+	__constant__ uint8 zerobyte = 0;
+#else
+	static const uint8 zerobyte = 0;
+#endif
 	__device__ static RC syncJournal(Pager *pager, bool newHeader)
 	{
 		_assert(pager->State == Pager::PAGER_WRITER_CACHEMOD || pager->State == Pager::PAGER_WRITER_DBMOD);
@@ -1932,10 +1950,7 @@ end_playback:
 					int64 nextHdrOffset = journalHdrOffset(pager);
 					rc = pager->JournalFile->Read(magic, 8, nextHdrOffset);
 					if (rc== RC::OK && _memcmp(magic, _journalMagic, 8) == 0)
-					{
-						static const uint8 zerobyte = 0;
 						rc = pager->JournalFile->Write(&zerobyte, 1, nextHdrOffset);
-					}
 					if (rc != RC::OK && rc != RC::IOERR_SHORT_READ)
 						return rc;
 
@@ -3067,7 +3082,7 @@ pager_acquire_err:
 #ifndef DEBUG
 	__device__ bool Pager::Iswriteable(IPage *pg)
 	{
-		return (pg->Flags & PgHdr::PGHDR_DIRTY);
+		return (bool)(pg->Flags & PgHdr::PGHDR_DIRTY);
 	}
 #endif
 
@@ -3403,7 +3418,7 @@ commit_phase_one_exit:
 #ifdef TEST
 	__device__ int *Pager::get_Stats()
 	{
-		static int a[11];
+		__shared__ static int a[11];
 		a[0] = PCache->get_Refs();
 		a[1] = PCache->get_Pages();
 		a[2] = PCache->get_CacheSize();
@@ -3468,9 +3483,9 @@ commit_phase_one_exit:
 					return RC::NOMEM;
 				if (UseWal(this))
 					Wal->Savepoint(newSavepoints[ii].WalData);
-				__arraySetLength(Savepoints, ii + 1);
+				Savepoints.length = ii + 1;
 			}
-			_assert(__arrayLength(Savepoints) == savepoints);
+			_assert(Savepoints.length == savepoints);
 			assertTruncateConstraint(this);
 		}
 		return rc;
@@ -3488,7 +3503,7 @@ commit_phase_one_exit:
 			int newLength = savepoints + (op == IPager::SAVEPOINT_RELEASE ? 0 : 1); // Number of remaining savepoints after this op.
 			for (int ii = newLength; ii < __arrayLength(Savepoints); ii++)
 				Bitvec::Destroy(Savepoints[ii].InSavepoint);
-			__arraySetLength(Savepoints, newLength);
+			Savepoints.length = newLength;
 
 			// If this is a release of the outermost savepoint, truncate the sub-journal to zero bytes in size.
 			if (op == IPager::SAVEPOINT_RELEASE)

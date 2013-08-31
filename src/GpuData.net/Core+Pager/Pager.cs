@@ -1219,7 +1219,6 @@ Size:          dbsize={11} dbOrigSize={12} dbFileSize={13}"
                         }
                 }
             }
-            Debug.Assert(false);
 
         end_playback:
             // Following a rollback, the database file should be back in its original state prior to the start of the transaction, so invoke the

@@ -76,5 +76,5 @@
 		DONE = 101,
 	};
 
-	RC inline operator |= (RC a, RC b) { return (RC)(a | b); }
+	__device__ RC inline operator|=(RC a, int b) { return (RC)(a | b); }
 }

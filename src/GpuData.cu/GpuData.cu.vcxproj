@@ -61,11 +61,12 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <TargetMachine>MachineX64</TargetMachine>
       <AdditionalDependencies>Runtime.$(LC)$(LD).lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)packages\Runtime.1.0.0\lib\native;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)packages\GpuStructs.1.0.0\lib\native;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
     </Link>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <CodeGeneration>compute_$(LC),sm_$(LC)</CodeGeneration>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -83,11 +84,12 @@
       <OptimizeReferences>true</OptimizeReferences>
       <TargetMachine>MachineX64</TargetMachine>
       <AdditionalDependencies>Runtime.$(LC)$(LD).lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)packages\Runtime.1.0.0\lib\native;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)packages\GpuStructs.1.0.0\lib\native;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
     </Link>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <CodeGeneration>compute_$(LC),sm_$(LC)</CodeGeneration>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -96,7 +98,9 @@
     <CudaCompile Include="..\GpuData.net\Core+Pager\PCache.cu" />
     <CudaCompile Include="..\GpuData.net\Core+Pager\PCache1.cu" />
     <CudaCompile Include="..\GpuData.net\Core+Pager\Wal.cu" />
-    <CudaCompile Include="..\GpuData.net\Core\00.And.cu" />
+    <CudaCompile Include="..\GpuData.net\Core\00.And.cu">
+      <Keep Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</Keep>
+    </CudaCompile>
     <CudaCompile Include="..\GpuData.net\Core\00.Bitvec.cu" />
     <CudaCompile Include="..\GpuData.net\Core\10.ConvertEx.cu" />
     <CudaCompile Include="..\GpuData.net\Core\40.StatusEx.cu" />

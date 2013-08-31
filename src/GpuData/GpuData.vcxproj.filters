@@ -58,16 +58,16 @@
     <ClCompile Include="..\GpuData.net\Core\Text\00.StringBuilder.cu">
       <Filter>Core\Text</Filter>
     </ClCompile>
-    <ClCompile Include="..\GpuData.net\Core\55.WinVSystem.cu">
+    <ClCompile Include="..\GpuData.net\Core\IO\30.VFile.cu">
+      <Filter>Core\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GpuData.net\Core\00.And.cu">
       <Filter>Core</Filter>
     </ClCompile>
     <ClCompile Include="..\GpuData.net\Core\50.VSystem.cu">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="..\GpuData.net\Core\IO\30.VFile.cu">
-      <Filter>Core\IO</Filter>
-    </ClCompile>
-    <ClCompile Include="..\GpuData.net\Core\00.And.cu">
+    <ClCompile Include="..\GpuData.net\Core\55.WinVSystem.cu">
       <Filter>Core</Filter>
     </ClCompile>
   </ItemGroup>
@@ -127,9 +127,6 @@
     <ClInclude Include="..\GpuData.net\Core\45.VAlloc.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="..\GpuData.net\Core\50.VSystem.cu.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\packages\gpustructs.1.0.0\include\Runtime.cpu.h">
       <Filter>+GpuStructs</Filter>
     </ClInclude>
@@ -141,6 +138,9 @@
     </ClInclude>
     <ClInclude Include="..\GpuData.net\Core+Btree\Context.cu.h">
       <Filter>Core+Btree</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GpuData.net\Core\50.VSystem.cu.h">
+      <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,7 +1,7 @@
 ﻿// os.c
 #include "Core.cu.h"
-
-namespace Core { namespace IO
+using namespace Core::IO;
+namespace Core
 {
 	__device__ static VSystem *_vfsList = nullptr;
 
@@ -59,4 +59,4 @@ namespace Core { namespace IO
 		MutexEx::Leave(mutex);
 		return RC::OK;
 	}
-}}
+}

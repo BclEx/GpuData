@@ -107,7 +107,7 @@ namespace Core
 		int64 JournalHeader;        // Byte offset to previous journal header
 		IBackup *Backup;			// Pointer to list of ongoing backup processes
 		//int _0;					// Number of elements in Savepoint[]
-		PagerSavepoint *Savepoints;	// Array of active savepoints
+		array_t<PagerSavepoint> Savepoints;	// Array of active savepoints
 		char DBFileVersion[16];		// Changes whenever database file changes
 		// End of the routinely-changing class members
 		uint16 ExtraBytes;          // Add this many bytes to each in-memory page
@@ -227,8 +227,8 @@ namespace Core
 	};
 
 #ifdef TEST
-	void disable_simulated_io_errors();
-	void enable_simulated_io_errors();
+	__device__ void disable_simulated_io_errors();
+	__device__ void enable_simulated_io_errors();
 #else
 #define disable_simulated_io_errors()
 #define enable_simulated_io_errors()

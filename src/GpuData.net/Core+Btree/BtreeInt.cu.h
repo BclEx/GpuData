@@ -179,7 +179,6 @@ namespace Core
 		Text::StringBuilder ErrMsg; // Accumulate the error message text here
 	};
 
-	BTS inline operator |= (BTS a, BTS b) { return (BTS)(a | b); }
-	BTS inline operator &= (BTS a, BTS b) { return (BTS)(a & b); }
-	BTS inline operator &= (BTS a, int b) { return (BTS)(a & b); }
+	BTS __device__ inline operator|=(BTS a, int b) { return (BTS)(a | b); }
+	BTS __device__ inline operator&=(BTS a, int b) { return (BTS)(a & b); }
 }

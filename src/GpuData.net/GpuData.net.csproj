@@ -18,6 +18,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>0618</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <OutputPath>bin\Release\</OutputPath>
@@ -92,6 +94,7 @@
     <Content Include="Core\Core.cu.h" />
     <Content Include="Core\40.StatusEx.cu.h" />
     <None Include="Core\00.And.cu" />
+    <None Include="Core\55.GpuVSystem.cu" />
     <None Include="Core\55.WinVSystem.cu" />
     <None Include="Core\IO\20.MemoryVFile.cu" />
     <Content Include="Core\IO\30.VFile.cu.h" />
