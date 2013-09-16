@@ -1,7 +1,6 @@
 ﻿#if __CUDACC__
 #include "..\packages\gpustructs.1.0.0\include\Cuda.h"
 #include "..\packages\gpustructs.1.0.0\include\Runtime.cu.h"
-__device__ inline void _assert(const int condition) { if (!condition) {} }
 #else
 #include "..\packages\gpustructs.1.0.0\include\Runtime.cpu.h"
 #endif

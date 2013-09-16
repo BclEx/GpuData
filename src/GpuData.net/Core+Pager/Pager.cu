@@ -10,8 +10,8 @@ namespace Core
 #else
 #define PAGERTRACE(X, ...)
 #endif
-#define PAGERID(p) ((int)p->File)
-#define FILEHANDLEID(fd) ((int)fd)
+#define PAGERID(p) ((int)(long long)p->File)
+#define FILEHANDLEID(fd) ((int)(long long)fd)
 
 #pragma region Struct
 
