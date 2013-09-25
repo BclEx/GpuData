@@ -72,9 +72,9 @@ namespace Core
         internal PgHdr _PgHdr;
     }
 
-    public class PCacheGlobal
+    public struct PCacheGlobal
     {
-        public PGroup Group = new PGroup();   // The global PGroup for mode (2)
+        public PGroup Group;   // The global PGroup for mode (2)
         // Variables related to CONFIG_PAGECACHE settings.  The szSlot, nSlot, pStart, pEnd, nReserve, and isInit values are all
         // fixed at sqlite3_initialize() time and do not require mutex protection. The nFreeSlot and pFree values do require mutex protection.
         public bool IsInit;         // True if initialized
@@ -378,21 +378,22 @@ namespace Core
 
         public RC Init()
         {
-            Debug.Assert(_pcache1 == null);
-            _pcache1 = new PCacheGlobal();
+            Debug.Assert(!_pcache1.IsInit);
+            _pcache1 = new PCacheGlobal { Group = new PGroup() };
             if (_config_coreMutex)
             {
                 _pcache1.Group.Mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_LRU);
                 _pcache1.Mutex = MutexEx.Alloc(MutexEx.MUTEX.STATIC_PMEM);
             }
             _pcache1.Group.MaxPinned = 10;
+            _pcache1.IsInit = true;
             return RC.OK;
         }
 
         public void Shutdown()
         {
-            Debug.Assert(_pcache1 != null);
-            _pcache1 = null;
+            Debug.Assert(_pcache1.IsInit);
+            _pcache1 = new PCacheGlobal { Group = new PGroup() };
         }
 
         public IPCache Create(int sizePage, int sizeExtra, bool purgeable)

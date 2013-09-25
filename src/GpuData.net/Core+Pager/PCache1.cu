@@ -364,7 +364,7 @@ namespace Core
 
 #pragma region Interface
 
-	__device__ IPCache *newPCache1() { return (IPCache *)new PCache1(); }
+	__device__ IPCache *new_PCache1() {  PCache1 *cache = (PCache1 *)SysEx::Alloc(sizeof(PCache1), true); return (IPCache *)(new (cache) PCache1()); }
 
 	__device__ RC PCache1::Init()
 	{

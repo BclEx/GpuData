@@ -85,12 +85,12 @@ namespace Core
 #pragma region Interface
 
 	__device__ static IPCache *_pcache;
-	__device__ extern IPCache *newPCache1();
+	__device__ extern IPCache *new_PCache1();
 
 	__device__ RC PCache::Initialize() 
 	{ 
 		if (_pcache == nullptr)
-			_pcache = newPCache1();
+			_pcache = new_PCache1();
 		return _pcache->Init(); 
 	}
 	__device__ void PCache::Shutdown()
@@ -428,6 +428,11 @@ namespace Core
 	}
 #endif
 
+#pragma endregion
+
+#pragma region Test
+#if TEST
+#endif
 #pragma endregion
 
 #pragma region FromPCache1

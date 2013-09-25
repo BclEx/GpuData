@@ -3145,12 +3145,12 @@ shmpage_out:
 		return getLastErrorMsg(osGetLastError(), bufLength, buf);
 	}
 
-	WinVSystem _winVfs;
+	static WinVSystem _winVfs;
 	RC VSystem::Initialize()
 	{
 		_winVfs.SizeOsFile = sizeof(WinVFile);
-		_winVfs.MaxPathname = 260,
-			_winVfs.Name = "win32";
+		_winVfs.MaxPathname = 260;
+		_winVfs.Name = "win32";
 		// Double-check that the aSyscall[] array has been constructed correctly.  See ticket [bb3a86e890c8e96ab]
 		_assert(__arrayStaticLength(Syscalls) == 74);
 #ifndef OMIT_WAL
