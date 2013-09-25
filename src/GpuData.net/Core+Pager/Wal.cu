@@ -72,7 +72,7 @@ namespace Core
 	__device__ static RC walIndexPage(Wal *wal, Pid id, volatile Pid **idOut)
 	{
 		// Enlarge the pWal->apWiData[] array if required
-		if (__arrayLength(wal->WiData) <= id)
+		if (wal->WiData.length <= id)
 		{
 			int bytes = sizeof(uint32 *) * (id + 1);
 			volatile uint32 **newWiData = (volatile uint32 **)SysEx::Realloc((void *)wal->WiData, bytes);
@@ -81,7 +81,7 @@ namespace Core
 				*idOut = nullptr;
 				return RC::NOMEM;
 			}
-			_memset((void *)&newWiData[__arrayLength(wal->WiData)], 0, sizeof(uint32 *) * (id + 1 - __arrayLength(wal->WiData)));
+			_memset((void *)&newWiData[wal->WiData.length], 0, sizeof(uint32 *) * (id + 1 - wal->WiData.length));
 			__arraySet(wal->WiData, newWiData, id + 1);
 		}
 
@@ -112,13 +112,13 @@ namespace Core
 
 	__device__ static volatile WalCheckpointInfo *walCkptInfo(Wal *wal)
 	{
-		_assert(__arrayLength(wal->WiData) > 0 && wal->WiData[0]);
+		_assert(wal->WiData.length > 0 && wal->WiData[0]);
 		return (volatile WalCheckpointInfo *) & (wal->WiData[0][sizeof(Wal::IndexHeader) / 2]);
 	}
 
 	__device__ static volatile Wal::IndexHeader *walIndexHeader(Wal *wal)
 	{
-		_assert(__arrayLength(wal->WiData) > 0 && wal->WiData[0]);
+		_assert(wal->WiData.length > 0 && wal->WiData[0]);
 		return (volatile Wal::IndexHeader *)wal->WiData[0];
 	}
 
@@ -349,7 +349,7 @@ namespace Core
 
 		// Obtain pointers to the hash-table and page-number array containing the entry that corresponds to frame pWal->hdr.mxFrame. It is guaranteed
 		// that the page said hash-table and array reside on is already mapped.
-		_assert(__arrayLength(wal->WiData) > walFramePage(wal->Header.MaxFrame));
+		_assert(wal->WiData.length > walFramePage(wal->Header.MaxFrame));
 		_assert(wal->WiData[walFramePage(wal->Header.MaxFrame)] != 0);
 		volatile ht_slot *hash = nullptr; // Pointer to hash table to clear
 		volatile Pid *ids = nullptr; // Page number array for hash table
@@ -575,7 +575,7 @@ recovery_error:
 	__device__ static void walIndexClose(Wal *wal, int isDelete)
 	{
 		if (wal->ExclusiveMode_ == Wal::MODE_HEAPMEMORY)
-			for (int i = 0; i < __arrayLength(wal->WiData); i++)
+			for (int i = 0; i < wal->WiData.length; i++)
 			{
 				SysEx::Free((void *)wal->WiData[i]);
 				wal->WiData[i] = nullptr;
@@ -656,7 +656,7 @@ recovery_error:
 		uint32 r = 0xFFFFFFFF; // 0xffffffff is never a valid page number
 		uint32 min = p->Prior; // Result pgno must be greater than iMin
 		_assert(min < 0xffffffff);
-		for (int i = __arrayLength(p->Segments) - 1; i >= 0; i--)
+		for (int i = p->Segments.length - 1; i >= 0; i--)
 		{
 			WalSegment *segment = &p->Segments[i];
 			while (segment->Next < segment->Entrys)
@@ -1017,7 +1017,7 @@ walcheckpoint_out:
 	__device__ static bool walIndexTryHdr(Wal *wal, bool *changed)
 	{
 		// The first page of the wal-index must be mapped at this point.
-		_assert(__arrayLength(wal->WiData) > 0 && wal->WiData[0]);
+		_assert(wal->WiData.length > 0 && wal->WiData[0]);
 
 		// Read the header. This might happen concurrently with a write to the same area of shared memory on a different CPU in a SMP,
 		// meaning it is possible that an inconsistent snapshot is read from the file. If this happens, return non-zero.
@@ -1441,14 +1441,14 @@ walcheckpoint_out:
 	__device__ RC Wal::SavepointUndo(uint32 *walData)
 	{
 		_assert(WriteLock );
-		_assert(walData[3] != __arrayLength(Checkpoints) || walData[0] <= Header.MaxFrame);
+		_assert(walData[3] != Checkpoints.length || walData[0] <= Header.MaxFrame);
 
-		if (walData[3] != __arrayLength(Checkpoints))
+		if (walData[3] != Checkpoints.length)
 		{
 			// This savepoint was opened immediately after the write-transaction was started. Right after that, the writer decided to wrap around
 			// to the start of the log. Update the savepoint values to match.
 			walData[0] = 0;
-			walData[3] = __arrayLength(Checkpoints);
+			walData[3] = Checkpoints.length;
 		}
 
 		if (walData[0] < Header.MaxFrame)

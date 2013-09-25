@@ -238,7 +238,7 @@ namespace Core
 	{
 		Pid id = pg->ID;
 		Pager *pager = pg->Pager;
-		for (int i = 0; i < __arrayLength(pager->Savepoints); i++)
+		for (int i = 0; i < pager->Savepoints.length; i++)
 		{
 			PagerSavepoint *p = &pager->Savepoints[i];
 			if (p->Orig >= id && !p->InSavepoint->Get(id))
@@ -417,7 +417,7 @@ namespace Core
 
 		// If there are active savepoints and any of them were created since the most recent journal header was written, update the
 		// PagerSavepoint.iHdrOffset fields now.
-		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
+		for (int ii = 0; ii < pager->Savepoints.length; ii++)
 			if (pager->Savepoints[ii].HdrOffset == 0)
 				pager->Savepoints[ii].HdrOffset = pager->JournalOffset;
 		pager->JournalHeader = pager->JournalOffset = journalHdrOffset(pager);
@@ -603,7 +603,7 @@ namespace Core
 
 	__device__ static void releaseAllSavepoints(Pager *pager)
 	{
-		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
+		for (int ii = 0; ii < pager->Savepoints.length; ii++)
 			Bitvec::Destroy(pager->Savepoints[ii].InSavepoint);
 		if (!pager->ExclusiveMode || VFile::HasMemoryVFile(pager->SubJournalFile))
 			pager->SubJournalFile->Close();
@@ -616,7 +616,7 @@ namespace Core
 	__device__ static RC addToSavepointBitvecs(Pager *pager, Pid id)
 	{
 		RC rc = RC::OK;
-		for (int ii = 0; ii < __arrayLength(pager->Savepoints); ii++)
+		for (int ii = 0; ii < pager->Savepoints.length; ii++)
 		{
 			PagerSavepoint *p = &pager->Savepoints[ii];
 			if (id <= p->Orig)
@@ -2112,7 +2112,7 @@ end_playback:
 		if (rc == RC::OK)
 		{
 			pager->SubRecords++;
-			_assert(__arrayLength(pager->Savepoints) > 0);
+			_assert(pager->Savepoints.length > 0);
 			rc = addToSavepointBitvecs(pager, pg->ID);
 		}
 		return rc;
@@ -3089,7 +3089,7 @@ pager_acquire_err:
 	__device__ void Pager::DontWrite(IPage *pg)
 	{
 		Pager *pager = pg->Pager;
-		if ((pg->Flags & PgHdr::PGHDR_DIRTY) && __arrayLength(pager->Savepoints) == 0)
+		if ((pg->Flags & PgHdr::PGHDR_DIRTY) && pager->Savepoints.length == 0)
 		{
 			PAGERTRACE("DONT_WRITE page %d of %d\n", pg->ID, PAGERID(pager));
 			SysEx_IOTRACE("CLEAN %p %d\n", pager, pg->ID);
@@ -3461,7 +3461,7 @@ commit_phase_one_exit:
 		_assert(assert_pager_state(this));
 
 		RC rc = RC::OK;
-		int currentSavepoints = __arrayLength(Savepoints); // Current number of savepoints
+		int currentSavepoints = Savepoints.length; // Current number of savepoints
 		if (savepoints > currentSavepoints && UseJournal)
 		{
 			// Grow the Pager.aSavepoint array using realloc(). Return SQLITE_NOMEM if the allocation fails. Otherwise, zero the new portion in case a 
@@ -3496,12 +3496,12 @@ commit_phase_one_exit:
 		_assert(op == IPager::SAVEPOINT_RELEASE || op == IPager::SAVEPOINT_ROLLBACK);
 		_assert(savepoints >= 0 || op == IPager::SAVEPOINT_ROLLBACK);
 		RC rc = ErrorCode;
-		if (rc == RC::OK && savepoints < __arrayLength(Savepoints))
+		if (rc == RC::OK && savepoints < Savepoints.length)
 		{
 			// Figure out how many savepoints will still be active after this operation. Store this value in nNew. Then free resources associated 
 			// with any savepoints that are destroyed by this operation.
 			int newLength = savepoints + (op == IPager::SAVEPOINT_RELEASE ? 0 : 1); // Number of remaining savepoints after this op.
-			for (int ii = newLength; ii < __arrayLength(Savepoints); ii++)
+			for (int ii = newLength; ii < Savepoints.length; ii++)
 				Bitvec::Destroy(Savepoints[ii].InSavepoint);
 			Savepoints.length = newLength;
 

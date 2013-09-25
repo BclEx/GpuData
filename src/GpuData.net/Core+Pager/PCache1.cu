@@ -257,17 +257,17 @@ namespace Core
 	__device__ static int ResizeHash(PCache1 *p)
 	{
 		_assert(MutexEx::Held(p->Group->Mutex));
-		uint newLength = __arrayLength(p->Hash) * 2;
+		uint newLength = p->Hash.length * 2;
 		if (newLength < 256)
 			newLength = 256;
 		MutexEx::Leave(p->Group->Mutex);
-		if (__arrayLength(p->Hash)) SysEx::BeginBenignAlloc();
+		if (p->Hash.length) SysEx::BeginBenignAlloc();
 		PgHdr1 **newHash = (PgHdr1 **)SysEx::Alloc(sizeof(PgHdr1 *) * newLength, true);
-		if (__arrayLength(p->Hash)) SysEx::EndBenignAlloc();
+		if (p->Hash.length) SysEx::EndBenignAlloc();
 		MutexEx::Enter(p->Group->Mutex);
 		if (newHash)
 		{
-			for (uint i = 0; i < __arrayLength(p->Hash); i++)
+			for (uint i = 0; i < p->Hash.length; i++)
 			{
 				PgHdr1 *page;
 				PgHdr1 *next = p->Hash[i];
@@ -313,7 +313,7 @@ namespace Core
 	{
 		PCache1 *cache = page->Cache;
 		_assert(MutexEx::Held(cache->Group->Mutex));
-		uint h = (page->ID % __arrayLength(cache->Hash));
+		uint h = (page->ID % cache->Hash.length);
 		PgHdr1 **pp;
 		for (pp = &cache->Hash[h]; (*pp) != page; pp = &(*pp)->Next);
 		*pp = (*pp)->Next;
@@ -337,7 +337,7 @@ namespace Core
 	{
 		ASSERTONLY(uint pages = 0;)
 			_assert(MutexEx::Held(p->Group->Mutex));
-		for (uint h = 0; h < __arrayLength(p->Hash); h++)
+		for (uint h = 0; h < p->Hash.length; h++)
 		{
 			PgHdr1 **pp = &p->Hash[h]; 
 			PgHdr1 *page;
@@ -476,9 +476,9 @@ namespace Core
 
 		// Step 1: Search the hash table for an existing entry.
 		PgHdr1 *page = nullptr;
-		if (__arrayLength(Hash) > 0)
+		if (Hash.length > 0)
 		{
-			uint h = (id % __arrayLength(Hash));
+			uint h = (id % Hash.length);
 			for (page = Hash[h]; page && page->ID != id; page = page->Next) ;
 		}
 
@@ -504,7 +504,7 @@ namespace Core
 		_assert(N90pct == Max * 9 / 10);
 		if (createFlag && (pinned >= group->MaxPinned || pinned >= N90pct || UnderMemoryPressure(this)))
 			goto fetch_out;
-		if (Pages >= __arrayLength(Hash) && ResizeHash(this))
+		if (Pages >= Hash.length && ResizeHash(this))
 			goto fetch_out;
 
 		// Step 4. Try to recycle a page.
@@ -539,7 +539,7 @@ namespace Core
 		}
 		if (page)
 		{
-			uint h = (id % __arrayLength(Hash));
+			uint h = (id % Hash.length);
 			Pages++;
 			page->ID = id;
 			page->Next = Hash[h];
@@ -596,12 +596,12 @@ fetch_out:
 		_assert(page->ID == old);
 		_assert(page->Cache == this);
 		MutexEx::Enter(Group->Mutex);
-		uint h = (old % __arrayLength(Hash));
+		uint h = (old % Hash.length);
 		PgHdr1 **pp = &Hash[h];
 		while ((*pp) != page)
 			pp = &(*pp)->Next;
 		*pp = page->Next;
-		h = (new_ % __arrayLength(Hash));
+		h = (new_ % Hash.length);
 		page->ID = new_;
 		page->Next = Hash[h];
 		Hash[h] = page;
