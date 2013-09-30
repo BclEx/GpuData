@@ -15,10 +15,9 @@ __device__ static void TestVFS()
 	file->Close();
 }
 
-
 __global__ void MainTest(void *heap)
 {
-	runtimeSetHeap(heap);
+	_runtimeSetHeap(heap);
 	_printf("HERE");
 	//SysEx::Initialize();
 	//TestVFS();
@@ -27,7 +26,7 @@ __global__ void MainTest(void *heap)
 void __main(cudaRuntimeHost &r)
 {	
 	cudaRuntimeSetHeap(r.heap);
-	MainTest<<<1, 1>>>();
+	MainTest<<<1, 1>>>(r.heap);
 	//
 	//TestVFS();
 	//TestPager();
