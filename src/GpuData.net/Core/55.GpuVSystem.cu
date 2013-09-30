@@ -118,6 +118,20 @@ namespace Core
 		return RC::ERROR;
 	}
 
+
+	__device__ RC GpuVSystem::SetSystemCall(const char *name, syscall_ptr newFunc)
+	{
+		return RC::ERROR;
+	}
+	__device__ syscall_ptr GpuVSystem::GetSystemCall(const char *name)
+	{
+		return nullptr;
+	}
+	__device__ const char *GpuVSystem::NextSystemCall(const char *name)
+	{
+		return nullptr;
+	}
+
 	__device__ static char _gpuVfsBuf[sizeof(GpuVSystem)];
 	__device__ static GpuVSystem *_gpuVfs;
 	__device__ RC VSystem::Initialize()

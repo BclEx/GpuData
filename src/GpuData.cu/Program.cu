@@ -1,25 +1,39 @@
 //#include "..\GpuData\Core\Core.cu.h"
 #include "..\GpuData.net\Core+Pager\Core+Pager.cu.h"
-#include <stdio.h>
-#include <string.h>
 using namespace Core;
 using namespace Core::IO;
 
-namespace Core
+//static void TestVFS();
+//static void TestPager();
+
+__device__ static void TestVFS()
 {
-	int Bitvec_BuiltinTest(int size, int *ops);
+	VSystem *vfs = VSystem::Find("gpu");
+	VFile *file = (VFile *)SysEx::Alloc(vfs->SizeOsFile);
+	RC rc = vfs->Open("C:\\T_\\Test.db", file, VSystem::OPEN_CREATE | VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_DB, nullptr);
+	file->Write4(0, 123145);
+	file->Close();
 }
 
-static void TestVFS();
-static void TestPager();
 
-void main()
+__global__ void MainTest(void *heap)
 {
-	SysEx::Initialize();
+	runtimeSetHeap(heap);
+	_printf("HERE");
+	//SysEx::Initialize();
 	//TestVFS();
-	TestPager();
 }
 
+void __main(cudaRuntimeHost &r)
+{	
+	cudaRuntimeSetHeap(r.heap);
+	MainTest<<<1, 1>>>();
+	//
+	//TestVFS();
+	//TestPager();
+}
+
+/*
 static void TestVFS()
 {
 	auto vfs = VSystem::Find("win32");
@@ -102,3 +116,4 @@ void TestBitvec()
 	int ops[] = { 5, 1, 1, 1, 0 };
 	Core::Bitvec_BuiltinTest(400, ops);
 }
+*/

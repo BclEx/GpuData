@@ -66,6 +66,7 @@
     <CudaCompile Include="..\GpuData.net\Core\55.GpuVSystem.cu">
       <Filter>Core</Filter>
     </CudaCompile>
+    <CudaCompile Include="Program.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\GpuData.net\Core\Core.cu.h">
@@ -132,5 +133,8 @@
     <ClInclude Include="..\GpuData.net\Core\50.VSystem.cu.h">
       <Filter>Core</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Program.cpp" />
   </ItemGroup>
 </Project>

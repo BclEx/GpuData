@@ -82,7 +82,7 @@ namespace Core { namespace IO
 				return Real->Write(buffer, amount, offset);
 			_memcpy(&Buffer[offset], (char *)buffer, amount);
 			if (Size < (offset + amount))
-				Size = (offset + amount);
+				Size = (int)(offset + amount);
 		}
 		return rc;
 	}

@@ -147,7 +147,7 @@ namespace Core
 		ICachePage *page = nullptr;
 		int create = createFlag * (1 + (!Purgeable || !Dirty));
 		if (Cache)
-			page = Cache->Fetch(id, create);
+			page = Cache->Fetch(id, create > 0);
 		if (!page && create)
 		{
 			// Find a dirty page to write-out and recycle. First try to find a page that does not require a journal-sync (one with PGHDR_NEED_SYNC

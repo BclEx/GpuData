@@ -777,7 +777,7 @@ ptrmap_exit:
 		uint8 *const data = page->Data; // Local cache of pPage->aData
 		int frags = data[hdr + 7]; // Number of fragmented bytes on pPage
 		_assert(page->CellOffset == hdr + 12 - 4 * page->Leaf);
-		int gap = page->CellOffset + 2 * page->Cells; // First byte of gap between cell pointers and cell content
+		uint gap = page->CellOffset + 2 * page->Cells; // First byte of gap between cell pointers and cell content
 		uint top = (uint)ConvertEx::Get2nz(&data[hdr + 5]); // First byte of cell content area
 		if (gap > top) return SysEx_CORRUPT_BKPT;
 		ASSERTCOVERAGE(gap + 2 == top);

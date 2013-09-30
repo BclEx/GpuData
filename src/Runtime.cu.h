@@ -1,5 +1,4 @@
 ﻿#if __CUDACC__
-#include "..\packages\gpustructs.1.0.0\include\Cuda.h"
 #include "..\packages\gpustructs.1.0.0\include\Runtime.cu.h"
 #else
 #include "..\packages\gpustructs.1.0.0\include\Runtime.cpu.h"
