@@ -10,17 +10,16 @@ __device__ static void TestVFS()
 {
 	VSystem *vfs = VSystem::Find("gpu");
 	VFile *file = (VFile *)SysEx::Alloc(vfs->SizeOsFile);
-	RC rc = vfs->Open("C:\\T_\\Test.db", file, VSystem::OPEN_CREATE | VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_DB, nullptr);
+	RC rc = vfs->Open("C:\\T_\\Test.db", file, (VSystem::OPEN)((int)VSystem::OPEN_CREATE | (int)VSystem::OPEN_READWRITE | (int)VSystem::OPEN_MAIN_DB), nullptr);
+	_printf("%d\n", rc);
 	file->Write4(0, 123145);
 	file->Close();
 }
 
 __global__ void MainTest(void *heap)
 {
-	_runtimeSetHeap(heap);
-	_printf("HERE");
-	//SysEx::Initialize();
-	//TestVFS();
+	SysEx::Initialize();
+	TestVFS();
 }
 
 void __main(cudaRuntimeHost &r)

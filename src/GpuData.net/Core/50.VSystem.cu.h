@@ -21,7 +21,7 @@ namespace Core
 	class VSystem
 	{
 	public:
-		enum OPEN : unsigned int
+		enum OPEN : int
 		{
 			OPEN_READONLY = 0x00000001,          // Ok for sqlite3_open_v2() 
 			OPEN_READWRITE = 0x00000002,        // Ok for sqlite3_open_v2() 
@@ -86,6 +86,6 @@ namespace Core
 		__device__ virtual const char *NextSystemCall(const char *name) = 0;
 	};
 
-	__device__ VSystem::OPEN inline operator|(VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
-	__device__ VSystem::OPEN inline operator|=(VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
+	//__device__ VSystem::OPEN inline operator|(VSystem::OPEN a, VSystem::OPEN b) { return (VSystem::OPEN)((unsigned int)a | (unsigned int)b); }
+	__device__ VSystem::OPEN inline operator|=(VSystem::OPEN a, int b) { return (VSystem::OPEN)(a | b); }
 }
