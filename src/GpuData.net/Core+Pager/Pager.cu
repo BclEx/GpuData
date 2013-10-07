@@ -2276,8 +2276,8 @@ end_playback:
 		Pager *pager = (Pager *)(ptr);
 		pager->PCache = (Core::PCache *)(ptr += SysEx_ROUND8(sizeof(Pager)));
 		pager->File = (VFile *)(ptr += SysEx_ROUND8(pcacheSizeOf));
-		pager->SubJournalFile = (VFile *)(ptr += SysEx_ROUND8(vfs->SizeOsFile));
-		pager->JournalFile = (VFile *)(ptr += journalFileSize);
+		pager->SubJournalFile = vfs->_AttachFile(ptr += SysEx_ROUND8(vfs->SizeOsFile));
+		pager->JournalFile = vfs->_AttachFile(ptr += journalFileSize);
 		pager->Filename = (char *)(ptr += journalFileSize);
 		_assert(SysEx_HASALIGNMENT8(pager->JournalFile));
 

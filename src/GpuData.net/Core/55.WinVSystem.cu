@@ -205,6 +205,7 @@ namespace Core
 	class WinVSystem : public VSystem
 	{
 	public:
+		__device__ virtual VFile *_AttachFile(void *buffer);
 		__device__ virtual RC Open(const char *path, VFile *file, OPEN flags, OPEN *outFlags);
 		__device__ virtual RC Delete(const char *path, bool syncDirectory);
 		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC);
@@ -2553,6 +2554,11 @@ shmpage_out:
 #endif
 		}
 		return (attr != INVALID_FILE_ATTRIBUTES) && (attr & FILE_ATTRIBUTE_DIRECTORY);
+	}
+
+	VFile *WinVSystem::_AttachFile(void *buffer)
+	{
+		return new (buffer) WinVFile();
 	}
 
 	RC WinVSystem::Open(const char *name, VFile *id, OPEN flags, OPEN *outFlags)

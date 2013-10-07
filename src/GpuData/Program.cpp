@@ -35,8 +35,8 @@ static Pager *Open(VSystem *vfs)
 {
 	byte dbHeader[100]; // Database header content
 
-	IPager::PAGEROPEN flags = (IPager::PAGEROPEN)0;
-	VSystem::OPEN vfsFlags = (VSystem::OPEN)((int)VSystem::OPEN_CREATE | (int)VSystem::OPEN_READWRITE | (int)VSystem::OPEN_MAIN_DB);
+	auto flags = (IPager::PAGEROPEN)0;
+	auto vfsFlags = (VSystem::OPEN)((int)VSystem::OPEN_CREATE | (int)VSystem::OPEN_READWRITE | (int)VSystem::OPEN_MAIN_DB);
 	//
 	Pager *pager;
 	auto rc = Pager::Open(vfs, &pager, "C:\\T_\\Test.db", 0, flags, vfsFlags, nullptr);

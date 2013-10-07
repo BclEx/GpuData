@@ -65,6 +65,7 @@ namespace Core
 		__device__ static int RegisterVfs(VSystem *vfs, bool _default);
 		__device__ static int UnregisterVfs(VSystem *vfs);
 
+		__device__ virtual IO::VFile *_AttachFile(void *buffer) = 0;
 		__device__ virtual RC Open(const char *path, IO::VFile *file, OPEN flags, OPEN *outFlags) = 0;
 		__device__ virtual RC Delete(const char *path, bool syncDirectory) = 0;
 		__device__ virtual RC Access(const char *path, ACCESS flags, int *outRC) = 0;

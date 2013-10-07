@@ -3,55 +3,45 @@
 using namespace Core;
 using namespace Core::IO;
 
-//static void TestVFS();
-//static void TestPager();
 
-__device__ static void TestVFS()
-{
-	VSystem *vfs = VSystem::Find("gpu");
-	VFile *file = (VFile *)SysEx::Alloc(vfs->SizeOsFile);
-	RC rc = vfs->Open("C:\\T_\\Test.db", file, (VSystem::OPEN)((int)VSystem::OPEN_CREATE | (int)VSystem::OPEN_READWRITE | (int)VSystem::OPEN_MAIN_DB), nullptr);
-	_printf("%d\n", rc);
-	file->Write4(0, 123145);
-	file->Close();
-}
+__device__ static void TestVFS();
+__device__ static void TestPager();
 
 __global__ void MainTest(void *heap)
 {
 	SysEx::Initialize();
-	TestVFS();
+	//TestVFS();
+	TestPager();
 }
 
 void __main(cudaRuntimeHost &r)
 {	
 	cudaRuntimeSetHeap(r.heap);
 	MainTest<<<1, 1>>>(r.heap);
-	//
-	//TestVFS();
-	//TestPager();
 }
 
-/*
-static void TestVFS()
+__device__ static void TestVFS()
 {
-	auto vfs = VSystem::Find("win32");
+	auto vfs = VSystem::Find("gpu");
 	auto file = (VFile *)SysEx::Alloc(vfs->SizeOsFile);
-	auto rc = vfs->Open("C:\\T_\\Test.db", file, VSystem::OPEN_CREATE | VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_DB, nullptr);
+	auto rc = vfs->Open("C:\\T_\\Test.db", file, (VSystem::OPEN)((int)VSystem::OPEN_CREATE | (int)VSystem::OPEN_READWRITE | (int)VSystem::OPEN_MAIN_DB), nullptr);
+	_printf("%d\n", rc);
 	file->Write4(0, 123145);
 	file->Close();
+	SysEx::Free(file);
 }
 
-static int Busyhandler(void *x) { printf("BUSY"); return -1; }
+__device__ static int Busyhandler(void *x) { _printf("BUSY"); return -1; }
 
-static Pager *Open(VSystem *vfs)
+__device__ static Pager *Open(VSystem *vfs)
 {
 	byte dbHeader[100]; // Database header content
 
-	IPager::PAGEROPEN flags = (IPager::PAGEROPEN)0;
-	VSystem::OPEN vfsFlags = VSystem::OPEN_CREATE | VSystem::OPEN_READWRITE | VSystem::OPEN_MAIN_DB;
+	auto flags = (IPager::PAGEROPEN)0;
+	auto vfsFlags = (VSystem::OPEN)((int)VSystem::OPEN_CREATE | (int)VSystem::OPEN_READWRITE | (int)VSystem::OPEN_MAIN_DB);
 	//
 	Pager *pager;
-	auto rc = Pager::Open(vfs, &pager, "C:\\T_\\Test.db", 0, flags, vfsFlags, nullptr);
+	auto rc = Pager::Open(vfs, &pager, "memory", 0, flags, vfsFlags, nullptr);
 	if (rc == RC::OK)
 		rc = pager->ReadFileheader(sizeof(dbHeader), dbHeader);
 	if (rc != RC::OK)
@@ -82,23 +72,23 @@ _out:
 	return pager;
 }
 
-static void TestPager()
+__device__ static void TestPager()
 {
-	auto vfs = VSystem::Find("win32");
+	auto vfs = VSystem::Find("gpu");
 	auto pager = Open(vfs);
 	if (pager == nullptr)
-		throw;
+		_throw("");
 	auto rc = pager->SharedLock();
 	if (rc != RC::OK)
-		throw;
+		_throw("");
 	//
 	IPage *p = nullptr;
 	rc = pager->Acquire(1, &p, false);
 	if (rc != RC::OK)
-		throw;
+		_throw("");
 	rc = pager->Begin(0, false);
 	if (rc != RC::OK)
-		throw;
+		_throw("");
 	char values[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 	memcpy(values, p->Data, 10);
 	Pager::Write(p);
@@ -108,10 +98,3 @@ static void TestPager()
 	if (pager != nullptr)
 		pager->Close();
 }
-
-void TestBitvec()
-{
-	int ops[] = { 5, 1, 1, 1, 0 };
-	Core::Bitvec_BuiltinTest(400, ops);
-}
-*/
